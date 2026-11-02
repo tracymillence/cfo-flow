@@ -31,6 +31,13 @@ function cashFlowApp() {
     diningTab: 'members', // 'members' | 'bills' | 'settlements'
     memberFilter: 'all',  // 'all' | 'surplus' | 'debt'
 
+    // Editing IDs (null = creating new, ID = updating existing)
+    editingOrderId: null,
+    editingDiningId: null,
+    editingSettlementId: null,
+    editingMemberId: null,
+    editingDebtId: null,
+
     // Forms
     serviceForm: {
       customerName: '',
@@ -112,6 +119,13 @@ function cashFlowApp() {
       return str;
     },
 
+    copyText(text, label = 'thông tin') {
+      if (navigator && navigator.clipboard) {
+        navigator.clipboard.writeText(text);
+        this.notify(`✓ Đã sao chép ${label} vào bộ nhớ tạm!`);
+      }
+    },
+
     get filteredMembers() {
       const list = this.dashboard.card4_dining.members || [];
       if (this.memberFilter === 'surplus') {
@@ -139,19 +153,79 @@ function cashFlowApp() {
       }
     },
 
-    // --- SERVICE ORDERS ---
+    // ==================== SERVICE ORDERS (CRUD & COPY) ====================
+    editServiceOrder(order) {
+      this.editingOrderId = order._id;
+      this.serviceForm = {
+        customerName: order.customerName,
+        serviceType: order.serviceType,
+        costPrice: order.costPrice,
+        salePrice: order.salePrice,
+        customerPaid: order.customerPaid,
+        supplierPaid: order.supplierPaid,
+        date: order.date
+      };
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      this.notify(`✏️ Đang chỉnh sửa đơn: ${order.customerName}`);
+    },
+
+    copyServiceOrder(order) {
+      this.editingOrderId = null;
+      this.serviceForm = {
+        customerName: order.customerName + ' (Bản sao)',
+        serviceType: order.serviceType,
+        costPrice: order.costPrice,
+        salePrice: order.salePrice,
+        customerPaid: true,
+        supplierPaid: false,
+        date: new Date().toISOString().slice(0, 10)
+      };
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      this.notify('📋 Đã sao chép đơn dịch vụ vào form tạo mới!');
+    },
+
+    cancelEditServiceOrder() {
+      this.editingOrderId = null;
+      this.serviceForm = {
+        customerName: '',
+        serviceType: 'Reset pass thuế',
+        costPrice: 420000,
+        salePrice: 600000,
+        customerPaid: true,
+        supplierPaid: false,
+        date: new Date().toISOString().slice(0, 10)
+      };
+    },
+
     async submitServiceOrder() {
       try {
-        const res = await fetch('/api/service-orders', {
-          method: 'POST',
+        const url = this.editingOrderId ? `/api/service-orders/${this.editingOrderId}` : '/api/service-orders';
+        const method = this.editingOrderId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+          method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.serviceForm)
         });
         const data = await res.json();
         if (data.success) {
-          this.notify('✓ Đã lưu đơn hàng dịch vụ & cập nhật dòng tiền!');
-          this.modals.service = false;
-          this.serviceForm.customerName = '';
+          this.notify(this.editingOrderId ? '✓ Đã cập nhật đơn hàng thành công!' : '✓ Đã lưu đơn hàng dịch vụ mới!');
+          this.cancelEditServiceOrder();
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async deleteServiceOrder(id, name) {
+      if (!confirm(`Bạn có chắc chắn muốn xóa đơn dịch vụ "${name || 'này'}"?`)) return;
+      try {
+        const res = await fetch(`/api/service-orders/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('🗑️ Đã xóa đơn dịch vụ!');
+          if (this.editingOrderId === id) this.cancelEditServiceOrder();
           this.fetchDashboard();
         }
       } catch (err) {
@@ -173,7 +247,65 @@ function cashFlowApp() {
       }
     },
 
-    // --- DINING BILLS ---
+    // ==================== DINING BILLS (CRUD & COPY) ====================
+    openNewDiningBillModal() {
+      this.editingDiningId = null;
+      this.diningBillForm = {
+        mealTitle: 'Cơm trưa nhóm',
+        totalBill: 156000,
+        date: new Date().toISOString().slice(0, 10),
+        notes: '',
+        splitsText: 'Tôi: 31200\nYến: 31200\nHải: 31200\nHoài: 31200\nHP: 31200'
+      };
+      this.modals.diningBill = true;
+    },
+
+    editDiningBill(bill) {
+      this.editingDiningId = bill._id;
+      const splitsText = (bill.splits || [])
+        .map(sp => `${sp.personName}: ${sp.amount}`)
+        .join('\n');
+      this.diningBillForm = {
+        mealTitle: bill.mealTitle,
+        totalBill: bill.totalBill,
+        date: bill.date,
+        notes: bill.notes || '',
+        splitsText: splitsText || `Tôi: ${bill.myShare || 0}`
+      };
+      this.modals.diningBill = true;
+      this.notify(`✏️ Sửa bữa ăn: ${bill.mealTitle}`);
+    },
+
+    copyDiningBill(bill) {
+      this.editingDiningId = null;
+      const splitsText = (bill.splits || [])
+        .map(sp => `${sp.personName}: ${sp.amount}`)
+        .join('\n');
+      this.diningBillForm = {
+        mealTitle: bill.mealTitle + ' (Mới)',
+        totalBill: bill.totalBill,
+        date: new Date().toISOString().slice(0, 10),
+        notes: bill.notes || '',
+        splitsText: splitsText
+      };
+      this.modals.diningBill = true;
+      this.notify('📋 Đã sao chép danh sách chia tiền! Sẵn sàng lưu bữa mới.');
+    },
+
+    async deleteDiningBill(id, title) {
+      if (!confirm(`Xóa bữa ăn "${title || 'này'}" khỏi sổ?`)) return;
+      try {
+        const res = await fetch(`/api/dining/bill/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('🗑️ Đã xóa bữa ăn!');
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
     async submitDiningBill() {
       try {
         const splits = [];
@@ -207,15 +339,19 @@ function cashFlowApp() {
           notes: this.diningBillForm.notes
         };
 
-        const res = await fetch('/api/dining/bill', {
-          method: 'POST',
+        const url = this.editingDiningId ? `/api/dining/bill/${this.editingDiningId}` : '/api/dining/bill';
+        const method = this.editingDiningId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+          method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (data.success) {
-          this.notify('✓ Đã ghi nhận bữa ăn vào sổ nhóm!');
+          this.notify(this.editingDiningId ? '✓ Đã cập nhật bữa ăn!' : '✓ Đã ghi nhận bữa ăn mới vào sổ!');
           this.modals.diningBill = false;
+          this.editingDiningId = null;
           this.fetchDashboard();
         }
       } catch (err) {
@@ -223,13 +359,60 @@ function cashFlowApp() {
       }
     },
 
-    // --- SETTLEMENTS (NẠP / MƯỢN) ---
+    // ==================== SETTLEMENTS (NẠP / MƯỢN CRUD & COPY) ====================
     openSettlementModal(personName = '', direction = 'in') {
-      this.settlementForm.personName = personName;
-      this.settlementForm.direction = direction;
-      this.settlementForm.amount = '';
-      this.settlementForm.note = direction === 'in' ? 'CK nạp quỹ' : 'Mượn tiền quỹ';
+      this.editingSettlementId = null;
+      this.settlementForm = {
+        personName,
+        amount: '',
+        direction,
+        topupKind: direction === 'in' ? 'prepaid' : 'borrow',
+        note: direction === 'in' ? 'CK nạp quỹ' : 'Mượn tiền quỹ',
+        date: new Date().toISOString().slice(0, 10)
+      };
       this.modals.settlement = true;
+    },
+
+    editSettlement(s) {
+      this.editingSettlementId = s._id;
+      this.settlementForm = {
+        personName: s.personName,
+        amount: s.amount,
+        direction: s.direction,
+        topupKind: s.topupKind || (s.direction === 'in' ? 'prepaid' : 'borrow'),
+        note: s.note || '',
+        date: s.date
+      };
+      this.modals.settlement = true;
+      this.notify(`✏️ Sửa giao dịch của ${s.personName}`);
+    },
+
+    copySettlement(s) {
+      this.editingSettlementId = null;
+      this.settlementForm = {
+        personName: s.personName,
+        amount: s.amount,
+        direction: s.direction,
+        topupKind: s.topupKind,
+        note: (s.note || '') + ' (Lặp lại)',
+        date: new Date().toISOString().slice(0, 10)
+      };
+      this.modals.settlement = true;
+      this.notify('📋 Đã sao chép thông tin nạp / mượn!');
+    },
+
+    async deleteSettlement(id, personName) {
+      if (!confirm(`Xóa giao dịch này của ${personName}?`)) return;
+      try {
+        const res = await fetch(`/api/dining/settlement/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('🗑️ Đã xóa giao dịch nạp / mượn!');
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
     },
 
     async submitSettlement() {
@@ -238,15 +421,20 @@ function cashFlowApp() {
           alert('Vui lòng nhập tên người và số tiền!');
           return;
         }
-        const res = await fetch('/api/dining/settlement', {
-          method: 'POST',
+
+        const url = this.editingSettlementId ? `/api/dining/settlement/${this.editingSettlementId}` : '/api/dining/settlement';
+        const method = this.editingSettlementId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+          method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.settlementForm)
         });
         const data = await res.json();
         if (data.success) {
-          this.notify(this.settlementForm.direction === 'in' ? '✓ Đã ghi nhận nạp tiền quỹ!' : '✓ Đã ghi nhận mượn tiền quỹ!');
+          this.notify(this.editingSettlementId ? '✓ Đã cập nhật giao dịch!' : (this.settlementForm.direction === 'in' ? '✓ Đã nạp tiền quỹ!' : '✓ Đã ghi mượn tiền quỹ!'));
           this.modals.settlement = false;
+          this.editingSettlementId = null;
           this.fetchDashboard();
         }
       } catch (err) {
@@ -254,12 +442,14 @@ function cashFlowApp() {
       }
     },
 
-    // --- MEMBERS (SỬA ĐẦU KỲ) ---
+    // ==================== MEMBERS (CRUD & SỐ ĐẦU KỲ) ====================
     openMemberModal(member = null) {
       if (member) {
+        this.editingMemberId = member.id || member._id;
         this.memberForm.name = member.name;
         this.memberForm.openingBalance = member.openingBalance;
       } else {
+        this.editingMemberId = null;
         this.memberForm.name = '';
         this.memberForm.openingBalance = 0;
       }
@@ -288,20 +478,97 @@ function cashFlowApp() {
       }
     },
 
-    // --- DEBTS ---
+    async deleteMember(id, name) {
+      if (!confirm(`Bạn có chắc muốn xóa thành viên "${name}" khỏi sổ nhóm?`)) return;
+      try {
+        const res = await fetch(`/api/dining/member/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(`🗑️ Đã xóa thành viên "${name}"!`);
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    // ==================== DEBTS (CRUD & COPY) ====================
+    openNewDebtModal() {
+      this.editingDebtId = null;
+      this.debtForm = {
+        type: 'receivable',
+        personName: '',
+        amount: '',
+        dueDate: new Date().toISOString().slice(0, 10),
+        note: ''
+      };
+      this.modals.debt = true;
+    },
+
+    editDebt(d) {
+      this.editingDebtId = d._id;
+      this.debtForm = {
+        type: d.type,
+        personName: d.personName,
+        amount: d.amount,
+        dueDate: d.dueDate,
+        note: d.note || ''
+      };
+      this.notify(`✏️ Sửa khoản nợ: ${d.personName}`);
+    },
+
+    copyDebt(d) {
+      this.editingDebtId = null;
+      this.debtForm = {
+        type: d.type,
+        personName: d.personName + ' (Bản sao)',
+        amount: d.amount,
+        dueDate: new Date().toISOString().slice(0, 10),
+        note: d.note || ''
+      };
+      this.notify('📋 Đã sao chép khoản nợ vào form tạo mới!');
+    },
+
+    cancelEditDebt() {
+      this.editingDebtId = null;
+      this.debtForm = {
+        type: 'receivable',
+        personName: '',
+        amount: '',
+        dueDate: new Date().toISOString().slice(0, 10),
+        note: ''
+      };
+    },
+
     async submitDebt() {
       try {
-        const res = await fetch('/api/debts', {
-          method: 'POST',
+        const url = this.editingDebtId ? `/api/debts/${this.editingDebtId}` : '/api/debts';
+        const method = this.editingDebtId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+          method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.debtForm)
         });
         const data = await res.json();
         if (data.success) {
-          this.notify('✓ Đã thêm khoản nợ vào sổ!');
-          this.modals.debt = false;
-          this.debtForm.personName = '';
-          this.debtForm.amount = '';
+          this.notify(this.editingDebtId ? '✓ Đã cập nhật khoản nợ!' : '✓ Đã thêm khoản nợ vào sổ!');
+          this.cancelEditDebt();
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async deleteDebt(id, personName) {
+      if (!confirm(`Xóa khoản nợ của "${personName}"?`)) return;
+      try {
+        const res = await fetch(`/api/debts/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('🗑️ Đã xóa khoản nợ!');
+          if (this.editingDebtId === id) this.cancelEditDebt();
           this.fetchDashboard();
         }
       } catch (err) {
@@ -322,7 +589,7 @@ function cashFlowApp() {
       }
     },
 
-    // --- CONFIG ---
+    // ==================== CONFIG & RESEED ====================
     async submitConfig() {
       try {
         const res = await fetch('/api/config', {
@@ -341,7 +608,6 @@ function cashFlowApp() {
       }
     },
 
-    // --- RESEED ---
     async reseedData() {
       if (!confirm('Khôi phục toàn bộ dữ liệu mẫu ban đầu (156k trưa, 182k tối, Yến 300k, 14 thành viên)?')) return;
       try {

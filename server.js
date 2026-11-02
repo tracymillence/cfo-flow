@@ -464,6 +464,41 @@ app.post('/api/service-orders', async (req, res) => {
   }
 });
 
+// 2b. PUT /api/service-orders/:id (Cập nhật đơn hàng dịch vụ)
+app.put('/api/service-orders/:id', async (req, res) => {
+  try {
+    const { customerName, serviceType, costPrice, salePrice, customerPaid, supplierPaid, date } = req.body;
+    const order = await ServiceOrder.findByIdAndUpdate(
+      req.params.id,
+      {
+        customerName: customerName || 'Khách lẻ',
+        serviceType: serviceType || 'Dịch vụ',
+        costPrice: Number(costPrice) || 0,
+        salePrice: Number(salePrice) || 0,
+        customerPaid: customerPaid !== false,
+        supplierPaid: supplierPaid === true,
+        date: date || new Date().toISOString().slice(0, 10)
+      },
+      { new: true }
+    );
+    if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    res.json({ success: true, order });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 2c. DELETE /api/service-orders/:id (Xoá đơn hàng dịch vụ)
+app.delete('/api/service-orders/:id', async (req, res) => {
+  try {
+    const order = await ServiceOrder.findByIdAndDelete(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    res.json({ success: true, message: 'Đã xóa đơn hàng' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 // 3. POST /api/service-orders/batch-pay-supplier (Thanh toán gom cho NCC -> Hũ NCC = 0)
 app.post('/api/service-orders/batch-pay-supplier', async (req, res) => {
   try {
@@ -512,6 +547,40 @@ app.post('/api/dining/bill', async (req, res) => {
   }
 });
 
+// 4b. PUT /api/dining/bill/:id (Cập nhật bữa ăn nhóm)
+app.put('/api/dining/bill/:id', async (req, res) => {
+  try {
+    const { date, mealTitle, totalBill, myShare, splits, notes } = req.body;
+    const bill = await DiningLedger.findByIdAndUpdate(
+      req.params.id,
+      {
+        date: date || new Date().toISOString().slice(0, 10),
+        mealTitle: mealTitle || 'Bữa ăn nhóm',
+        totalBill: Number(totalBill) || 0,
+        myShare: Number(myShare) || 0,
+        splits: splits || [],
+        notes: notes || ''
+      },
+      { new: true }
+    );
+    if (!bill) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    res.json({ success: true, bill });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 4c. DELETE /api/dining/bill/:id (Xoá bữa ăn nhóm)
+app.delete('/api/dining/bill/:id', async (req, res) => {
+  try {
+    const bill = await DiningLedger.findByIdAndDelete(req.params.id);
+    if (!bill) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    res.json({ success: true, message: 'Đã xóa bữa ăn' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 // 5. POST /api/dining/settlement (Nạp tiền / Mượn tiền quỹ)
 app.post('/api/dining/settlement', async (req, res) => {
   try {
@@ -544,6 +613,42 @@ app.post('/api/dining/settlement', async (req, res) => {
   }
 });
 
+// 5b. PUT /api/dining/settlement/:id (Cập nhật nạp / mượn tiền quỹ)
+app.put('/api/dining/settlement/:id', async (req, res) => {
+  try {
+    const { personName, amount, direction, note, date, topupKind } = req.body;
+    const pKey = normalizeKey(personName);
+    const settlement = await DiningSettlement.findByIdAndUpdate(
+      req.params.id,
+      {
+        personKey: pKey,
+        personName,
+        amount: Number(amount) || 0,
+        direction: direction === 'out' ? 'out' : 'in',
+        topupKind: topupKind || (direction === 'out' ? 'borrow' : 'prepaid'),
+        note: note || '',
+        date: date || new Date().toISOString().slice(0, 10)
+      },
+      { new: true }
+    );
+    if (!settlement) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    res.json({ success: true, settlement });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 5c. DELETE /api/dining/settlement/:id (Xoá giao dịch nạp / mượn)
+app.delete('/api/dining/settlement/:id', async (req, res) => {
+  try {
+    const settlement = await DiningSettlement.findByIdAndDelete(req.params.id);
+    if (!settlement) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    res.json({ success: true, message: 'Đã xóa giao dịch nạp / mượn' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 // 6. POST /api/dining/member (Thêm hoặc cập nhật số đầu kỳ từng người)
 app.post('/api/dining/member', async (req, res) => {
   try {
@@ -555,6 +660,17 @@ app.post('/api/dining/member', async (req, res) => {
       { upsert: true, new: true }
     );
     res.json({ success: true, member });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 6b. DELETE /api/dining/member/:id (Xoá thành viên)
+app.delete('/api/dining/member/:id', async (req, res) => {
+  try {
+    const member = await DiningMember.findByIdAndDelete(req.params.id);
+    if (!member) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    res.json({ success: true, message: 'Đã xóa thành viên' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -585,6 +701,40 @@ app.patch('/api/debts/:id/toggle-status', async (req, res) => {
     debt.status = debt.status === 'paid' ? 'pending' : 'paid';
     await debt.save();
     res.json({ success: true, debt });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 8b. PUT /api/debts/:id (Cập nhật khoản nợ)
+app.put('/api/debts/:id', async (req, res) => {
+  try {
+    const { type, personName, amount, dueDate, note, status } = req.body;
+    const debt = await Debt.findByIdAndUpdate(
+      req.params.id,
+      {
+        type,
+        personName,
+        amount: Number(amount) || 0,
+        dueDate: dueDate || new Date().toISOString().slice(0, 10),
+        note: note || '',
+        status: status || 'pending'
+      },
+      { new: true }
+    );
+    if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    res.json({ success: true, debt });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 8c. DELETE /api/debts/:id (Xoá khoản nợ)
+app.delete('/api/debts/:id', async (req, res) => {
+  try {
+    const debt = await Debt.findByIdAndDelete(req.params.id);
+    if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    res.json({ success: true, message: 'Đã xóa khoản nợ' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }

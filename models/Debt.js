@@ -18,3 +18,4 @@ const debtSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 module.exports = mongoose.model('Debt', debtSchema);
+

@@ -13,3 +13,4 @@ const diningSettlementSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 module.exports = mongoose.model('DiningSettlement', diningSettlementSchema);
+

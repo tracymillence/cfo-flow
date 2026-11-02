@@ -8,3 +8,4 @@ const diningMemberSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 module.exports = mongoose.model('DiningMember', diningMemberSchema);
+

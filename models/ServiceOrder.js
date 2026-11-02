@@ -21,3 +21,4 @@ serviceOrderSchema.virtual('profit').get(function() {
 });
 
 module.exports = mongoose.model('ServiceOrder', serviceOrderSchema);
+
