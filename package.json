@@ -1,0 +1,26 @@
+{
+  "name": "cfo-flow-app",
+  "version": "2.0.0",
+  "description": "CFO Flow - Personal & Small Biz Cash Management with Node.js, Express & MongoDB",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node src/seed.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "mongoose": "^8.9.5"
+  },
+  "keywords": [
+    "cfo-flow",
+    "cashflow",
+    "dining-fund",
+    "express",
+    "mongodb"
+  ],
+  "author": "",
+  "license": "ISC"
+}
