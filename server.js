@@ -31,6 +31,30 @@ function normalizeKey(str) {
   return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ');
 }
 
+// Auto-reconnect helper
+async function ensureMongoConnected() {
+  if (mongoose.connection.readyState === 1) return true;
+  try {
+    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 8000 });
+    console.log('✓ Kết nối MongoDB Atlas thành công!');
+    lastMongoError = null;
+    await seedDefaultData(false);
+    return true;
+  } catch (err) {
+    lastMongoError = err;
+    console.error('❌ Lỗi kết nối MongoDB:', err.message);
+    return false;
+  }
+}
+
+// Auto-reconnect middleware for all API calls
+app.use('/api', async (req, res, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    await ensureMongoConnected();
+  }
+  next();
+});
+
 // ==================== SEED DATA HELPER ====================
 async function seedDefaultData(force = false) {
   try {
