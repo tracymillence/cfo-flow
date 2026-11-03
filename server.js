@@ -35,6 +35,23 @@ function normalizeKey(str) {
   return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ');
 }
 
+// Đảm bảo index unique tách biệt giữa group và personKey, không chặn người trùng tên giữa 2 nhóm
+async function ensureCleanIndexes() {
+  try {
+    if (mongoose.connection.readyState !== 1) return;
+    const col = mongoose.connection.db.collection('diningmembers');
+    const indexes = await col.indexes();
+    if (indexes.some(i => i.name === 'personKey_1')) {
+      console.log('Đang loại bỏ index cũ personKey_1...');
+      await col.dropIndex('personKey_1');
+      console.log('Đã loại bỏ personKey_1 thành công.');
+    }
+    await col.createIndex({ group: 1, personKey: 1 }, { unique: true });
+  } catch (e) {
+    // Không làm gián đoạn nếu index đã tồn tại
+  }
+}
+
 // Auto-reconnect helper
 async function ensureMongoConnected() {
   if (mongoose.connection.readyState === 1) return true;
@@ -42,6 +59,7 @@ async function ensureMongoConnected() {
     await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 8000 });
     console.log('✓ Kết nối MongoDB Atlas thành công!');
     lastMongoError = null;
+    await ensureCleanIndexes();
     await seedDefaultData(false);
     return true;
   } catch (err) {
@@ -149,12 +167,12 @@ async function seedDefaultData(force = false) {
     const familyMembersCount = await DiningMember.countDocuments({ group: 'family' });
     if (familyMembersCount === 0) {
       await DiningMember.insertMany([
-        { personKey: 'bo', name: 'Bố', group: 'family', openingBalance: 0 },
-        { personKey: 'me', name: 'Mẹ', group: 'family', openingBalance: 0 },
-        { personKey: 'em_1', name: 'Em 1', group: 'family', openingBalance: 0 },
-        { personKey: 'em_2', name: 'Em 2', group: 'family', openingBalance: 0 },
-        { personKey: 'em_3', name: 'Em 3', group: 'family', openingBalance: 0 },
-        { personKey: 'nguoi_yeu', name: 'Người yêu / Vợ', group: 'family', openingBalance: 0 }
+        { personKey: 'yen', name: 'Yến', group: 'family', openingBalance: 0 },
+        { personKey: 'thịnh', name: 'Thịnh', group: 'family', openingBalance: 0 },
+        { personKey: 'long', name: 'Long', group: 'family', openingBalance: 0 },
+        { personKey: 'hải', name: 'Hải', group: 'family', openingBalance: 0 },
+        { personKey: 'thuy', name: 'Thuý (tôi)', group: 'family', openingBalance: 0 },
+        { personKey: 'bao', name: 'Bảo (người yêu tôi)', group: 'family', openingBalance: 0 }
       ]);
     }
 
@@ -283,7 +301,7 @@ async function seedDefaultData(force = false) {
 }
 
 // Order of dining members requested by user
-const MEMBER_SORT_ORDER = [
+const WORK_MEMBER_SORT_ORDER = [
   'yến',
   'thịnh',
   'long',
@@ -300,10 +318,27 @@ const MEMBER_SORT_ORDER = [
   'hp'
 ];
 
-function getMemberSortIndex(name) {
+const FAMILY_MEMBER_SORT_ORDER = [
+  'yến',
+  'thịnh',
+  'long',
+  'hải',
+  'thuý (tôi)',
+  'thúy (tôi)',
+  'thuý',
+  'thúy',
+  'bảo (người yêu tôi)',
+  'bảo'
+];
+
+function getMemberSortIndex(name, group = 'work') {
   if (!name) return 999;
   const norm = normalizeKey(name);
-  const idx = MEMBER_SORT_ORDER.findIndex(o => normalizeKey(o) === norm);
+  if (group === 'family') {
+    const idx = FAMILY_MEMBER_SORT_ORDER.findIndex(o => normalizeKey(o) === norm);
+    return idx !== -1 ? idx : 999;
+  }
+  const idx = WORK_MEMBER_SORT_ORDER.findIndex(o => normalizeKey(o) === norm);
   return idx !== -1 ? idx : 999;
 }
 
@@ -329,10 +364,12 @@ function calculateDiningGroup(bills, settlements, members) {
 
   const memberMap = {};
   members.forEach(m => {
-    const key = m.personKey || normalizeKey(m.name);
+    const rawKey = m.personKey || normalizeKey(m.name);
+    // Prefix with group to ensure 100% isolation in combined view
+    const key = `${m.group || 'work'}_${rawKey}`;
     memberMap[key] = {
       id: m._id,
-      personKey: key,
+      personKey: rawKey,
       name: m.name,
       group: m.group || 'work',
       openingBalance: m.openingBalance || 0,
@@ -345,7 +382,8 @@ function calculateDiningGroup(bills, settlements, members) {
   });
 
   settlements.forEach(s => {
-    const key = s.personKey || normalizeKey(s.personName);
+    const rawKey = s.personKey || normalizeKey(s.personName);
+    const key = `${s.category || 'work'}_${rawKey}`;
     if (memberMap[key]) {
       if (s.direction === 'in') {
         memberMap[key].topups += (s.amount || 0);
@@ -360,7 +398,8 @@ function calculateDiningGroup(bills, settlements, members) {
   bills.forEach(b => {
     b.splits.forEach(sp => {
       if (sp.isMe || normalizeKey(sp.personName) === 'toi') return;
-      const key = sp.personKey || normalizeKey(sp.personName);
+      const rawKey = sp.personKey || normalizeKey(sp.personName);
+      const key = `${b.category || 'work'}_${rawKey}`;
       if (memberMap[key]) {
         memberMap[key].eaten += (sp.amount || 0);
         memberMap[key].mealCount += 1;
@@ -370,8 +409,8 @@ function calculateDiningGroup(bills, settlements, members) {
   });
 
   const membersList = Object.values(memberMap).sort((a, b) => {
-    const oA = getMemberSortIndex(a.name);
-    const oB = getMemberSortIndex(b.name);
+    const oA = getMemberSortIndex(a.name, a.group);
+    const oB = getMemberSortIndex(b.name, b.group);
     if (oA !== oB) return oA - oB;
     return a.name.localeCompare(b.name, 'vi');
   });
@@ -1295,15 +1334,16 @@ app.post('/api/dining/member', async (req, res) => {
   try {
     const { name, openingBalance, group, phone, note } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'Thiếu tên người' });
+    const targetGroup = group === 'family' ? 'family' : 'work';
     const pKey = normalizeKey(name);
-    const existing = await DiningMember.findOne({ personKey: pKey });
+    const existing = await DiningMember.findOne({ group: targetGroup, personKey: pKey });
     if (existing) {
-      return res.status(400).json({ success: false, message: 'Người này đã có trong danh sách' });
+      return res.status(400).json({ success: false, message: `Người này đã có trong danh sách ${targetGroup === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
     }
     const member = await DiningMember.create({
       personKey: pKey,
       name: name.trim(),
-      group: group === 'family' ? 'family' : 'work',
+      group: targetGroup,
       openingBalance: Number(openingBalance) || 0,
       phone: phone || '',
       note: note || ''
@@ -1320,12 +1360,24 @@ app.put('/api/dining/member/:id', async (req, res) => {
     const member = await DiningMember.findById(req.params.id);
     if (!member) return res.status(404).json({ success: false, message: 'Không tìm thấy người này' });
 
-    if (name && name.trim()) {
-      member.name = name.trim();
-      member.personKey = normalizeKey(name);
+    const targetGroup = group !== undefined ? (group === 'family' ? 'family' : 'work') : member.group;
+    const targetName = name && name.trim() ? name.trim() : member.name;
+    const targetKey = normalizeKey(targetName);
+
+    // Kiểm tra trùng tên chỉ trong cùng nhóm mục tiêu
+    const conflict = await DiningMember.findOne({
+      _id: { $ne: member._id },
+      group: targetGroup,
+      personKey: targetKey
+    });
+    if (conflict) {
+      return res.status(400).json({ success: false, message: `Tên này đã tồn tại trong ${targetGroup === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
     }
+
+    member.name = targetName;
+    member.personKey = targetKey;
+    member.group = targetGroup;
     if (openingBalance !== undefined) member.openingBalance = Number(openingBalance) || 0;
-    if (group !== undefined) member.group = group === 'family' ? 'family' : 'work';
     if (phone !== undefined) member.phone = phone;
     if (note !== undefined) member.note = note;
 

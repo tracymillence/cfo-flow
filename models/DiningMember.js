@@ -1,12 +1,15 @@
 const mongoose = require('mongoose');
 
 const diningMemberSchema = new mongoose.Schema({
-  personKey: { type: String, required: true, unique: true },
+  personKey: { type: String, required: true },
   name: { type: String, required: true },
   group: { type: String, enum: ['work', 'family'], default: 'work' },
   openingBalance: { type: Number, default: 0 },
   phone: { type: String, default: '' },
   note: { type: String, default: '' }
 }, { timestamps: true });
+
+// Tách biệt personKey theo từng nhóm (work vs family) để các thành viên trùng tên không bị xung đột
+diningMemberSchema.index({ group: 1, personKey: 1 }, { unique: true });
 
 module.exports = mongoose.model('DiningMember', diningMemberSchema);

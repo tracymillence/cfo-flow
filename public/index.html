@@ -948,7 +948,7 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-200 text-slate-800">
-                  <template x-for="(m, idx) in filteredMembers" :key="m.personKey || m.name">
+                  <template x-for="(m, idx) in filteredMembers" :key="(m.group || '') + '_' + (m.personKey || m.name)">
                     <tr class="hover:bg-emerald-50/50 transition-colors"
                         :class="idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'">
                       <!-- STT -->
@@ -1044,7 +1044,7 @@
 
           <!-- TAB 1: SỔ TỪNG NGƯỜI (CARDS GRID PHỤ TRỢ) -->
           <div x-show="diningTab === 'members' && diningMemberView === 'cards'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
-            <template x-for="(m, idx) in filteredMembers" :key="m.personKey">
+            <template x-for="(m, idx) in filteredMembers" :key="(m.group || '') + '_' + (m.personKey || m.name)">
               <div class="p-4 rounded-xl border border-slate-200/80 bg-white hover:border-slate-300 transition shadow-card space-y-3">
                 <div class="flex items-start justify-between">
                   <div>

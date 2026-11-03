@@ -1,5 +1,5 @@
 // Order of dining members requested by user
-const MEMBER_SORT_ORDER = [
+const WORK_MEMBER_SORT_ORDER = [
   'yến',
   'thịnh',
   'long',
@@ -16,15 +16,32 @@ const MEMBER_SORT_ORDER = [
   'hp'
 ];
 
+const FAMILY_MEMBER_SORT_ORDER = [
+  'yến',
+  'thịnh',
+  'long',
+  'hải',
+  'thuý (tôi)',
+  'thúy (tôi)',
+  'thuý',
+  'thúy',
+  'bảo (người yêu tôi)',
+  'bảo'
+];
+
 function normalizeMemberName(name) {
   if (!name) return '';
   return name.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
 }
 
-function getMemberSortIndex(name) {
+function getMemberSortIndex(name, group = 'work') {
   if (!name) return 999;
   const norm = normalizeMemberName(name);
-  const idx = MEMBER_SORT_ORDER.findIndex(o => normalizeMemberName(o) === norm);
+  if (group === 'family') {
+    const idx = FAMILY_MEMBER_SORT_ORDER.findIndex(o => normalizeMemberName(o) === norm);
+    return idx !== -1 ? idx : 999;
+  }
+  const idx = WORK_MEMBER_SORT_ORDER.findIndex(o => normalizeMemberName(o) === norm);
   return idx !== -1 ? idx : 999;
 }
 
@@ -239,8 +256,8 @@ function cashFlowApp() {
     get filteredMembers() {
       let list = [...(this.currentDiningData.members || [])];
       list.sort((a, b) => {
-        const oA = getMemberSortIndex(a.name);
-        const oB = getMemberSortIndex(b.name);
+        const oA = getMemberSortIndex(a.name, a.group);
+        const oB = getMemberSortIndex(b.name, b.group);
         if (oA !== oB) return oA - oB;
         return (a.name || '').localeCompare(b.name || '', 'vi');
       });
@@ -800,8 +817,8 @@ function cashFlowApp() {
       const cat = this.diningBillForm.category;
       const allMembers = [...(this.dashboard.card4_dining.allMembers || [])];
       allMembers.sort((a, b) => {
-        const oA = getMemberSortIndex(a.name);
-        const oB = getMemberSortIndex(b.name);
+        const oA = getMemberSortIndex(a.name, a.group);
+        const oB = getMemberSortIndex(b.name, b.group);
         if (oA !== oB) return oA - oB;
         return (a.name || '').localeCompare(b.name || '', 'vi');
       });
