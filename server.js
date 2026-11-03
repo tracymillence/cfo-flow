@@ -282,6 +282,31 @@ async function seedDefaultData(force = false) {
   }
 }
 
+// Order of dining members requested by user
+const MEMBER_SORT_ORDER = [
+  'yến',
+  'thịnh',
+  'long',
+  'hải',
+  'tuyết ngân',
+  'như ý',
+  'dương',
+  'thu ngân',
+  'hoài',
+  'ngọc tuyền',
+  'quỳnh',
+  'phụng',
+  'nguyên',
+  'hp'
+];
+
+function getMemberSortIndex(name) {
+  if (!name) return 999;
+  const norm = normalizeKey(name);
+  const idx = MEMBER_SORT_ORDER.findIndex(o => normalizeKey(o) === norm);
+  return idx !== -1 ? idx : 999;
+}
+
 // Helper calculation engine for Dining Groups (Work vs Family)
 function calculateDiningGroup(bills, settlements, members) {
   const billPaidTotal = bills.reduce((sum, b) => sum + (b.totalBill || 0), 0);
@@ -344,7 +369,12 @@ function calculateDiningGroup(bills, settlements, members) {
     });
   });
 
-  const membersList = Object.values(memberMap);
+  const membersList = Object.values(memberMap).sort((a, b) => {
+    const oA = getMemberSortIndex(a.name);
+    const oB = getMemberSortIndex(b.name);
+    if (oA !== oB) return oA - oB;
+    return a.name.localeCompare(b.name, 'vi');
+  });
   const surplusMembers = membersList.filter(m => m.currentBalance >= 0);
   const debtMembers = membersList.filter(m => m.currentBalance < 0);
   const totalSurplusFund = surplusMembers.reduce((sum, m) => sum + m.currentBalance, 0);

@@ -1,3 +1,33 @@
+// Order of dining members requested by user
+const MEMBER_SORT_ORDER = [
+  'yến',
+  'thịnh',
+  'long',
+  'hải',
+  'tuyết ngân',
+  'như ý',
+  'dương',
+  'thu ngân',
+  'hoài',
+  'ngọc tuyền',
+  'quỳnh',
+  'phụng',
+  'nguyên',
+  'hp'
+];
+
+function normalizeMemberName(name) {
+  if (!name) return '';
+  return name.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+}
+
+function getMemberSortIndex(name) {
+  if (!name) return 999;
+  const norm = normalizeMemberName(name);
+  const idx = MEMBER_SORT_ORDER.findIndex(o => normalizeMemberName(o) === norm);
+  return idx !== -1 ? idx : 999;
+}
+
 function cashFlowApp() {
   return {
     loading: true,
@@ -38,6 +68,7 @@ function cashFlowApp() {
     activeTab: 'overview',
     diningCategory: 'work', // 'work' (Ăn nhóm đồng nghiệp) | 'family' (Quỹ gia đình) | 'all' (Tất cả)
     diningTab: 'members',   // 'members' | 'bills' | 'settlements'
+    diningMemberView: 'excel', // 'excel' (Bảng Excel) | 'cards' (Dạng Thẻ)
     memberFilter: 'all',    // 'all' | 'surplus' | 'debt'
     debtFilter: 'all',      // 'all' | 'receivable' | 'payable' | 'pending' | 'paid'
     txFilter: {
@@ -206,10 +237,32 @@ function cashFlowApp() {
     },
 
     get filteredMembers() {
-      const list = this.currentDiningData.members || [];
+      let list = [...(this.currentDiningData.members || [])];
+      list.sort((a, b) => {
+        const oA = getMemberSortIndex(a.name);
+        const oB = getMemberSortIndex(b.name);
+        if (oA !== oB) return oA - oB;
+        return (a.name || '').localeCompare(b.name || '', 'vi');
+      });
       if (this.memberFilter === 'surplus') return list.filter(m => m.currentBalance >= 0);
       if (this.memberFilter === 'debt') return list.filter(m => m.currentBalance < 0);
       return list;
+    },
+
+    get diningTotalOpening() {
+      return (this.filteredMembers || []).reduce((sum, m) => sum + (m.openingBalance || 0), 0);
+    },
+    get diningTotalTopups() {
+      return (this.filteredMembers || []).reduce((sum, m) => sum + (m.topups || 0), 0);
+    },
+    get diningTotalBorrowed() {
+      return (this.filteredMembers || []).reduce((sum, m) => sum + (m.borrowed || 0), 0);
+    },
+    get diningTotalEaten() {
+      return (this.filteredMembers || []).reduce((sum, m) => sum + (m.eaten || 0), 0);
+    },
+    get diningTotalCurrentBalance() {
+      return (this.filteredMembers || []).reduce((sum, m) => sum + (m.currentBalance || 0), 0);
     },
 
     get filteredDebts() {
@@ -745,7 +798,13 @@ function cashFlowApp() {
 
     populateBillParticipants(existingSplits = null) {
       const cat = this.diningBillForm.category;
-      const allMembers = this.dashboard.card4_dining.allMembers || [];
+      const allMembers = [...(this.dashboard.card4_dining.allMembers || [])];
+      allMembers.sort((a, b) => {
+        const oA = getMemberSortIndex(a.name);
+        const oB = getMemberSortIndex(b.name);
+        if (oA !== oB) return oA - oB;
+        return (a.name || '').localeCompare(b.name || '', 'vi');
+      });
       const relevantMembers = allMembers.filter(m => cat === 'family' ? m.group === 'family' : m.group !== 'family');
 
       this.diningBillForm.participants = relevantMembers.map(m => {

@@ -892,33 +892,164 @@
               </button>
             </div>
 
-            <!-- Member Filter Pills -->
-            <div x-show="diningTab === 'members'" class="flex items-center gap-1.5 text-xs">
-              <button type="button" @click="memberFilter = 'all'"
-                      class="px-2.5 py-1 rounded-md transition"
-                      :class="memberFilter === 'all' ? 'bg-slate-200 text-slate-900 font-bold' : 'text-slate-500 hover:bg-slate-100'">
-                Tất cả
-              </button>
-              <button type="button" @click="memberFilter = 'surplus'"
-                      class="px-2.5 py-1 rounded-md transition"
-                      :class="memberFilter === 'surplus' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-emerald-700 hover:bg-emerald-50'">
-                Còn dư quỹ
-              </button>
-              <button type="button" @click="memberFilter = 'debt'"
-                      class="px-2.5 py-1 rounded-md transition"
-                      :class="memberFilter === 'debt' ? 'bg-rose-100 text-rose-800 font-bold' : 'text-rose-700 hover:bg-rose-50'">
-                Đang nợ
-              </button>
+            <!-- Member Filter Pills & View Mode Switcher -->
+            <div x-show="diningTab === 'members'" class="flex flex-wrap items-center justify-between gap-2.5 text-xs w-full sm:w-auto">
+              <div class="flex items-center gap-1.5">
+                <button type="button" @click="memberFilter = 'all'"
+                        class="px-2.5 py-1 rounded-md transition"
+                        :class="memberFilter === 'all' ? 'bg-slate-200 text-slate-900 font-bold' : 'text-slate-500 hover:bg-slate-100'">
+                  Tất cả (<span x-text="currentDiningData.members?.length || 0"></span>)
+                </button>
+                <button type="button" @click="memberFilter = 'surplus'"
+                        class="px-2.5 py-1 rounded-md transition"
+                        :class="memberFilter === 'surplus' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-emerald-700 hover:bg-emerald-50'">
+                  Còn dư quỹ
+                </button>
+                <button type="button" @click="memberFilter = 'debt'"
+                        class="px-2.5 py-1 rounded-md transition"
+                        :class="memberFilter === 'debt' ? 'bg-rose-100 text-rose-800 font-bold' : 'text-rose-700 hover:bg-rose-50'">
+                  Đang nợ
+                </button>
+              </div>
+
+              <!-- View Switcher (Excel Table vs Cards) -->
+              <div class="inline-flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                <button type="button" @click="diningMemberView = 'excel'"
+                        class="px-2.5 py-1 rounded-md flex items-center gap-1.5 transition text-xs font-semibold"
+                        :class="diningMemberView === 'excel' ? 'bg-emerald-700 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'">
+                  <i class="fa-solid fa-table-cells"></i>
+                  <span>Bảng Excel</span>
+                </button>
+                <button type="button" @click="diningMemberView = 'cards'"
+                        class="px-2.5 py-1 rounded-md flex items-center gap-1.5 transition text-xs font-semibold"
+                        :class="diningMemberView === 'cards' ? 'bg-emerald-700 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'">
+                  <i class="fa-solid fa-grip"></i>
+                  <span>Dạng Thẻ</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- TAB 1: SỔ TỪNG NGƯỜI (CARDS GRID) -->
-          <div x-show="diningTab === 'members'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
-            <template x-for="m in filteredMembers" :key="m.personKey">
+          <!-- TAB 1: SỔ TỪNG NGƯỜI - GIAO DIỆN BẢNG EXCEL (MẶC ĐỊNH) -->
+          <div x-show="diningTab === 'members' && diningMemberView === 'excel'" class="pt-1 space-y-2">
+            <div class="overflow-x-auto rounded-xl border border-slate-300 bg-white shadow-sm">
+              <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr class="bg-gradient-to-b from-slate-100 to-slate-200/90 text-slate-700 border-b border-slate-300 font-bold uppercase text-[11px] tracking-wider select-none">
+                    <th class="py-2.5 px-3 w-12 text-center border-r border-slate-300 bg-slate-100/90">STT</th>
+                    <th class="py-2.5 px-3 min-w-[160px] border-r border-slate-300">Thành Viên (Theo Thứ Tự)</th>
+                    <th class="py-2.5 px-3 text-right min-w-[115px] border-r border-slate-300">Dư Đầu Kỳ</th>
+                    <th class="py-2.5 px-3 text-right min-w-[110px] border-r border-slate-300 text-emerald-700">Nạp Thêm (+)</th>
+                    <th class="py-2.5 px-3 text-right min-w-[110px] border-r border-slate-300 text-amber-700">Mượn Quỹ (-)</th>
+                    <th class="py-2.5 px-3 text-right min-w-[110px] border-r border-slate-300 text-rose-700">Đã Ăn (-)</th>
+                    <th class="py-2.5 px-3 text-right min-w-[130px] border-r border-slate-300 font-bold">Số Dư Hiện Tại</th>
+                    <th class="py-2.5 px-3 text-center min-w-[110px] border-r border-slate-300">Trạng Thái</th>
+                    <th class="py-2.5 px-3 text-center min-w-[160px]">Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200 text-slate-800">
+                  <template x-for="(m, idx) in filteredMembers" :key="m.personKey || m.name">
+                    <tr class="hover:bg-emerald-50/50 transition-colors"
+                        :class="idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'">
+                      <!-- STT -->
+                      <td class="py-2.5 px-3 text-center font-mono text-slate-500 font-bold border-r border-slate-200 bg-slate-50/40" x-text="idx + 1"></td>
+
+                      <!-- Họ & Tên -->
+                      <td class="py-2.5 px-3 border-r border-slate-200 whitespace-nowrap">
+                        <div class="flex items-center gap-1.5">
+                          <span class="font-bold text-slate-900 text-[13px]" x-text="m.name"></span>
+                          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                :class="m.group === 'family' ? 'bg-amber-100 text-amber-800' : 'bg-indigo-50 text-indigo-700'"
+                                x-text="m.group === 'family' ? 'Gia đình' : 'Đồng nghiệp'"></span>
+                        </div>
+                      </td>
+
+                      <!-- Dư Đầu Kỳ -->
+                      <td class="py-2.5 px-3 text-right font-mono border-r border-slate-200 text-slate-600"
+                          x-text="formatVND(m.openingBalance || 0)"></td>
+
+                      <!-- Nạp Thêm (+) -->
+                      <td class="py-2.5 px-3 text-right font-mono border-r border-slate-200 text-emerald-700 font-semibold"
+                          x-text="(m.topups > 0 ? '+' : '') + formatVND(m.topups || 0)"></td>
+
+                      <!-- Mượn Quỹ (-) -->
+                      <td class="py-2.5 px-3 text-right font-mono border-r border-slate-200 text-amber-700 font-semibold"
+                          x-text="(m.borrowed > 0 ? '-' : '') + formatVND(m.borrowed || 0)"></td>
+
+                      <!-- Đã Ăn (-) -->
+                      <td class="py-2.5 px-3 text-right font-mono border-r border-slate-200 text-rose-700 font-semibold"
+                          x-text="(m.eaten > 0 ? '-' : '') + formatVND(m.eaten || 0)"></td>
+
+                      <!-- Số Dư Hiện Tại -->
+                      <td class="py-2.5 px-3 text-right font-mono font-bold border-r border-slate-200"
+                          :class="m.currentBalance > 0 ? 'text-emerald-700 bg-emerald-50/40' : (m.currentBalance < 0 ? 'text-rose-600 bg-rose-50/40' : 'text-slate-500')"
+                          x-text="formatVND(m.currentBalance || 0)"></td>
+
+                      <!-- Trạng Thái -->
+                      <td class="py-2.5 px-3 text-center border-r border-slate-200 whitespace-nowrap">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+                              :class="m.currentBalance > 0 ? 'bg-emerald-100 text-emerald-800' : (m.currentBalance < 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-600')">
+                          <span class="w-1.5 h-1.5 rounded-full"
+                                :class="m.currentBalance > 0 ? 'bg-emerald-500' : (m.currentBalance < 0 ? 'bg-rose-500' : 'bg-slate-400')"></span>
+                          <span x-text="m.currentBalance > 0 ? 'Còn quỹ' : (m.currentBalance < 0 ? 'Đang nợ' : 'Hòa')"></span>
+                        </span>
+                      </td>
+
+                      <!-- Thao Tác -->
+                      <td class="py-2 px-3 text-center whitespace-nowrap">
+                        <div class="inline-flex items-center gap-1">
+                          <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'in'; modals.settlement = true"
+                                  title="Nạp thêm tiền vào quỹ"
+                                  class="px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold transition border border-emerald-200">
+                            + Nạp
+                          </button>
+                          <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'out'; modals.settlement = true"
+                                  title="Mượn tiền quỹ"
+                                  class="px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 text-[11px] font-semibold transition border border-amber-200">
+                            Mượn
+                          </button>
+                          <button type="button" @click="openMemberModal(m)"
+                                  title="Sửa đầu kỳ / tên"
+                                  class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs hover:bg-slate-100 transition">
+                            <i class="fa-solid fa-pen"></i>
+                          </button>
+                          <button type="button" @click="deleteMember(m.id || m._id, m.name)"
+                                  title="Xóa thành viên"
+                                  class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs hover:bg-rose-50 transition">
+                            <i class="fa-solid fa-trash-can"></i>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+                <tfoot class="bg-gradient-to-b from-slate-100 to-slate-200/90 text-slate-800 font-bold text-xs border-t-2 border-slate-300">
+                  <tr>
+                    <td colspan="2" class="py-3 px-3 text-left border-r border-slate-300 tracking-wider">
+                      <span>∑ TỔNG CỘNG (<span x-text="filteredMembers.length"></span> người)</span>
+                    </td>
+                    <td class="py-3 px-3 text-right font-mono border-r border-slate-300 text-slate-700" x-text="formatVND(diningTotalOpening)"></td>
+                    <td class="py-3 px-3 text-right font-mono border-r border-slate-300 text-emerald-700" x-text="formatVND(diningTotalTopups)"></td>
+                    <td class="py-3 px-3 text-right font-mono border-r border-slate-300 text-amber-700" x-text="formatVND(diningTotalBorrowed)"></td>
+                    <td class="py-3 px-3 text-right font-mono border-r border-slate-300 text-rose-700" x-text="formatVND(diningTotalEaten)"></td>
+                    <td class="py-3 px-3 text-right font-mono border-r border-slate-300 text-slate-900 bg-slate-200" x-text="formatVND(diningTotalCurrentBalance)"></td>
+                    <td colspan="2" class="py-3 px-3 text-center text-[11px] text-slate-500 font-medium">
+                      Thời gian thực
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- TAB 1: SỔ TỪNG NGƯỜI (CARDS GRID PHỤ TRỢ) -->
+          <div x-show="diningTab === 'members' && diningMemberView === 'cards'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+            <template x-for="(m, idx) in filteredMembers" :key="m.personKey">
               <div class="p-4 rounded-xl border border-slate-200/80 bg-white hover:border-slate-300 transition shadow-card space-y-3">
                 <div class="flex items-start justify-between">
                   <div>
                     <div class="flex items-center gap-1.5">
+                      <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-600 font-mono text-[11px] font-bold flex items-center justify-center" x-text="idx + 1"></span>
                       <strong class="text-sm font-bold text-slate-900" x-text="m.name"></strong>
                       <span class="px-1.5 py-0.2 rounded text-[10px]"
                             :class="m.group === 'family' ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700'"
@@ -943,7 +1074,7 @@
                     </button>
                     <button type="button" @click="openMemberModal(m)" title="Sửa"
                             class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs">
-                      <i class="fa-solid fa-pen"></i>
+                            <i class="fa-solid fa-pen"></i>
                     </button>
                     <button type="button" @click="deleteMember(m.id || m._id, m.name)" title="Xoá"
                             class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs">
