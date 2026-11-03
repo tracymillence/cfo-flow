@@ -17,6 +17,7 @@ const CashflowReminder = require('./models/CashflowReminder');
 const Transaction = require('./models/Transaction');
 const PersonalExpense = require('./models/PersonalExpense');
 const User = require('./models/User');
+const CorrectionRequest = require('./models/CorrectionRequest');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -2003,6 +2004,86 @@ app.delete('/api/dining/member/:id', authenticateToken, async (req, res) => {
 
     await member.deleteOne();
     res.json({ success: true, message: 'Đã xóa thành viên' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// ==================== 8.2. YÊU CẦU CHỈNH SỬA SỔ QUỸ (CORRECTION REQUESTS) ====================
+// Lấy danh sách yêu cầu chỉnh sửa (Dành cho Quản Lý & Khách xem yêu cầu của mình)
+app.get('/api/dining/requests', authenticateToken, async (req, res) => {
+  try {
+    const isManager = req.user.isAdmin || (req.user.permissions && (req.user.permissions.manageDiningWork || req.user.permissions.manageDiningFamily));
+    let query = {};
+    if (!isManager) {
+      // Khách/thành viên chỉ thấy yêu cầu của chính họ
+      query = { creatorId: req.user._id };
+    }
+    const requests = await CorrectionRequest.find(query).sort({ status: -1, createdAt: -1 }).limit(100);
+    const pendingCount = await CorrectionRequest.countDocuments({ status: 'pending' });
+    res.json({ success: true, requests, pendingCount, isManager });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Khách hoặc thành viên gửi yêu cầu chỉnh sửa
+app.post('/api/dining/requests', authenticateToken, async (req, res) => {
+  try {
+    const { category, targetType, targetTitle, amount, reason } = req.body;
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng mô tả chi tiết sai sót hoặc yêu cầu chỉnh sửa' });
+    }
+
+    const newRequest = await CorrectionRequest.create({
+      creatorId: req.user._id,
+      creatorName: req.user.fullName || req.user.username,
+      creatorUsername: req.user.username,
+      category: category === 'family' ? 'family' : (category === 'general' ? 'general' : 'work'),
+      targetType: targetType || 'bill',
+      targetTitle: targetTitle ? targetTitle.trim() : '',
+      amount: Number(amount) || 0,
+      reason: reason.trim(),
+      status: 'pending'
+    });
+
+    res.json({
+      success: true,
+      message: 'Yêu cầu chỉnh sửa đã được gửi thành công đến Quản Trị Viên & Người Quản Lý Sổ!',
+      request: newRequest
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Quản trị viên / Người quản lý xử lý yêu cầu (Duyệt hoặc Từ chối)
+app.patch('/api/dining/requests/:id/status', authenticateToken, async (req, res) => {
+  try {
+    const isManager = req.user.isAdmin || (req.user.permissions && (req.user.permissions.manageDiningWork || req.user.permissions.manageDiningFamily));
+    if (!isManager) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền xử lý yêu cầu chỉnh sửa sổ' });
+    }
+
+    const { status, adminNote } = req.body;
+    if (!['approved', 'rejected', 'pending'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Trạng thái không hợp lệ' });
+    }
+
+    const item = await CorrectionRequest.findById(req.params.id);
+    if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu' });
+
+    item.status = status;
+    if (adminNote !== undefined) item.adminNote = adminNote.trim();
+    item.handledBy = req.user.fullName || req.user.username;
+    item.handledAt = new Date();
+    await item.save();
+
+    res.json({
+      success: true,
+      message: `Đã cập nhật trạng thái yêu cầu thành [${status === 'approved' ? 'Đã xử lý' : (status === 'rejected' ? 'Từ chối' : 'Chờ xử lý')}]`,
+      request: item
+    });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }

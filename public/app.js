@@ -80,6 +80,7 @@ function cashFlowApp() {
         manageTransactions: false,
         manageDiningWork: true,
         manageDiningFamily: false,
+        viewDining: false,
         managePersonalHub: false,
         manageDebts: false,
         manageUsers: false,
@@ -311,7 +312,26 @@ function cashFlowApp() {
       personalConfig: false,
       userManagement: false,
       userEdit: false,
-      changePassword: false
+      changePassword: false,
+      correctionRequest: false,
+      correctionList: false
+    },
+
+    // Quản lý yêu cầu chỉnh sửa sổ quỹ (Correction Requests)
+    correctionRequests: {
+      list: [],
+      pendingCount: 0,
+      loading: false,
+      filter: 'all'
+    },
+    newCorrectionForm: {
+      category: 'work',
+      targetType: 'bill',
+      targetTitle: '',
+      amount: '',
+      reason: '',
+      loading: false,
+      error: ''
     },
 
     // Form đổi mật khẩu
@@ -362,7 +382,7 @@ function cashFlowApp() {
       const isAllowed = {
         overview: Boolean(p.viewOverview),
         transactions: Boolean(p.manageTransactions),
-        dining: Boolean(p.manageDiningWork || p.manageDiningFamily),
+        dining: Boolean(p.manageDiningWork || p.manageDiningFamily || p.viewDining),
         personal: Boolean(p.managePersonalHub),
         debts: Boolean(p.manageDebts)
       };
@@ -502,6 +522,7 @@ function cashFlowApp() {
           manageTransactions: false,
           manageDiningWork: true,
           manageDiningFamily: false,
+          viewDining: false,
           managePersonalHub: false,
           manageDebts: false,
           manageUsers: false,
@@ -526,6 +547,7 @@ function cashFlowApp() {
           manageTransactions: Boolean(user.permissions?.manageTransactions),
           manageDiningWork: user.permissions?.manageDiningWork !== false,
           manageDiningFamily: Boolean(user.permissions?.manageDiningFamily),
+          viewDining: Boolean(user.permissions?.viewDining),
           managePersonalHub: Boolean(user.permissions?.managePersonalHub),
           manageDebts: Boolean(user.permissions?.manageDebts),
           manageUsers: Boolean(user.permissions?.manageUsers),
@@ -538,12 +560,14 @@ function cashFlowApp() {
     applyRolePreset(roleType) {
       this.userModalForm.role = roleType;
       const p = this.userModalForm.permissions;
+      p.viewDining = false;
       if (roleType === 'admin') {
         p.viewOverview = true;
         p.manageAccounts = true;
         p.manageTransactions = true;
         p.manageDiningWork = true;
         p.manageDiningFamily = true;
+        p.viewDining = true;
         p.managePersonalHub = true;
         p.manageDebts = true;
         p.manageUsers = true;
@@ -585,6 +609,17 @@ function cashFlowApp() {
         p.manageDiningWork = false;
         p.manageDiningFamily = true;
         p.managePersonalHub = true;
+        p.manageDebts = false;
+        p.manageUsers = false;
+        p.manageConfig = false;
+      } else if (roleType === 'guest') {
+        p.viewOverview = false;
+        p.manageAccounts = false;
+        p.manageTransactions = false;
+        p.manageDiningWork = false;
+        p.manageDiningFamily = false;
+        p.viewDining = true;
+        p.managePersonalHub = false;
         p.manageDebts = false;
         p.manageUsers = false;
         p.manageConfig = false;
@@ -745,6 +780,94 @@ function cashFlowApp() {
       }
     },
 
+    // ==================== CORRECTION REQUESTS (YÊU CẦU CHỈNH SỬA SỔ QUỸ) ====================
+    async fetchCorrectionRequests() {
+      try {
+        this.correctionRequests.loading = true;
+        const res = await this.authFetch('/api/dining/requests');
+        const data = await res.json();
+        if (data.success) {
+          this.correctionRequests.list = data.requests || [];
+          this.correctionRequests.pendingCount = data.pendingCount || 0;
+        }
+      } catch (err) {
+        console.error('Lỗi tải yêu cầu chỉnh sửa:', err);
+      } finally {
+        this.correctionRequests.loading = false;
+      }
+    },
+
+    openNewCorrectionModal(category = 'work', targetTitle = '', amount = 0) {
+      this.newCorrectionForm = {
+        category: category || 'work',
+        targetType: 'bill',
+        targetTitle: targetTitle || '',
+        amount: amount || '',
+        reason: '',
+        loading: false,
+        error: ''
+      };
+      this.modals.correctionRequest = true;
+    },
+
+    async submitCorrectionRequest() {
+      if (!this.newCorrectionForm.reason.trim()) {
+        this.newCorrectionForm.error = 'Vui lòng nhập chi tiết sai sót hoặc nội dung cần chỉnh sửa!';
+        return;
+      }
+      this.newCorrectionForm.loading = true;
+      this.newCorrectionForm.error = '';
+      try {
+        const res = await this.authFetch('/api/dining/requests', {
+          method: 'POST',
+          body: JSON.stringify({
+            category: this.newCorrectionForm.category,
+            targetType: this.newCorrectionForm.targetType,
+            targetTitle: this.newCorrectionForm.targetTitle,
+            amount: this.newCorrectionForm.amount ? Number(this.newCorrectionForm.amount) : 0,
+            reason: this.newCorrectionForm.reason
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.modals.correctionRequest = false;
+          this.notify('📨 ' + (data.message || 'Đã gửi yêu cầu chỉnh sửa tới người quản lý!'));
+          await this.fetchCorrectionRequests();
+        } else {
+          this.newCorrectionForm.error = data.message || 'Lỗi khi gửi yêu cầu';
+        }
+      } catch (err) {
+        this.newCorrectionForm.error = err.message || 'Lỗi kết nối máy chủ';
+      } finally {
+        this.newCorrectionForm.loading = false;
+      }
+    },
+
+    async updateCorrectionStatus(reqItem, status) {
+      const defaultNote = status === 'approved' ? 'Đã kiểm tra và cập nhật sổ đúng thực tế' : 'Số liệu đã đối chiếu chính xác, không cần sửa đổi';
+      const note = prompt(`Nhập ghi chú phản hồi cho ${reqItem.creatorName} (Tùy chọn):`, defaultNote);
+      if (note === null) return;
+      try {
+        const res = await this.authFetch(`/api/dining/requests/${reqItem._id}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status, adminNote: note })
+        });
+        const data = await res.json();
+        if (data.success) {
+          reqItem.status = status;
+          reqItem.adminNote = note;
+          reqItem.handledBy = this.currentUser?.fullName || 'Admin';
+          reqItem.handledAt = new Date().toISOString();
+          this.notify(`Đã cập nhật trạng thái yêu cầu của ${reqItem.creatorName}`);
+          await this.fetchCorrectionRequests();
+        } else {
+          this.notify(data.message || 'Lỗi cập nhật');
+        }
+      } catch (err) {
+        this.notify(err.message);
+      }
+    },
+
     notify(msg) {
       this.toast.message = msg;
       this.toast.show = true;
@@ -761,6 +884,18 @@ function cashFlowApp() {
       const parts = str.split('-');
       if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
       return str;
+    },
+
+    formatDateTime(str) {
+      if (!str) return '';
+      try {
+        const d = new Date(str);
+        if (isNaN(d.getTime())) return str;
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+      } catch (e) {
+        return str;
+      }
     },
 
     // Current Dining Scope Data (Work vs Family vs Combined)
@@ -930,6 +1065,7 @@ function cashFlowApp() {
             this.personalConfigForm.savingsRate = data.card4_personal_hub.savingsRate || 15;
             this.personalConfigForm.weeklyLimit = data.card4_personal_hub.weeklyLimit || 1500000;
           }
+          this.fetchCorrectionRequests();
         } else {
           this.error = data.error || 'Chưa thể kết nối tới cơ sở dữ liệu MongoDB Atlas.';
         }

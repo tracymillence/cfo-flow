@@ -20,6 +20,7 @@ const userSchema = new mongoose.Schema({
     manageTransactions: { type: Boolean, default: false }, // Ghi/sửa sổ giao dịch thu chi
     manageDiningWork: { type: Boolean, default: true },    // Quỹ ăn nhóm đồng nghiệp (Hub 2)
     manageDiningFamily: { type: Boolean, default: false }, // Quỹ gia đình 6 người (Hub 3)
+    viewDining: { type: Boolean, default: false },         // Quyền Khách chỉ xem Quỹ Ăn & Gia Đình (Read-only)
     managePersonalHub: { type: Boolean, default: false },  // Sổ cá nhân & Tiết kiệm của 2 bạn (Hub 4)
     manageDebts: { type: Boolean, default: false },        // Sổ công nợ 2 chiều & NCC
     manageUsers: { type: Boolean, default: false },        // Quản lý user & phân quyền

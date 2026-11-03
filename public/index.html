@@ -175,7 +175,7 @@
         </button>
 
         <button type="button" @click="activeTab = 'dining'"
-                x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
+                x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily || currentUser?.permissions?.viewDining"
                 class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap"
                 :class="activeTab === 'dining' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
           <i class="fa-solid fa-bowl-rice text-[11px]" :class="activeTab === 'dining' ? 'text-slate-900' : 'text-slate-400'"></i>
@@ -941,7 +941,26 @@
       <!-- ==================================================================== -->
       <!-- TAB 3: SỔ QUỸ ĂN & GIA ĐÌNH (DINING & FAMILY FUND WORKSPACE)        -->
       <!-- ==================================================================== -->
-      <div x-show="activeTab === 'dining' && (currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily)" class="space-y-5">
+      <div x-show="activeTab === 'dining' && (currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily || currentUser?.permissions?.viewDining)" class="space-y-5">
+        
+        <!-- Chế độ Khách (Chỉ Xem) Banner -->
+        <div x-show="!currentUser?.isAdmin && !currentUser?.permissions?.manageDiningWork && !currentUser?.permissions?.manageDiningFamily && currentUser?.permissions?.viewDining" x-cloak
+             class="p-4 rounded-2xl bg-sky-50 border border-sky-200 text-sky-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
+              <i class="fa-solid fa-eye text-sm"></i>
+            </div>
+            <div>
+              <strong class="font-bold text-sky-950">Chế độ Khách (Chỉ Xem):</strong>
+              <span class="text-sky-800">Bạn có quyền xem toàn bộ số liệu và báo cáo quỹ ăn. Các thao tác ghi/sửa dữ liệu đã được bảo vệ. Nếu phát hiện sai sót, vui lòng gửi yêu cầu để Admin/Quản lý kiểm tra.</span>
+            </div>
+          </div>
+          <button type="button" @click="openNewCorrectionModal(diningCategory)"
+                  class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 active:scale-[0.99] text-white font-bold text-xs transition shrink-0 flex items-center justify-center gap-1.5 shadow-xs">
+            <i class="fa-solid fa-pen-to-square text-[11px]"></i>
+            <span>Gửi Yêu Cầu Chỉnh Sửa</span>
+          </button>
+        </div>
         
         <div class="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/80 shadow-card space-y-5">
           
@@ -958,21 +977,21 @@
             <!-- Segmented Category Switcher -->
             <div class="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/60 text-xs font-semibold">
               <button type="button" @click="diningCategory = 'work'"
-                      x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork"
+                      x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.viewDining"
                       class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
                       :class="diningCategory === 'work' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
                 <i class="fa-solid fa-briefcase text-[10px] text-indigo-500"></i>
                 <span>Ăn Đồng Nghiệp</span>
               </button>
               <button type="button" @click="diningCategory = 'family'"
-                      x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningFamily"
+                      x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningFamily || currentUser?.permissions?.viewDining"
                       class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
                       :class="diningCategory === 'family' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
                 <i class="fa-solid fa-people-roof text-[10px] text-amber-500"></i>
                 <span>Quỹ Gia Đình</span>
               </button>
               <button type="button" @click="diningCategory = 'all'"
-                      x-show="currentUser?.isAdmin || (currentUser?.permissions?.manageDiningWork && currentUser?.permissions?.manageDiningFamily)"
+                      x-show="currentUser?.isAdmin || (currentUser?.permissions?.manageDiningWork && currentUser?.permissions?.manageDiningFamily) || currentUser?.permissions?.viewDining"
                       class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
                       :class="diningCategory === 'all' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
                 <span>Tất Cả</span>
@@ -980,7 +999,32 @@
             </div>
 
             <!-- Action Buttons -->
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <!-- Hộp thư yêu cầu chỉnh sửa (Dành cho Quản Lý - Admin & Staff) -->
+              <button type="button" @click="fetchCorrectionRequests(); modals.correctionList = true"
+                      x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
+                      class="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1.5 relative">
+                <i class="fa-solid fa-inbox text-slate-500 text-xs"></i>
+                <span>Yêu Cầu Sửa Sổ</span>
+                <span x-show="correctionRequests.pendingCount > 0"
+                      class="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-white font-mono font-bold"
+                      x-text="correctionRequests.pendingCount"></span>
+              </button>
+
+              <!-- Khách (Chỉ xem): Gửi Yêu Cầu Chỉnh Sửa & Xem Lịch Sử Yêu Cầu -->
+              <button type="button" @click="openNewCorrectionModal(diningCategory)"
+                      x-show="!currentUser?.isAdmin && !currentUser?.permissions?.manageDiningWork && !currentUser?.permissions?.manageDiningFamily && currentUser?.permissions?.viewDining"
+                      class="px-3.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+                <i class="fa-solid fa-pen-to-square text-[10px]"></i>
+                <span>Gửi Yêu Cầu Sửa Sổ</span>
+              </button>
+
+              <button type="button" @click="fetchCorrectionRequests(); modals.correctionList = true"
+                      x-show="!currentUser?.isAdmin && !currentUser?.permissions?.manageDiningWork && !currentUser?.permissions?.manageDiningFamily && currentUser?.permissions?.viewDining"
+                      class="px-3 py-1.5 rounded-xl border border-sky-200 bg-sky-50 hover:bg-sky-100 text-sky-800 text-xs font-semibold transition flex items-center gap-1.5">
+                <i class="fa-solid fa-clock-rotate-left text-xs"></i>
+                <span>Xem Yêu Cầu Đã Gửi (<span x-text="correctionRequests.list?.length || 0"></span>)</span>
+              </button>
               <button type="button" @click="openTransferModal()"
                       x-show="currentUser?.isAdmin || (currentUser?.permissions?.manageDiningWork && currentUser?.permissions?.manageDiningFamily)"
                       class="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
@@ -1173,7 +1217,9 @@
 
                       <!-- Thao Tác -->
                       <td class="py-2 px-3 text-center whitespace-nowrap">
-                        <div class="inline-flex items-center gap-1">
+                        <!-- Quản lý (Admin, Staff) -->
+                        <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
+                             class="inline-flex items-center gap-1">
                           <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'in'; modals.settlement = true"
                                   title="Nạp thêm tiền vào quỹ"
                                   class="px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold transition border border-emerald-200">
@@ -1199,6 +1245,15 @@
                                   title="Xóa thành viên"
                                   class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs hover:bg-rose-50 transition">
                             <i class="fa-solid fa-trash-can"></i>
+                          </button>
+                        </div>
+
+                        <!-- Khách (Chỉ xem) -->
+                        <div x-show="!currentUser?.isAdmin && !currentUser?.permissions?.manageDiningWork && !currentUser?.permissions?.manageDiningFamily && currentUser?.permissions?.viewDining">
+                          <button type="button" @click="openNewCorrectionModal(m.group, 'Số dư thành viên: ' + m.name, m.currentBalance)"
+                                  class="px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold transition border border-sky-200 flex items-center gap-1 mx-auto">
+                            <i class="fa-solid fa-flag text-[9px]"></i>
+                            <span>Báo Sai</span>
                           </button>
                         </div>
                       </td>
@@ -1305,18 +1360,32 @@
                     </div>
 
                     <div class="flex items-center gap-1 border-l border-slate-200 pl-3">
-                      <button type="button" @click="editDiningBill(b)" title="Sửa"
-                              class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs">
-                        <i class="fa-solid fa-pen text-[10px]"></i>
-                      </button>
-                      <button type="button" @click="copyDiningBill(b)" title="Copy"
-                              class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-indigo-600 text-xs">
-                        <i class="fa-solid fa-copy text-[10px]"></i>
-                      </button>
-                      <button type="button" @click="deleteDiningBill(b._id, b.mealTitle)" title="Xoá"
-                              class="p-1.5 rounded-lg border border-slate-200 hover:bg-rose-50 text-slate-400 hover:text-rose-600 text-xs">
-                        <i class="fa-solid fa-trash-can text-[10px]"></i>
-                      </button>
+                      <!-- Quản lý (Admin / Staff) -->
+                      <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
+                           class="flex items-center gap-1">
+                        <button type="button" @click="editDiningBill(b)" title="Sửa"
+                                class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs">
+                          <i class="fa-solid fa-pen text-[10px]"></i>
+                        </button>
+                        <button type="button" @click="copyDiningBill(b)" title="Copy"
+                                class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-indigo-600 text-xs">
+                          <i class="fa-solid fa-copy text-[10px]"></i>
+                        </button>
+                        <button type="button" @click="deleteDiningBill(b._id, b.mealTitle)" title="Xoá"
+                                class="p-1.5 rounded-lg border border-slate-200 hover:bg-rose-50 text-slate-400 hover:text-rose-600 text-xs">
+                          <i class="fa-solid fa-trash-can text-[10px]"></i>
+                        </button>
+                      </div>
+
+                      <!-- Khách (Chỉ xem) -->
+                      <div x-show="!currentUser?.isAdmin && !currentUser?.permissions?.manageDiningWork && !currentUser?.permissions?.manageDiningFamily && currentUser?.permissions?.viewDining">
+                        <button type="button" @click="openNewCorrectionModal(b.category, 'Hóa đơn: ' + b.mealTitle + ' (' + formatDate(b.date) + ')', b.totalBill)"
+                                class="px-2 py-1 rounded-lg border border-sky-200 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold flex items-center gap-1"
+                                title="Báo cáo sai sót hóa đơn này">
+                          <i class="fa-solid fa-flag text-[9px]"></i>
+                          <span>Báo Sai</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1363,18 +1432,32 @@
                   </div>
 
                   <div class="flex items-center gap-1 border-l border-slate-200 pl-3">
-                    <button type="button" @click="openSettlementModal(s)" title="Sửa"
-                            class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs">
-                      <i class="fa-solid fa-pen text-[10px]"></i>
-                    </button>
-                    <button type="button" @click="copySettlement(s)" title="Copy"
-                            class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-indigo-600 text-xs">
-                      <i class="fa-solid fa-copy text-[10px]"></i>
-                    </button>
-                    <button type="button" @click="deleteSettlement(s._id, s.personName)" title="Xoá"
-                            class="p-1.5 rounded-lg border border-slate-200 hover:bg-rose-50 text-slate-400 hover:text-rose-600 text-xs">
-                      <i class="fa-solid fa-trash-can text-[10px]"></i>
-                    </button>
+                    <!-- Quản lý (Admin, Staff) -->
+                    <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
+                         class="flex items-center gap-1">
+                      <button type="button" @click="openSettlementModal(s)" title="Sửa"
+                              class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs">
+                        <i class="fa-solid fa-pen text-[10px]"></i>
+                      </button>
+                      <button type="button" @click="copySettlement(s)" title="Copy"
+                              class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-indigo-600 text-xs">
+                        <i class="fa-solid fa-copy text-[10px]"></i>
+                      </button>
+                      <button type="button" @click="deleteSettlement(s._id, s.personName)" title="Xoá"
+                              class="p-1.5 rounded-lg border border-slate-200 hover:bg-rose-50 text-slate-400 hover:text-rose-600 text-xs">
+                        <i class="fa-solid fa-trash-can text-[10px]"></i>
+                      </button>
+                    </div>
+
+                    <!-- Khách (Chỉ xem) -->
+                    <div x-show="!currentUser?.isAdmin && !currentUser?.permissions?.manageDiningWork && !currentUser?.permissions?.manageDiningFamily && currentUser?.permissions?.viewDining">
+                      <button type="button" @click="openNewCorrectionModal(s.category, (s.direction === 'in' ? 'Nạp tiền: ' : 'Mượn tiền: ') + s.personName + ' (' + formatDate(s.date) + ')', s.amount)"
+                              class="px-2 py-1 rounded-lg border border-sky-200 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold flex items-center gap-1"
+                              title="Báo cáo sai sót khoản nạp/mượn này">
+                        <i class="fa-solid fa-flag text-[9px]"></i>
+                        <span>Báo Sai</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1898,7 +1981,7 @@
       <span class="text-[9px] font-bold text-slate-900 mt-0.5">Ghi Mới</span>
     </button>
     <button type="button" @click="activeTab = 'dining'"
-            x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
+            x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily || currentUser?.permissions?.viewDining"
             class="flex flex-col items-center justify-center w-full h-full text-[10px] font-bold"
             :class="activeTab === 'dining' ? 'text-slate-900' : 'text-slate-400'">
       <i class="fa-solid fa-bowl-rice text-base mb-0.5"></i>
@@ -3181,6 +3264,11 @@
                     :class="userModalForm.role === 'partner' ? 'bg-purple-100 border-purple-300 text-purple-900' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'">
               <span>💑 Người Yêu (Gia Đình &amp; Sổ Cá Nhân)</span>
             </button>
+            <button type="button" @click="applyRolePreset('guest')"
+                    class="px-2.5 py-1 rounded-lg text-[10px] font-bold border transition flex items-center gap-1"
+                    :class="userModalForm.role === 'guest' ? 'bg-sky-100 border-sky-300 text-sky-900' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'">
+              <span>👁️ Khách Xem Quỹ Ăn (Chỉ Xem)</span>
+            </button>
             <button type="button" @click="applyRolePreset('viewer')"
                     class="px-2.5 py-1 rounded-lg text-[10px] font-bold border transition flex items-center gap-1"
                     :class="userModalForm.role === 'viewer' ? 'bg-slate-200 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'">
@@ -3192,7 +3280,7 @@
         <!-- Detailed Granular Permissions Checkboxes -->
         <div>
           <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-bold text-slate-800">Cấu Hình 9 Quyền Hạn Chi Tiết (Granular Permissions):</span>
+            <span class="text-xs font-bold text-slate-800">Cấu Hình 10 Quyền Hạn Chi Tiết (Granular Permissions):</span>
             <span class="text-[10px] text-slate-400">Bật/tắt từng quyền riêng biệt</span>
           </div>
 
@@ -3278,12 +3366,22 @@
             </label>
 
             <!-- 9. manageConfig -->
-            <label class="p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white flex items-start gap-2.5 cursor-pointer transition sm:col-span-2"
+            <label class="p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white flex items-start gap-2.5 cursor-pointer transition"
                    :class="userModalForm.permissions.manageConfig ? 'bg-slate-50 border-slate-400' : ''">
               <input type="checkbox" x-model="userModalForm.permissions.manageConfig" class="rounded mt-0.5 accent-blue-600">
               <div>
                 <strong class="font-bold text-blue-900 block">9. Cài Đặt Hệ Thống &amp; Tham Số Dòng Tiền</strong>
                 <span class="text-[10px] text-slate-500">Thay đổi hạn mức tuần, số dư ban đầu hệ thống và các cấu hình cốt lõi</span>
+              </div>
+            </label>
+
+            <!-- 10. viewDining (Guest View) -->
+            <label class="p-2.5 rounded-xl border border-teal-200 hover:border-teal-300 bg-teal-50/50 flex items-start gap-2.5 cursor-pointer transition"
+                   :class="userModalForm.permissions.viewDining ? 'bg-teal-50 border-teal-500 ring-1 ring-teal-500/20' : ''">
+              <input type="checkbox" x-model="userModalForm.permissions.viewDining" class="rounded mt-0.5 accent-teal-600">
+              <div>
+                <strong class="font-bold text-teal-900 block">10. 👁️ Khách Xem Quỹ Ăn (Chỉ Xem)</strong>
+                <span class="text-[10px] text-teal-700">Chỉ xem số liệu Quỹ Ăn &amp; Gia Đình. Không được sửa, được gửi yêu cầu sửa sổ</span>
               </div>
             </label>
           </div>
@@ -3385,6 +3483,229 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL: GỬI YÊU CẦU CHỈNH SỬA SỔ QUỸ (DÀNH CHO KHÁCH & THÀNH VIÊN) -->
+  <div x-show="modals.correctionRequest" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div @click.away="modals.correctionRequest = false"
+         class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+        <div>
+          <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+            <span class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-sm shadow-xs">
+              <i class="fa-solid fa-flag"></i>
+            </span>
+            Gửi Yêu Cầu Chỉnh Sửa Sổ Quỹ
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">Yêu cầu sẽ được chuyển đến người quản lý sổ để kiểm tra và cập nhật.</p>
+        </div>
+        <button @click="modals.correctionRequest = false" class="text-slate-400 hover:text-slate-600 text-lg p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="submitCorrectionRequest()" class="space-y-4 text-xs">
+        <div x-show="newCorrectionForm.error" class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium" x-text="newCorrectionForm.error"></div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Sổ Quỹ Liên Quan</label>
+            <select x-model="newCorrectionForm.category" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs">
+              <option value="work">🍜 Quỹ Ăn Đồng Nghiệp (Hub 2)</option>
+              <option value="family">🏡 Quỹ Sinh Hoạt Gia Đình (Hub 3)</option>
+              <option value="general">🌐 Chung / Khác</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Phân Loại Mục Cần Sửa</label>
+            <select x-model="newCorrectionForm.targetType" class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs">
+              <option value="bill">🧾 Hóa đơn / Bữa ăn</option>
+              <option value="balance">💰 Số dư nạp / hoàn quỹ</option>
+              <option value="settlement">⚖️ Quyết toán / Nợ cá nhân</option>
+              <option value="other">📌 Khác</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Tên Bữa Ăn / Khoản Mục Sai Sót <span class="text-rose-500">*</span></label>
+          <input type="text" x-model="newCorrectionForm.targetTitle" placeholder="Ví dụ: Bữa trưa Cơm Tấm 03/11 hoặc Số dư cá nhân..." required
+                 class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Số Tiền Liên Quan (VNĐ) <span class="text-slate-400 font-normal">(Nếu có)</span></label>
+          <input type="number" x-model="newCorrectionForm.amount" placeholder="0"
+                 class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Chi Tiết Sai Sót &amp; Đề Xuất Chỉnh Sửa <span class="text-rose-500">*</span></label>
+          <textarea x-model="newCorrectionForm.reason" rows="3" placeholder="Mô tả cụ thể sai sót (ví dụ: Em không tham gia ăn trưa bữa này nhưng bị chia tiền 45.000đ; hoặc Tôi đã chuyển khoản 200k nạp quỹ lúc 10h nhưng chưa thấy cập nhật...)" required
+                    class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"></textarea>
+        </div>
+
+        <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
+          <button type="button" @click="modals.correctionRequest = false"
+                  class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
+          <button type="submit" :disabled="newCorrectionForm.loading"
+                  class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+            <i x-show="newCorrectionForm.loading" class="fa-solid fa-circle-notch fa-spin text-xs"></i>
+            <i x-show="!newCorrectionForm.loading" class="fa-solid fa-paper-plane text-xs"></i>
+            <span x-text="newCorrectionForm.loading ? 'Đang gửi...' : 'Gửi Yêu Cầu Cho Quản Lý'"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: DANH SÁCH & XỬ LÝ YÊU CẦU CHỈNH SỬA SỔ QUỸ -->
+  <div x-show="modals.correctionList" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div @click.away="modals.correctionList = false"
+         class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+        <div>
+          <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+            <span class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm shadow-xs">
+              <i class="fa-solid fa-clipboard-list"></i>
+            </span>
+            <span x-text="(hasPermission('manageDiningWork') || hasPermission('manageDiningFamily')) ? 'Quản Lý Yêu Cầu Chỉnh Sửa Sổ' : 'Yêu Cầu Chỉnh Sửa Sổ Của Bạn'"></span>
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">
+            <span x-show="hasPermission('manageDiningWork') || hasPermission('manageDiningFamily')">Kiểm tra phản ánh từ khách/thành viên để đối soát và cập nhật số dư.</span>
+            <span x-show="!(hasPermission('manageDiningWork') || hasPermission('manageDiningFamily'))">Theo dõi tiến độ xử lý các sai sót bạn đã báo cáo.</span>
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button @click="fetchCorrectionRequests()" title="Làm mới danh sách"
+                  class="w-8 h-8 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center transition">
+            <i class="fa-solid fa-rotate text-xs" :class="correctionRequests.loading ? 'fa-spin' : ''"></i>
+          </button>
+          <button @click="modals.correctionList = false" class="text-slate-400 hover:text-slate-600 text-lg p-1">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Status Tabs Filter -->
+      <div class="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-100">
+        <div class="flex gap-1.5 text-xs font-semibold">
+          <button @click="correctionRequests.filter = 'all'"
+                  :class="correctionRequests.filter === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                  class="px-3 py-1.5 rounded-lg transition">Tất cả (<span x-text="correctionRequests.list.length"></span>)</button>
+          <button @click="correctionRequests.filter = 'pending'"
+                  :class="correctionRequests.filter === 'pending' ? 'bg-amber-500 text-slate-900 font-bold' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'"
+                  class="px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
+            ⏳ Chờ xử lý (<span x-text="correctionRequests.pendingCount"></span>)
+          </button>
+          <button @click="correctionRequests.filter = 'approved'"
+                  :class="correctionRequests.filter === 'approved' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'"
+                  class="px-3 py-1.5 rounded-lg transition">✅ Đã xử lý</button>
+          <button @click="correctionRequests.filter = 'rejected'"
+                  :class="correctionRequests.filter === 'rejected' ? 'bg-slate-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                  class="px-3 py-1.5 rounded-lg transition">❌ Đã từ chối</button>
+        </div>
+
+        <button @click="openNewCorrectionModal()"
+                class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs font-bold transition flex items-center gap-1 shadow-xs">
+          <i class="fa-solid fa-plus text-[10px]"></i> Gửi yêu cầu mới
+        </button>
+      </div>
+
+      <!-- Requests Cards Container -->
+      <div class="overflow-y-auto space-y-3 pr-1 flex-1">
+        <template x-for="req in correctionRequests.list.filter(r => correctionRequests.filter === 'all' || r.status === correctionRequests.filter)" :key="req._id">
+          <div class="p-3.5 rounded-xl border transition text-xs"
+               :class="{
+                 'border-amber-200 bg-amber-50/40': req.status === 'pending',
+                 'border-emerald-200 bg-emerald-50/20': req.status === 'approved',
+                 'border-slate-200 bg-slate-50/60': req.status === 'rejected'
+               }">
+            <div class="flex items-start justify-between gap-2 mb-1.5">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold"
+                      :class="req.category === 'family' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'"
+                      x-text="req.category === 'family' ? '🏡 Hub 3 (Gia Đình)' : (req.category === 'work' ? '🍜 Hub 2 (Quỹ Ăn)' : '🌐 Chung')"></span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700"
+                      x-text="req.targetType === 'bill' ? '🧾 Hóa đơn' : (req.targetType === 'balance' ? '💰 Số dư' : (req.targetType === 'settlement' ? '⚖️ Quyết toán' : '📌 Khác'))"></span>
+                <span class="font-bold text-slate-900" x-text="req.targetTitle"></span>
+                <span x-show="req.amount > 0" class="font-mono font-bold text-rose-600" x-text="'(' + formatMoney(req.amount) + ')'"></span>
+              </div>
+
+              <!-- Status Badge -->
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0"
+                    :class="{
+                      'bg-amber-100 text-amber-800 ring-1 ring-amber-500/30': req.status === 'pending',
+                      'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-500/30': req.status === 'approved',
+                      'bg-slate-200 text-slate-700': req.status === 'rejected'
+                    }">
+                <span x-show="req.status === 'pending'">⏳ Đang chờ duyệt</span>
+                <span x-show="req.status === 'approved'">✅ Đã cập nhật sổ</span>
+                <span x-show="req.status === 'rejected'">❌ Đã từ chối</span>
+              </span>
+            </div>
+
+            <!-- Reason Description -->
+            <div class="bg-white/80 p-2.5 rounded-lg border border-slate-100 mb-2">
+              <div class="text-[10px] font-semibold text-slate-500 mb-0.5">Nội dung báo sai:</div>
+              <p class="text-slate-800 whitespace-pre-line leading-relaxed" x-text="req.reason"></p>
+            </div>
+
+            <!-- Submitter info & handler feedback -->
+            <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100/60">
+              <div>
+                <span>Người gửi: <strong class="text-slate-800 font-semibold" x-text="req.creatorName"></strong> (@<span x-text="req.creatorUsername"></span>)</span>
+                <span class="mx-1">•</span>
+                <span x-text="formatDateTime(req.createdAt)"></span>
+              </div>
+
+              <!-- Manager Actions for Pending Requests -->
+              <div x-show="(hasPermission('manageDiningWork') || hasPermission('manageDiningFamily')) && req.status === 'pending'" class="flex items-center gap-1.5">
+                <button @click="updateCorrectionStatus(req, 'approved')"
+                        class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-2xs transition flex items-center gap-1">
+                  <i class="fa-solid fa-check"></i> Duyệt & Báo Xong
+                </button>
+                <button @click="updateCorrectionStatus(req, 'rejected')"
+                        class="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-[11px] transition flex items-center gap-1">
+                  <i class="fa-solid fa-xmark"></i> Từ chối
+                </button>
+              </div>
+            </div>
+
+            <!-- Admin Note if already handled -->
+            <div x-show="req.adminNote" class="mt-2 p-2 rounded-lg bg-slate-100/80 border border-slate-200 text-[11px]">
+              <span class="font-bold text-slate-700">Phản hồi từ quản lý (<span x-text="req.handledBy || 'Admin'"></span> - <span x-text="formatDateTime(req.handledAt)"></span>):</span>
+              <p class="text-slate-600 italic mt-0.5" x-text="req.adminNote"></p>
+            </div>
+          </div>
+        </template>
+
+        <div x-show="correctionRequests.list.filter(r => correctionRequests.filter === 'all' || r.status === correctionRequests.filter).length === 0"
+             class="py-12 text-center text-slate-400">
+          <i class="fa-regular fa-folder-open text-3xl mb-2 block opacity-40"></i>
+          <span class="text-xs">Không có yêu cầu chỉnh sửa nào trong mục này.</span>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-100 flex justify-end mt-2">
+        <button type="button" @click="modals.correctionList = false"
+                class="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition">Đóng</button>
+      </div>
     </div>
   </div>
 
