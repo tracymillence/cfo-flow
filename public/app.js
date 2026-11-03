@@ -49,6 +49,44 @@ function cashFlowApp() {
   return {
     loading: true,
     error: null,
+
+    // ==================== AUTH & CURRENT USER STATE ====================
+    authToken: localStorage.getItem('cfo_token') || '',
+    currentUser: null,
+    isLoggedIn: false,
+    userDropdownOpen: false,
+    loginForm: {
+      username: '',
+      password: '',
+      error: '',
+      loading: false,
+      showPassword: false
+    },
+
+    // ==================== RBAC USER MANAGEMENT STATE ====================
+    usersList: [],
+    loadingUsers: false,
+    editingUserId: null,
+    userModalForm: {
+      username: '',
+      password: '',
+      fullName: '',
+      phone: '',
+      role: 'member',
+      isActive: true,
+      permissions: {
+        viewOverview: true,
+        manageAccounts: false,
+        manageTransactions: false,
+        manageDiningWork: true,
+        manageDiningFamily: false,
+        managePersonalHub: false,
+        manageDebts: false,
+        manageUsers: false,
+        manageConfig: false
+      }
+    },
+
     dashboard: {
       accounts: { totalCash: 0, list: [], hubs: {} },
       supplierPot: { totalAmount: 0, suppliers: [] },
@@ -270,14 +308,334 @@ function cashFlowApp() {
       config: false,
       transfer: false,
       personalExpense: false,
-      personalConfig: false
+      personalConfig: false,
+      userManagement: false,
+      userEdit: false
     },
 
     // Toast
     toast: { show: false, message: '' },
 
-    init() {
-      this.fetchDashboard();
+    async init() {
+      if (this.authToken) {
+        try {
+          const res = await fetch('/api/auth/me', {
+            headers: { 'Authorization': `Bearer ${this.authToken}` }
+          });
+          const data = await res.json();
+          if (data.success && data.user) {
+            this.currentUser = data.user;
+            this.isLoggedIn = true;
+            await this.fetchDashboard();
+          } else {
+            this.logout(false);
+          }
+        } catch (e) {
+          this.logout(false);
+        }
+      } else {
+        this.isLoggedIn = false;
+        this.loading = false;
+      }
+    },
+
+    async authFetch(url, options = {}) {
+      const headers = options.headers ? { ...options.headers } : {};
+      if (!headers['Content-Type'] && options.body && typeof options.body === 'string') {
+        headers['Content-Type'] = 'application/json';
+      }
+      if (this.authToken) {
+        headers['Authorization'] = `Bearer ${this.authToken}`;
+      }
+      const res = await fetch(url, { ...options, headers });
+      if (res.status === 401) {
+        this.logout(false);
+        throw new Error('Phiên đăng nhập đã hết hạn hoặc tài khoản bị khóa. Vui lòng đăng nhập lại.');
+      }
+      return res;
+    },
+
+    async submitLogin() {
+      if (!this.loginForm.username.trim() || !this.loginForm.password.trim()) {
+        this.loginForm.error = 'Vui lòng điền đầy đủ tên đăng nhập và mật khẩu!';
+        return;
+      }
+      this.loginForm.loading = true;
+      this.loginForm.error = '';
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: this.loginForm.username.trim(),
+            password: this.loginForm.password.trim()
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.authToken = data.token;
+          localStorage.setItem('cfo_token', data.token);
+          this.currentUser = data.user;
+          this.isLoggedIn = true;
+          this.loginForm.password = '';
+          this.loginForm.error = '';
+          this.notify(`Xin chào, ${data.user.fullName}!`);
+          await this.fetchDashboard();
+        } else {
+          this.loginForm.error = data.error || 'Tên đăng nhập hoặc mật khẩu không chính xác';
+        }
+      } catch (err) {
+        this.loginForm.error = 'Lỗi kết nối máy chủ: ' + err.message;
+      } finally {
+        this.loginForm.loading = false;
+      }
+    },
+
+    async logout(callApi = true) {
+      if (callApi && this.authToken) {
+        try {
+          await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${this.authToken}` }
+          });
+        } catch (e) {}
+      }
+      this.authToken = '';
+      this.currentUser = null;
+      this.isLoggedIn = false;
+      localStorage.removeItem('cfo_token');
+      this.notify('Đã đăng xuất tài khoản.');
+    },
+
+    // ==================== RBAC & USER MANAGEMENT METHODS ====================
+    async fetchUsersList() {
+      this.loadingUsers = true;
+      try {
+        const res = await this.authFetch('/api/admin/users');
+        const data = await res.json();
+        if (data.success) {
+          this.usersList = data.users || [];
+        } else {
+          this.notify(data.error || 'Không thể tải danh sách người dùng');
+        }
+      } catch (err) {
+        this.notify(err.message);
+      } finally {
+        this.loadingUsers = false;
+      }
+    },
+
+    openUserManagementModal() {
+      this.fetchUsersList();
+      this.modals.userManagement = true;
+    },
+
+    openAddUserModal() {
+      this.editingUserId = null;
+      this.userModalForm = {
+        username: '',
+        password: '',
+        fullName: '',
+        phone: '',
+        role: 'member',
+        isActive: true,
+        permissions: {
+          viewOverview: true,
+          manageAccounts: false,
+          manageTransactions: false,
+          manageDiningWork: true,
+          manageDiningFamily: false,
+          managePersonalHub: false,
+          manageDebts: false,
+          manageUsers: false,
+          manageConfig: false
+        }
+      };
+      this.modals.userEdit = true;
+    },
+
+    openEditUserModal(user) {
+      this.editingUserId = user._id || user.id;
+      this.userModalForm = {
+        username: user.username,
+        password: '',
+        fullName: user.fullName || '',
+        phone: user.phone || '',
+        role: user.role || 'custom',
+        isActive: user.isActive !== false,
+        permissions: {
+          viewOverview: user.permissions?.viewOverview !== false,
+          manageAccounts: Boolean(user.permissions?.manageAccounts),
+          manageTransactions: Boolean(user.permissions?.manageTransactions),
+          manageDiningWork: user.permissions?.manageDiningWork !== false,
+          manageDiningFamily: Boolean(user.permissions?.manageDiningFamily),
+          managePersonalHub: Boolean(user.permissions?.managePersonalHub),
+          manageDebts: Boolean(user.permissions?.manageDebts),
+          manageUsers: Boolean(user.permissions?.manageUsers),
+          manageConfig: Boolean(user.permissions?.manageConfig)
+        }
+      };
+      this.modals.userEdit = true;
+    },
+
+    applyRolePreset(roleType) {
+      this.userModalForm.role = roleType;
+      const p = this.userModalForm.permissions;
+      if (roleType === 'admin') {
+        p.viewOverview = true;
+        p.manageAccounts = true;
+        p.manageTransactions = true;
+        p.manageDiningWork = true;
+        p.manageDiningFamily = true;
+        p.managePersonalHub = true;
+        p.manageDebts = true;
+        p.manageUsers = true;
+        p.manageConfig = true;
+      } else if (roleType === 'manager') {
+        p.viewOverview = true;
+        p.manageAccounts = true;
+        p.manageTransactions = true;
+        p.manageDiningWork = true;
+        p.manageDiningFamily = true;
+        p.managePersonalHub = true;
+        p.manageDebts = true;
+        p.manageUsers = false;
+        p.manageConfig = false;
+      } else if (roleType === 'colleague') {
+        p.viewOverview = true;
+        p.manageAccounts = false;
+        p.manageTransactions = false;
+        p.manageDiningWork = true;
+        p.manageDiningFamily = false;
+        p.managePersonalHub = false;
+        p.manageDebts = false;
+        p.manageUsers = false;
+        p.manageConfig = false;
+      } else if (roleType === 'family') {
+        p.viewOverview = true;
+        p.manageAccounts = false;
+        p.manageTransactions = false;
+        p.manageDiningWork = false;
+        p.manageDiningFamily = true;
+        p.managePersonalHub = false;
+        p.manageDebts = false;
+        p.manageUsers = false;
+        p.manageConfig = false;
+      } else if (roleType === 'partner') {
+        p.viewOverview = true;
+        p.manageAccounts = false;
+        p.manageTransactions = false;
+        p.manageDiningWork = false;
+        p.manageDiningFamily = true;
+        p.managePersonalHub = true;
+        p.manageDebts = false;
+        p.manageUsers = false;
+        p.manageConfig = false;
+      } else if (roleType === 'viewer') {
+        p.viewOverview = true;
+        p.manageAccounts = false;
+        p.manageTransactions = false;
+        p.manageDiningWork = false;
+        p.manageDiningFamily = false;
+        p.managePersonalHub = false;
+        p.manageDebts = false;
+        p.manageUsers = false;
+        p.manageConfig = false;
+      }
+    },
+
+    async submitUserModal() {
+      try {
+        const payload = {
+          fullName: this.userModalForm.fullName,
+          phone: this.userModalForm.phone,
+          role: this.userModalForm.role,
+          isActive: this.userModalForm.isActive,
+          permissions: this.userModalForm.permissions
+        };
+
+        if (!this.editingUserId) {
+          if (!this.userModalForm.username.trim() || !this.userModalForm.password.trim()) {
+            this.notify('Vui lòng nhập Tên đăng nhập và Mật khẩu cho người dùng mới');
+            return;
+          }
+          payload.username = this.userModalForm.username.trim();
+          payload.password = this.userModalForm.password.trim();
+
+          const res = await this.authFetch('/api/admin/users', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (data.success) {
+            this.notify(data.message || 'Đã tạo người dùng mới thành công');
+            this.modals.userEdit = false;
+            await this.fetchUsersList();
+          } else {
+            this.notify(data.error || 'Lỗi tạo người dùng');
+          }
+        } else {
+          if (this.userModalForm.password.trim()) {
+            payload.password = this.userModalForm.password.trim();
+          }
+          const res = await this.authFetch(`/api/admin/users/${this.editingUserId}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (data.success) {
+            this.notify(data.message || 'Đã cập nhật phân quyền người dùng thành công');
+            this.modals.userEdit = false;
+            if (this.currentUser && (this.currentUser.id === this.editingUserId || this.currentUser._id === this.editingUserId)) {
+              this.currentUser.fullName = data.user.fullName;
+              this.currentUser.role = data.user.role;
+              this.currentUser.permissions = data.user.permissions;
+            }
+            await this.fetchUsersList();
+          } else {
+            this.notify(data.error || 'Lỗi cập nhật người dùng');
+          }
+        }
+      } catch (err) {
+        this.notify(err.message);
+      }
+    },
+
+    async toggleUserStatus(u) {
+      try {
+        const nextStatus = !u.isActive;
+        const res = await this.authFetch(`/api/admin/users/${u._id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ isActive: nextStatus })
+        });
+        const data = await res.json();
+        if (data.success) {
+          u.isActive = nextStatus;
+          this.notify(`Đã ${nextStatus ? 'mở khóa' : 'tạm khóa'} tài khoản ${u.fullName}`);
+        } else {
+          this.notify(data.error || 'Lỗi thay đổi trạng thái');
+        }
+      } catch (err) {
+        this.notify(err.message);
+      }
+    },
+
+    async deleteUser(u) {
+      if (!confirm(`Bạn có chắc chắn muốn xóa tài khoản "${u.fullName}" (@${u.username})?`)) return;
+      try {
+        const res = await this.authFetch(`/api/admin/users/${u._id}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(data.message || 'Đã xóa người dùng thành công');
+          await this.fetchUsersList();
+        } else {
+          this.notify(data.error || 'Lỗi khi xóa người dùng');
+        }
+      } catch (err) {
+        this.notify(err.message);
+      }
     },
 
     notify(msg) {
@@ -450,7 +808,7 @@ function cashFlowApp() {
 
     async fetchDashboard() {
       try {
-        const res = await fetch('/api/dashboard');
+        const res = await this.authFetch('/api/dashboard');
         const data = await res.json();
         if (data.success) {
           this.error = null;
@@ -530,7 +888,7 @@ function cashFlowApp() {
         const url = this.editingTransactionId ? `/api/transactions/${this.editingTransactionId}` : '/api/transactions';
         const method = this.editingTransactionId ? 'PUT' : 'POST';
 
-        const res = await fetch(url, {
+        const res = await this.authFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.transactionForm)
@@ -551,7 +909,7 @@ function cashFlowApp() {
     async deleteTransaction(id, title) {
       if (!confirm(`Xóa giao dịch "${title}"?\nSố dư tài khoản ngân hàng liên quan sẽ được tự động hoàn tác.`)) return;
       try {
-        const res = await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
+        const res = await this.authFetch(`/api/transactions/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           this.notify('🗑️ Đã xóa giao dịch & hoàn lại số dư!');
@@ -595,7 +953,7 @@ function cashFlowApp() {
         const url = this.editingAccountId ? `/api/accounts/${this.editingAccountId}` : '/api/accounts';
         const method = this.editingAccountId ? 'PUT' : 'POST';
 
-        const res = await fetch(url, {
+        const res = await this.authFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.accountForm)
@@ -622,7 +980,7 @@ function cashFlowApp() {
         return;
       }
       try {
-        const res = await fetch(`/api/accounts/${acc._id}`, {
+        const res = await this.authFetch(`/api/accounts/${acc._id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ balance: newBal })
@@ -640,7 +998,7 @@ function cashFlowApp() {
     async deleteAccount(id, name) {
       if (!confirm(`Xóa tài khoản/ví "${name}"?`)) return;
       try {
-        const res = await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
+        const res = await this.authFetch(`/api/accounts/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           this.notify(`🗑️ Đã xóa ${name}!`);
@@ -680,7 +1038,7 @@ function cashFlowApp() {
         const url = this.editingSupplierId ? `/api/supplier-debts/${this.editingSupplierId}` : '/api/supplier-debts';
         const method = this.editingSupplierId ? 'PUT' : 'POST';
 
-        const res = await fetch(url, {
+        const res = await this.authFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.supplierForm)
@@ -707,7 +1065,7 @@ function cashFlowApp() {
         return;
       }
       try {
-        const res = await fetch(`/api/supplier-debts/${sup._id}/pay`, {
+        const res = await this.authFetch(`/api/supplier-debts/${sup._id}/pay`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ amount: payAmount })
@@ -725,7 +1083,7 @@ function cashFlowApp() {
     async batchPayAllSuppliers() {
       if (!confirm(`Xác nhận thanh toán gom toàn bộ tiền hàng cho TẤT CẢ nhà cung cấp?\nTổng tiền: ${this.formatVND(this.dashboard.supplierPot.totalAmount)}\nHũ tiền hàng sẽ được reset về 0đ.`)) return;
       try {
-        const res = await fetch('/api/supplier-debts/batch-pay-all', { method: 'POST' });
+        const res = await this.authFetch('/api/supplier-debts/batch-pay-all', { method: 'POST' });
         const data = await res.json();
         if (data.success) {
           this.notify('🎉 Đã thanh toán gom toàn bộ NCC! Hũ tiền hàng về 0đ.');
@@ -739,7 +1097,7 @@ function cashFlowApp() {
     async deleteSupplier(id, name) {
       if (!confirm(`Xóa NCC "${name}"?`)) return;
       try {
-        const res = await fetch(`/api/supplier-debts/${id}`, { method: 'DELETE' });
+        const res = await this.authFetch(`/api/supplier-debts/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           this.notify(`🗑️ Đã xóa NCC ${name}!`);
@@ -795,7 +1153,7 @@ function cashFlowApp() {
         const url = this.editingReminderId ? `/api/reminders/${this.editingReminderId}` : '/api/reminders';
         const method = this.editingReminderId ? 'PUT' : 'POST';
 
-        const res = await fetch(url, {
+        const res = await this.authFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.reminderForm)
@@ -815,7 +1173,7 @@ function cashFlowApp() {
 
     async toggleReminderStatus(id) {
       try {
-        const res = await fetch(`/api/reminders/${id}/toggle-status`, { method: 'PATCH' });
+        const res = await this.authFetch(`/api/reminders/${id}/toggle-status`, { method: 'PATCH' });
         const data = await res.json();
         if (data.success) {
           this.notify('✓ Đã cập nhật trạng thái nhắc nhở!');
@@ -829,7 +1187,7 @@ function cashFlowApp() {
     async deleteReminder(id, title) {
       if (!confirm(`Xóa dòng nhắc "${title}"?`)) return;
       try {
-        const res = await fetch(`/api/reminders/${id}`, { method: 'DELETE' });
+        const res = await this.authFetch(`/api/reminders/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           this.notify('🗑️ Đã xóa dòng nhắc!');
@@ -882,7 +1240,7 @@ function cashFlowApp() {
         const url = this.editingDebtId ? `/api/debts/${this.editingDebtId}` : '/api/debts';
         const method = this.editingDebtId ? 'PUT' : 'POST';
 
-        const res = await fetch(url, {
+        const res = await this.authFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.debtForm)
@@ -902,7 +1260,7 @@ function cashFlowApp() {
 
     async toggleDebtStatus(id) {
       try {
-        const res = await fetch(`/api/debts/${id}/toggle-status`, { method: 'PATCH' });
+        const res = await this.authFetch(`/api/debts/${id}/toggle-status`, { method: 'PATCH' });
         const data = await res.json();
         if (data.success) {
           this.notify('✓ Đã cập nhật trạng thái thanh toán nợ!');
@@ -916,7 +1274,7 @@ function cashFlowApp() {
     async deleteDebt(id, name) {
       if (!confirm(`Xóa khoản nợ của "${name}"?`)) return;
       try {
-        const res = await fetch(`/api/debts/${id}`, { method: 'DELETE' });
+        const res = await this.authFetch(`/api/debts/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           this.notify('🗑️ Đã xóa khoản nợ!');
@@ -1113,7 +1471,7 @@ function cashFlowApp() {
         const url = this.editingDiningId ? `/api/dining/bill/${this.editingDiningId}` : '/api/dining/bill';
         const method = this.editingDiningId ? 'PUT' : 'POST';
 
-        const res = await fetch(url, {
+        const res = await this.authFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1134,7 +1492,7 @@ function cashFlowApp() {
     async deleteDiningBill(id, title) {
       if (!confirm(`Xóa hóa đơn "${title}"?\nSố tiền đã trừ trong ngân hàng sẽ được tự động hoàn lại.`)) return;
       try {
-        const res = await fetch(`/api/dining/bill/${id}`, { method: 'DELETE' });
+        const res = await this.authFetch(`/api/dining/bill/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           this.notify('🗑️ Đã xóa bữa ăn & hoàn trả số dư ngân hàng!');
@@ -1202,7 +1560,7 @@ function cashFlowApp() {
         const url = this.editingSettlementId ? `/api/dining/settlement/${this.editingSettlementId}` : '/api/dining/settlement';
         const method = this.editingSettlementId ? 'PUT' : 'POST';
 
-        const res = await fetch(url, {
+        const res = await this.authFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.settlementForm)
@@ -1223,7 +1581,7 @@ function cashFlowApp() {
     async deleteSettlement(id, name) {
       if (!confirm(`Xóa giao dịch của "${name}"?\nNếu là giao dịch liên quan đến ngân hàng hoặc cấn trừ 2 sổ, hệ thống sẽ tự động hoàn tác số liệu.`)) return;
       try {
-        const res = await fetch(`/api/dining/settlement/${id}`, { method: 'DELETE' });
+        const res = await this.authFetch(`/api/dining/settlement/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           this.notify('🗑️ ' + (data.message || 'Đã xóa giao dịch nạp / mượn!'));
@@ -1321,7 +1679,7 @@ function cashFlowApp() {
           note: this.diningTransferForm.note
         };
 
-        const res = await fetch('/api/dining/transfer-balance', {
+        const res = await this.authFetch('/api/dining/transfer-balance', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1367,7 +1725,7 @@ function cashFlowApp() {
         const url = this.editingMemberId ? `/api/dining/member/${this.editingMemberId}` : '/api/dining/member';
         const method = this.editingMemberId ? 'PUT' : 'POST';
 
-        const res = await fetch(url, {
+        const res = await this.authFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.memberForm)
@@ -1388,7 +1746,7 @@ function cashFlowApp() {
     async deleteMember(id, name) {
       if (!confirm(`Xóa thành viên "${name}" khỏi sổ?`)) return;
       try {
-        const res = await fetch(`/api/dining/member/${id}`, { method: 'DELETE' });
+        const res = await this.authFetch(`/api/dining/member/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           this.notify(`🗑️ Đã xóa ${name}!`);
@@ -1412,7 +1770,7 @@ function cashFlowApp() {
 
     async submitConfig() {
       try {
-        const res = await fetch('/api/config', {
+        const res = await this.authFetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.configForm)
@@ -1476,7 +1834,7 @@ function cashFlowApp() {
         const url = this.editingPersonalId ? `/api/personal/expense/${this.editingPersonalId}` : '/api/personal/expense';
         const method = this.editingPersonalId ? 'PUT' : 'POST';
 
-        const res = await fetch(url, {
+        const res = await this.authFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.personalExpenseForm)
@@ -1495,7 +1853,7 @@ function cashFlowApp() {
 
     async togglePersonalExpenseStatus(item) {
       try {
-        const res = await fetch(`/api/personal/expense/${item._id || item.id}/toggle`, {
+        const res = await this.authFetch(`/api/personal/expense/${item._id || item.id}/toggle`, {
           method: 'PUT'
         });
         const data = await res.json();
@@ -1511,7 +1869,7 @@ function cashFlowApp() {
     async deletePersonalExpense(id, title) {
       if (!confirm(`Xóa khoản chi "${title}" khỏi Sổ Cá Nhân?`)) return;
       try {
-        const res = await fetch(`/api/personal/expense/${id}`, { method: 'DELETE' });
+        const res = await this.authFetch(`/api/personal/expense/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           this.notify('🗑️ ' + (data.message || 'Đã xóa khoản chi cá nhân!'));
@@ -1535,7 +1893,7 @@ function cashFlowApp() {
 
     async submitPersonalConfig() {
       try {
-        const res = await fetch('/api/personal/config', {
+        const res = await this.authFetch('/api/personal/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.personalConfigForm)

@@ -75,6 +75,76 @@
 </head>
 <body x-data="cashFlowApp()" class="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-800 antialiased selection:bg-brand-100 selection:text-brand-900 pb-20 sm:pb-8">
 
+  <!-- ==================== 0. LOGIN SCREEN OVERLAY ==================== -->
+  <div x-show="!isLoggedIn" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+    <div class="bg-white rounded-3xl border border-slate-200/80 shadow-2xl max-w-md w-full p-7 sm:p-8 relative overflow-hidden"
+         @keyup.enter="submitLogin()">
+      <!-- Background Ambient Glow -->
+      <div class="absolute -top-16 -right-16 w-36 h-36 bg-emerald-400/20 rounded-full blur-2xl pointer-events-none"></div>
+      <div class="absolute -bottom-16 -left-16 w-36 h-36 bg-sky-500/20 rounded-full blur-2xl pointer-events-none"></div>
+
+      <!-- Brand Logo & Header -->
+      <div class="text-center mb-6 relative">
+        <div class="w-13 h-13 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-extrabold text-xl shadow-md mx-auto mb-3 relative">
+          <i class="fa-solid fa-chart-pie text-emerald-400"></i>
+          <span class="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+        </div>
+        <h2 class="text-xl font-extrabold text-slate-900 tracking-tight">CFO Flow</h2>
+        <p class="text-xs font-medium text-slate-500 mt-1">Hệ Thống Quản Lý Dòng Tiền &amp; Sổ Quỹ Tách Biệt</p>
+      </div>
+
+      <!-- Error Alert -->
+      <div x-show="loginForm.error" x-cloak class="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+        <i class="fa-solid fa-triangle-exclamation text-rose-500 shrink-0"></i>
+        <span x-text="loginForm.error"></span>
+      </div>
+
+      <!-- Login Form -->
+      <form @submit.prevent="submitLogin()" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Tên đăng nhập</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+              <i class="fa-solid fa-user text-xs"></i>
+            </span>
+            <input type="text" x-model="loginForm.username" required placeholder="admin hoặc tên tài khoản"
+                   class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-slate-900 focus:outline-none transition">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Mật khẩu</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+              <i class="fa-solid fa-lock text-xs"></i>
+            </span>
+            <input :type="loginForm.showPassword ? 'text' : 'password'" x-model="loginForm.password" required placeholder="Nhập mật khẩu"
+                   class="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-slate-900 focus:outline-none transition">
+            <button type="button" @click="loginForm.showPassword = !loginForm.showPassword"
+                    class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600">
+              <i class="fa-solid" :class="loginForm.showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" :disabled="loginForm.loading"
+                class="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-2">
+          <i x-show="loginForm.loading" class="fa-solid fa-circle-notch fa-spin text-xs"></i>
+          <span x-text="loginForm.loading ? 'Đang xác thực...' : 'Đăng Nhập'"></span>
+        </button>
+      </form>
+
+      <!-- Quick Hint -->
+      <div class="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+        <span>Tài khoản Admin mặc định:</span>
+        <button type="button" @click="loginForm.username = 'admin'; loginForm.password = 'Admin@123456'; submitLogin()"
+                class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono font-bold transition">
+          admin / Admin@123456 ⚡
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== PREMIUM STRIPE/NOTION HEADER ==================== -->
   <header class="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
@@ -94,6 +164,7 @@
       <!-- Main Navigation Tabs (Desktop) -->
       <nav class="hidden md:flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/60 text-xs font-semibold">
         <button type="button" @click="activeTab = 'overview'"
+                x-show="currentUser?.isAdmin || currentUser?.permissions?.viewOverview"
                 class="px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
                 :class="activeTab === 'overview' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
           <i class="fa-solid fa-table-columns text-[11px] text-slate-400" :class="activeTab === 'overview' ? 'text-slate-900' : ''"></i>
@@ -101,6 +172,7 @@
         </button>
 
         <button type="button" @click="activeTab = 'transactions'"
+                x-show="currentUser?.isAdmin || currentUser?.permissions?.manageTransactions"
                 class="px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
                 :class="activeTab === 'transactions' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
           <i class="fa-solid fa-receipt text-[11px] text-slate-400" :class="activeTab === 'transactions' ? 'text-slate-900' : ''"></i>
@@ -110,6 +182,7 @@
         </button>
 
         <button type="button" @click="activeTab = 'dining'"
+                x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
                 class="px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
                 :class="activeTab === 'dining' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
           <i class="fa-solid fa-bowl-rice text-[11px] text-slate-400" :class="activeTab === 'dining' ? 'text-slate-900' : ''"></i>
@@ -117,6 +190,7 @@
         </button>
 
         <button type="button" @click="activeTab = 'personal'"
+                x-show="currentUser?.isAdmin || currentUser?.permissions?.managePersonalHub"
                 class="px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
                 :class="activeTab === 'personal' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
           <i class="fa-solid fa-heart-pulse text-[11px] text-purple-600" :class="activeTab === 'personal' ? 'text-purple-600' : 'text-slate-400'"></i>
@@ -124,6 +198,7 @@
         </button>
 
         <button type="button" @click="activeTab = 'debts'"
+                x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDebts"
                 class="px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
                 :class="activeTab === 'debts' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
           <i class="fa-solid fa-hand-holding-dollar text-[11px] text-slate-400" :class="activeTab === 'debts' ? 'text-slate-900' : ''"></i>
@@ -135,8 +210,9 @@
 
       <!-- Right Actions & Quick Cash Display -->
       <div class="flex items-center gap-2.5">
-        <!-- Live Cash Balance Pill -->
-        <div class="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+        <!-- Live Cash Balance Pill (Hub 1) -->
+        <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageAccounts"
+             class="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
           <span class="text-slate-400 font-medium">Thực tế:</span>
           <strong class="font-mono font-bold text-slate-900" x-text="formatVND(dashboard.accounts.totalCash)"></strong>
           <span class="text-slate-300">•</span>
@@ -148,6 +224,7 @@
 
         <!-- Primary CTA: Ghi Giao Dịch -->
         <button type="button" @click="openTransactionModal()"
+                x-show="currentUser?.isAdmin || currentUser?.permissions?.manageTransactions"
                 class="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
           <i class="fa-solid fa-plus text-[10px] text-emerald-400"></i>
           <span>Ghi Giao Dịch</span>
@@ -155,9 +232,65 @@
 
         <!-- Quick Settings -->
         <button type="button" @click="modals.config = true" title="Cài đặt hạn mức"
+                x-show="currentUser?.isAdmin || currentUser?.permissions?.manageConfig"
                 class="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition">
           <i class="fa-solid fa-gear text-sm"></i>
         </button>
+
+        <!-- Current User Profile & RBAC Dropdown -->
+        <div class="relative" x-data="{ open: false }" x-show="isLoggedIn">
+          <button type="button" @click="open = !open" @click.away="open = false"
+                  class="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 transition text-xs font-semibold text-slate-800">
+            <div class="w-6 h-6 rounded-lg bg-slate-900 text-emerald-400 flex items-center justify-center text-[10px] font-bold">
+              <span x-text="(currentUser?.fullName || currentUser?.username || 'U').charAt(0).toUpperCase()"></span>
+            </div>
+            <span class="max-w-[110px] truncate" x-text="currentUser?.fullName || currentUser?.username"></span>
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
+                  :class="currentUser?.isAdmin ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'"
+                  x-text="currentUser?.isAdmin ? 'Admin' : (currentUser?.role || 'User')"></span>
+            <i class="fa-solid fa-chevron-down text-[9px] text-slate-400"></i>
+          </button>
+
+          <!-- Dropdown Menu -->
+          <div x-show="open" x-cloak
+               x-transition:enter="transition ease-out duration-100"
+               x-transition:enter-start="opacity-0 scale-95"
+               x-transition:enter-end="opacity-100 scale-100"
+               x-transition:leave="transition ease-in duration-75"
+               x-transition:leave-start="opacity-100 scale-100"
+               x-transition:leave-end="opacity-0 scale-95"
+               class="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200/80 py-2 z-50 text-xs">
+            <div class="px-3.5 py-2 border-b border-slate-100">
+              <p class="font-bold text-slate-900" x-text="currentUser?.fullName"></p>
+              <p class="text-[11px] text-slate-400" x-text="'@' + currentUser?.username + (currentUser?.phone ? ' • ' + currentUser?.phone : '')"></p>
+            </div>
+
+            <!-- Admin Only: User & RBAC Manager -->
+            <button type="button" x-show="currentUser?.isAdmin || currentUser?.permissions?.manageUsers"
+                    @click="open = false; openUserManagementModal()"
+                    class="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2 font-medium text-slate-700">
+              <i class="fa-solid fa-users-gear text-emerald-600 text-xs"></i>
+              <span>Quản Lý Người Dùng &amp; Phân Quyền</span>
+            </button>
+
+            <!-- Config Settings -->
+            <button type="button" x-show="currentUser?.isAdmin || currentUser?.permissions?.manageConfig"
+                    @click="open = false; modals.config = true"
+                    class="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2 font-medium text-slate-700">
+              <i class="fa-solid fa-sliders text-blue-600 text-xs"></i>
+              <span>Cài Đặt Hệ Thống &amp; Hạn Mức</span>
+            </button>
+
+            <div class="border-t border-slate-100 my-1"></div>
+
+            <button type="button" @click="open = false; logout()"
+                    class="w-full px-3.5 py-2 text-left hover:bg-rose-50 flex items-center gap-2 font-medium text-rose-600">
+              <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i>
+              <span>Đăng Xuất</span>
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   </header>
@@ -806,18 +939,21 @@
             <!-- Segmented Category Switcher -->
             <div class="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/60 text-xs font-semibold">
               <button type="button" @click="diningCategory = 'work'"
+                      x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork"
                       class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
                       :class="diningCategory === 'work' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
                 <i class="fa-solid fa-briefcase text-[10px] text-indigo-500"></i>
                 <span>Ăn Đồng Nghiệp</span>
               </button>
               <button type="button" @click="diningCategory = 'family'"
+                      x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningFamily"
                       class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
                       :class="diningCategory === 'family' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
                 <i class="fa-solid fa-people-roof text-[10px] text-amber-500"></i>
                 <span>Quỹ Gia Đình</span>
               </button>
               <button type="button" @click="diningCategory = 'all'"
+                      x-show="currentUser?.isAdmin || (currentUser?.permissions?.manageDiningWork && currentUser?.permissions?.manageDiningFamily)"
                       class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
                       :class="diningCategory === 'all' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
                 <span>Tất Cả</span>
@@ -827,17 +963,20 @@
             <!-- Action Buttons -->
             <div class="flex items-center gap-2">
               <button type="button" @click="openTransferModal()"
+                      x-show="currentUser?.isAdmin || (currentUser?.permissions?.manageDiningWork && currentUser?.permissions?.manageDiningFamily)"
                       class="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
                       title="Chuyển số tiền dư từ sổ này sang sổ kia cho thành viên có số liệu cả 2 bên (Không cần chuyển khoản)">
                 <i class="fa-solid fa-arrow-right-arrow-left text-[10px]"></i>
                 <span>⇄ Cấn Trừ 2 Sổ</span>
               </button>
               <button type="button" @click="openNewDiningBillModal()"
+                      x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
                       class="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
                 <i class="fa-solid fa-plus text-[10px] text-emerald-400"></i>
                 <span>+ Ghi Hóa Đơn / Bữa Ăn</span>
               </button>
               <button type="button" @click="openSettlementModal()"
+                      x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
                       class="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1">
                 <i class="fa-solid fa-hand-holding-dollar text-emerald-600 text-[10px]"></i>
                 <span>Thu / Nạp Tiền</span>
@@ -1712,21 +1851,27 @@
 
       </div>
 
+  </main>
+
   <!-- ==================== MOBILE BOTTOM NAVIGATION BAR ==================== -->
-  <nav class="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-around h-16 px-2 shadow-lg">
+  <nav class="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-around h-16 px-2 shadow-lg"
+       x-show="isLoggedIn">
     <button type="button" @click="activeTab = 'overview'"
+            x-show="currentUser?.isAdmin || currentUser?.permissions?.viewOverview"
             class="flex flex-col items-center justify-center w-full h-full text-[10px] font-bold"
             :class="activeTab === 'overview' ? 'text-slate-900' : 'text-slate-400'">
       <i class="fa-solid fa-table-columns text-base mb-0.5"></i>
       <span>Tổng Quan</span>
     </button>
     <button type="button" @click="activeTab = 'transactions'"
+            x-show="currentUser?.isAdmin || currentUser?.permissions?.manageTransactions"
             class="flex flex-col items-center justify-center w-full h-full text-[10px] font-bold"
             :class="activeTab === 'transactions' ? 'text-slate-900' : 'text-slate-400'">
       <i class="fa-solid fa-receipt text-base mb-0.5"></i>
       <span>Giao Dịch</span>
     </button>
     <button type="button" @click="openTransactionModal()"
+            x-show="currentUser?.isAdmin || currentUser?.permissions?.manageTransactions"
             class="flex flex-col items-center justify-center -mt-5">
       <div class="w-12 h-12 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-lg">
         <i class="fa-solid fa-plus text-base text-emerald-400"></i>
@@ -1734,16 +1879,25 @@
       <span class="text-[9px] font-bold text-slate-900 mt-0.5">Ghi Mới</span>
     </button>
     <button type="button" @click="activeTab = 'dining'"
+            x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
             class="flex flex-col items-center justify-center w-full h-full text-[10px] font-bold"
             :class="activeTab === 'dining' ? 'text-slate-900' : 'text-slate-400'">
       <i class="fa-solid fa-bowl-rice text-base mb-0.5"></i>
       <span>Quỹ Ăn</span>
     </button>
     <button type="button" @click="activeTab = 'personal'"
+            x-show="currentUser?.isAdmin || currentUser?.permissions?.managePersonalHub"
             class="flex flex-col items-center justify-center w-full h-full text-[10px] font-bold"
             :class="activeTab === 'personal' ? 'text-purple-700' : 'text-slate-400'">
       <i class="fa-solid fa-heart-pulse text-base mb-0.5"></i>
       <span>Cá Nhân</span>
+    </button>
+    <button type="button" @click="activeTab = 'debts'"
+            x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDebts"
+            class="flex flex-col items-center justify-center w-full h-full text-[10px] font-bold"
+            :class="activeTab === 'debts' ? 'text-slate-900' : 'text-slate-400'">
+      <i class="fa-solid fa-hand-holding-dollar text-base mb-0.5"></i>
+      <span>Sổ Nợ</span>
     </button>
   </nav>
 
@@ -2789,6 +2943,342 @@
                   class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
           <button type="submit"
                   class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition">Lưu Cài Đặt</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: QUẢN LÝ NGƯỜI DÙNG & PHÂN QUYỀN (RBAC) ==================== -->
+  <div x-show="modals.userManagement" x-cloak
+       class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-4xl w-full shadow-modal space-y-4 max-h-[90vh] flex flex-col"
+         @click.away="modals.userManagement = false">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+        <div>
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xs">
+              <i class="fa-solid fa-users-gear"></i>
+            </div>
+            <h3 class="text-sm font-bold text-slate-900">Quản Lý Người Dùng &amp; Phân Quyền Trực Tiếp</h3>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">Cấu hình phân quyền granular trực tiếp trên giao diện không cần chạm vào source code</p>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <button type="button" @click="openAddUserModal()"
+                  class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+            <i class="fa-solid fa-user-plus text-[10px] text-emerald-400"></i>
+            <span>Thêm Người Dùng</span>
+          </button>
+          <button type="button" @click="modals.userManagement = false" class="text-slate-400 hover:text-slate-700 p-1">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Users Table Container -->
+      <div class="flex-1 overflow-y-auto space-y-3 pr-1">
+        <div x-show="loadingUsers" class="text-center py-10 text-slate-400 text-xs">
+          <i class="fa-solid fa-circle-notch fa-spin text-base text-slate-900 mb-2 block"></i>
+          Đang tải danh sách người dùng...
+        </div>
+
+        <div x-show="!loadingUsers && usersList.length === 0" class="text-center py-10 text-slate-400 text-xs">
+          Chưa có người dùng nào. Nhấn "Thêm Người Dùng" để tạo tài khoản mới.
+        </div>
+
+        <div x-show="!loadingUsers && usersList.length > 0" class="overflow-x-auto rounded-xl border border-slate-200/80">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead class="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200/80 uppercase text-[10px] tracking-wider">
+              <tr>
+                <th class="py-2.5 px-3">Người Dùng</th>
+                <th class="py-2.5 px-3">Tài Khoản &amp; SĐT</th>
+                <th class="py-2.5 px-3">Vai Trò &amp; Quyền Hạn</th>
+                <th class="py-2.5 px-3 text-center">Trạng Thái</th>
+                <th class="py-2.5 px-3 text-right">Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <template x-for="u in usersList" :key="u._id">
+                <tr class="hover:bg-slate-50/70 transition">
+                  <!-- Tên & Avatar -->
+                  <td class="py-2.5 px-3">
+                    <div class="flex items-center gap-2.5">
+                      <div class="w-8 h-8 rounded-xl bg-slate-900 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">
+                        <span x-text="(u.fullName || u.username || 'U').charAt(0).toUpperCase()"></span>
+                      </div>
+                      <div>
+                        <div class="font-bold text-slate-900" x-text="u.fullName"></div>
+                        <div class="text-[10px] text-slate-400" x-text="'Tạo ngày: ' + formatDate(u.createdAt?.slice(0, 10))"></div>
+                      </div>
+                    </div>
+                  </td>
+
+                  <!-- Username & Phone -->
+                  <td class="py-2.5 px-3 font-mono text-[11px]">
+                    <div class="font-semibold text-slate-700" x-text="'@' + u.username"></div>
+                    <div class="text-[10px] text-slate-400 font-sans" x-text="u.phone || 'Chưa cập nhật'"></div>
+                  </td>
+
+                  <!-- Role & Granted Permissions Count -->
+                  <td class="py-2.5 px-3">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+                            :class="u.isAdmin ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'"
+                            x-text="u.isAdmin ? 'Quản Trị Viên (Admin)' : (u.role || 'Thành Viên')"></span>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold"
+                            :class="u.isAdmin ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-50 text-indigo-700'"
+                            x-text="u.isAdmin ? '9/9 Toàn quyền' : (Object.values(u.permissions || {}).filter(Boolean).length + '/9 quyền')"></span>
+                    </div>
+                  </td>
+
+                  <!-- Active Switch -->
+                  <td class="py-2.5 px-3 text-center">
+                    <button type="button" @click="toggleUserStatus(u)"
+                            :disabled="u.username === 'admin'"
+                            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold transition"
+                            :class="u.isActive ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'">
+                      <span class="w-1.5 h-1.5 rounded-full" :class="u.isActive ? 'bg-emerald-500' : 'bg-rose-500'"></span>
+                      <span x-text="u.isActive ? 'Hoạt động' : 'Tạm khóa'"></span>
+                    </button>
+                  </td>
+
+                  <!-- Actions -->
+                  <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                    <div class="flex items-center justify-end gap-1.5">
+                      <button type="button" @click="openEditUserModal(u)"
+                              class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition flex items-center gap-1"
+                              title="Chỉnh sửa phân quyền chi tiết">
+                        <i class="fa-solid fa-pen-to-square text-[10px]"></i>
+                        <span>Sửa Quyền</span>
+                      </button>
+
+                      <button type="button" @click="deleteUser(u)"
+                              x-show="u.username !== 'admin' && !(currentUser && (u._id === currentUser.id || u._id === currentUser._id))"
+                              class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                              title="Xóa người dùng">
+                        <i class="fa-solid fa-trash-can text-xs"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Footer Note -->
+      <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between shrink-0">
+        <span>💡 Bất kỳ thay đổi phân quyền nào sẽ có hiệu lực ngay lập tức khi người dùng thao tác.</span>
+        <button type="button" @click="modals.userManagement = false"
+                class="px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: THÊM / CẬP NHẬT PHÂN QUYỀN NGƯỜI DÙNG ==================== -->
+  <div x-show="modals.userEdit" x-cloak
+       class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-2xl w-full shadow-modal space-y-4 max-h-[92vh] overflow-y-auto"
+         @click.away="modals.userEdit = false">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="text-sm font-bold text-slate-900"
+              x-text="editingUserId ? 'Chỉnh Sửa Phân Quyền Người Dùng' : 'Thêm Người Dùng &amp; Cấp Quyền Mới'"></h3>
+          <p class="text-[11px] text-slate-400 mt-0.5">Cấu hình lưu thẳng vào cơ sở dữ liệu MongoDB, không cần sửa code mỗi khi đổi quyền</p>
+        </div>
+        <button type="button" @click="modals.userEdit = false" class="text-slate-400 hover:text-slate-700">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="submitUserModal()" class="space-y-4">
+        
+        <!-- User Basic Details -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Họ và tên người dùng *</label>
+            <input type="text" x-model="userModalForm.fullName" required placeholder="VD: Nguyễn Văn A"
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-slate-900 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Số điện thoại</label>
+            <input type="text" x-model="userModalForm.phone" placeholder="VD: 0987654321"
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Tên đăng nhập (Username) *</label>
+            <input type="text" x-model="userModalForm.username" required :disabled="Boolean(editingUserId)"
+                   placeholder="VD: nguyenvan"
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-medium focus:ring-2 focus:ring-slate-900 focus:outline-none"
+                   :class="editingUserId ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''">
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">
+              <span x-text="editingUserId ? 'Mật khẩu mới (Để trống nếu giữ nguyên)' : 'Mật khẩu ban đầu *'"></span>
+            </label>
+            <input type="password" x-model="userModalForm.password" :required="!editingUserId" placeholder="Nhập mật khẩu"
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Quick Role Presets -->
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/60">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] font-bold text-slate-700">⚡ Chọn Nhanh Quyền Mẫu (Role Presets):</span>
+            <span class="text-[10px] text-slate-400">Tự động bật/tắt nhóm quyền tương ứng</span>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            <button type="button" @click="applyRolePreset('admin')"
+                    class="px-2.5 py-1 rounded-lg text-[10px] font-bold border transition flex items-center gap-1"
+                    :class="userModalForm.role === 'admin' ? 'bg-amber-100 border-amber-300 text-amber-900' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'">
+              <span>⚡ Admin (Full 9 Quyền)</span>
+            </button>
+            <button type="button" @click="applyRolePreset('manager')"
+                    class="px-2.5 py-1 rounded-lg text-[10px] font-bold border transition flex items-center gap-1"
+                    :class="userModalForm.role === 'manager' ? 'bg-indigo-100 border-indigo-300 text-indigo-900' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'">
+              <span>👔 Quản Lý Dòng Tiền</span>
+            </button>
+            <button type="button" @click="applyRolePreset('colleague')"
+                    class="px-2.5 py-1 rounded-lg text-[10px] font-bold border transition flex items-center gap-1"
+                    :class="userModalForm.role === 'colleague' ? 'bg-blue-100 border-blue-300 text-blue-900' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'">
+              <span>🍽️ Đồng Nghiệp (Quỹ Ăn Nhóm)</span>
+            </button>
+            <button type="button" @click="applyRolePreset('family')"
+                    class="px-2.5 py-1 rounded-lg text-[10px] font-bold border transition flex items-center gap-1"
+                    :class="userModalForm.role === 'family' ? 'bg-emerald-100 border-emerald-300 text-emerald-900' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'">
+              <span>🏡 Thành Viên Gia Đình</span>
+            </button>
+            <button type="button" @click="applyRolePreset('partner')"
+                    class="px-2.5 py-1 rounded-lg text-[10px] font-bold border transition flex items-center gap-1"
+                    :class="userModalForm.role === 'partner' ? 'bg-purple-100 border-purple-300 text-purple-900' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'">
+              <span>💑 Người Yêu (Gia Đình &amp; Sổ Cá Nhân)</span>
+            </button>
+            <button type="button" @click="applyRolePreset('viewer')"
+                    class="px-2.5 py-1 rounded-lg text-[10px] font-bold border transition flex items-center gap-1"
+                    :class="userModalForm.role === 'viewer' ? 'bg-slate-200 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'">
+              <span>👁️ Chỉ Xem Tổng Quan</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Detailed Granular Permissions Checkboxes -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold text-slate-800">Cấu Hình 9 Quyền Hạn Chi Tiết (Granular Permissions):</span>
+            <span class="text-[10px] text-slate-400">Bật/tắt từng quyền riêng biệt</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <!-- 1. viewOverview -->
+            <label class="p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white flex items-start gap-2.5 cursor-pointer transition"
+                   :class="userModalForm.permissions.viewOverview ? 'bg-slate-50 border-slate-400' : ''">
+              <input type="checkbox" x-model="userModalForm.permissions.viewOverview" class="rounded mt-0.5 accent-slate-900">
+              <div>
+                <strong class="font-bold text-slate-900 block">1. Xem Tổng Quan Dashboard</strong>
+                <span class="text-[10px] text-slate-500">Xem tổng tiền 4 Hub, hạn mức tuần và biểu đồ dòng tiền</span>
+              </div>
+            </label>
+
+            <!-- 2. manageAccounts -->
+            <label class="p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white flex items-start gap-2.5 cursor-pointer transition"
+                   :class="userModalForm.permissions.manageAccounts ? 'bg-slate-50 border-slate-400' : ''">
+              <input type="checkbox" x-model="userModalForm.permissions.manageAccounts" class="rounded mt-0.5 accent-slate-900">
+              <div>
+                <strong class="font-bold text-slate-900 block">2. Quản Lý Số Dư Ngân Hàng (Hub 1)</strong>
+                <span class="text-[10px] text-slate-500">Thêm, sửa, điều chỉnh số dư thực tế các ngân hàng, ví MoMo, tiền mặt</span>
+              </div>
+            </label>
+
+            <!-- 3. manageTransactions -->
+            <label class="p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white flex items-start gap-2.5 cursor-pointer transition"
+                   :class="userModalForm.permissions.manageTransactions ? 'bg-slate-50 border-slate-400' : ''">
+              <input type="checkbox" x-model="userModalForm.permissions.manageTransactions" class="rounded mt-0.5 accent-slate-900">
+              <div>
+                <strong class="font-bold text-slate-900 block">3. Ghi Sổ Giao Dịch Thu / Chi</strong>
+                <span class="text-[10px] text-slate-500">Ghi chép, sửa, xóa các giao dịch thu nhập, chi tiêu, chuyển khoản</span>
+              </div>
+            </label>
+
+            <!-- 4. manageDiningWork -->
+            <label class="p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white flex items-start gap-2.5 cursor-pointer transition"
+                   :class="userModalForm.permissions.manageDiningWork ? 'bg-slate-50 border-slate-400' : ''">
+              <input type="checkbox" x-model="userModalForm.permissions.manageDiningWork" class="rounded mt-0.5 accent-slate-900">
+              <div>
+                <strong class="font-bold text-slate-900 block">4. Quỹ Ăn Đồng Nghiệp (Hub 2)</strong>
+                <span class="text-[10px] text-slate-500">Quản lý bữa ăn nhóm 14 người, nạp/mượn quỹ, theo dõi dư/nợ</span>
+              </div>
+            </label>
+
+            <!-- 5. manageDiningFamily -->
+            <label class="p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white flex items-start gap-2.5 cursor-pointer transition"
+                   :class="userModalForm.permissions.manageDiningFamily ? 'bg-slate-50 border-slate-400' : ''">
+              <input type="checkbox" x-model="userModalForm.permissions.manageDiningFamily" class="rounded mt-0.5 accent-slate-900">
+              <div>
+                <strong class="font-bold text-slate-900 block">5. Quỹ Sinh Hoạt Gia Đình (Hub 3)</strong>
+                <span class="text-[10px] text-slate-500">Quản lý quỹ chung 6 thành viên gia đình, ăn uống và điện nước</span>
+              </div>
+            </label>
+
+            <!-- 6. managePersonalHub -->
+            <label class="p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white flex items-start gap-2.5 cursor-pointer transition"
+                   :class="userModalForm.permissions.managePersonalHub ? 'bg-slate-50 border-slate-400' : ''">
+              <input type="checkbox" x-model="userModalForm.permissions.managePersonalHub" class="rounded mt-0.5 accent-purple-600">
+              <div>
+                <strong class="font-bold text-purple-900 block">6. Sổ Cá Nhân &amp; Tiết Kiệm (Hub 4)</strong>
+                <span class="text-[10px] text-slate-500">Trích 10-15% tiết kiệm, quản lý Gym, Netflix &amp; chi tiêu 2 người</span>
+              </div>
+            </label>
+
+            <!-- 7. manageDebts -->
+            <label class="p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white flex items-start gap-2.5 cursor-pointer transition"
+                   :class="userModalForm.permissions.manageDebts ? 'bg-slate-50 border-slate-400' : ''">
+              <input type="checkbox" x-model="userModalForm.permissions.manageDebts" class="rounded mt-0.5 accent-slate-900">
+              <div>
+                <strong class="font-bold text-slate-900 block">7. Sổ Nợ 2 Chiều &amp; Hũ Tiền Hàng NCC</strong>
+                <span class="text-[10px] text-slate-500">Theo dõi nợ cá nhân và thanh toán hũ công nợ các xưởng/NCC</span>
+              </div>
+            </label>
+
+            <!-- 8. manageUsers -->
+            <label class="p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white flex items-start gap-2.5 cursor-pointer transition"
+                   :class="userModalForm.permissions.manageUsers ? 'bg-slate-50 border-slate-400' : ''">
+              <input type="checkbox" x-model="userModalForm.permissions.manageUsers" class="rounded mt-0.5 accent-emerald-600">
+              <div>
+                <strong class="font-bold text-emerald-900 block">8. Quản Trị Người Dùng &amp; Phân Quyền</strong>
+                <span class="text-[10px] text-slate-500">Tạo tài khoản, phân quyền trực tiếp trên UI admin cho từng user</span>
+              </div>
+            </label>
+
+            <!-- 9. manageConfig -->
+            <label class="p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white flex items-start gap-2.5 cursor-pointer transition sm:col-span-2"
+                   :class="userModalForm.permissions.manageConfig ? 'bg-slate-50 border-slate-400' : ''">
+              <input type="checkbox" x-model="userModalForm.permissions.manageConfig" class="rounded mt-0.5 accent-blue-600">
+              <div>
+                <strong class="font-bold text-blue-900 block">9. Cài Đặt Hệ Thống &amp; Tham Số Dòng Tiền</strong>
+                <span class="text-[10px] text-slate-500">Thay đổi hạn mức tuần, số dư ban đầu hệ thống và các cấu hình cốt lõi</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
+          <button type="button" @click="modals.userEdit = false"
+                  class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
+          <button type="submit"
+                  class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+            <i class="fa-solid fa-floppy-disk text-[10px] text-emerald-400"></i>
+            <span>Lưu Cấu Hình Phân Quyền</span>
+          </button>
         </div>
       </form>
     </div>

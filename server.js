@@ -16,6 +16,7 @@ const SupplierDebt = require('./models/SupplierDebt');
 const CashflowReminder = require('./models/CashflowReminder');
 const Transaction = require('./models/Transaction');
 const PersonalExpense = require('./models/PersonalExpense');
+const User = require('./models/User');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -361,6 +362,33 @@ async function seedDefaultData(force = false) {
       ]);
     }
 
+    // 12. Users & RBAC (Khởi tạo tài khoản Quản trị viên mặc định nếu chưa có)
+    const adminExists = await User.findOne({ username: 'admin' });
+    if (!adminExists) {
+      const defaultAdmin = new User({
+        username: 'admin',
+        fullName: 'Quản Trị Viên (Admin)',
+        phone: '0900000000',
+        role: 'admin',
+        isAdmin: true,
+        isActive: true,
+        permissions: {
+          viewOverview: true,
+          manageAccounts: true,
+          manageTransactions: true,
+          manageDiningWork: true,
+          manageDiningFamily: true,
+          managePersonalHub: true,
+          manageDebts: true,
+          manageUsers: true,
+          manageConfig: true
+        }
+      });
+      defaultAdmin.setPassword('Admin@123456');
+      await defaultAdmin.save();
+      console.log('✓ Đã khởi tạo tài khoản quản trị mặc định: admin / Admin@123456');
+    }
+
     console.log('✓ Dữ liệu mặc định đã sẵn sàng trong MongoDB Atlas');
   } catch (err) {
     console.error('Lỗi khi seedDefaultData:', err.message);
@@ -520,8 +548,275 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ==================== AUTH & RBAC MIDDLEWARES ====================
+async function authenticateToken(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, error: 'Vui lòng đăng nhập để tiếp tục' });
+    }
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ success: false, error: 'Thiếu mã xác thực (Token)' });
+    }
+    const user = await User.findOne({ sessionToken: token, isActive: true });
+    if (!user || (user.tokenExpiresAt && user.tokenExpiresAt < new Date())) {
+      return res.status(401).json({ success: false, error: 'Phiên đăng nhập đã hết hạn hoặc tài khoản bị tạm khóa' });
+    }
+    req.user = user;
+    next();
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Lỗi xác thực: ' + err.message });
+  }
+}
+
+function requirePermission(permKey) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Chưa đăng nhập' });
+    }
+    if (req.user.isAdmin) {
+      return next(); // Admin luôn có toàn quyền tuyệt đối
+    }
+    if (req.user.permissions && req.user.permissions[permKey]) {
+      return next();
+    }
+    return res.status(403).json({
+      success: false,
+      error: `Tài khoản của bạn chưa được cấp quyền [${permKey}]. Hãy liên hệ Quản trị viên (Admin) để cấu hình quyền trên giao diện.`
+    });
+  };
+}
+
+// ==================== AUTHENTICATION APIS ====================
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ success: false, error: 'Vui lòng nhập tên đăng nhập và mật khẩu' });
+    }
+    const user = await User.findOne({ username: username.toLowerCase().trim() });
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Tên đăng nhập hoặc mật khẩu không chính xác' });
+    }
+    if (!user.isActive) {
+      return res.status(403).json({ success: false, error: 'Tài khoản của bạn đã bị tạm khóa. Vui lòng liên hệ Admin.' });
+    }
+    if (!user.validPassword(password)) {
+      return res.status(401).json({ success: false, error: 'Tên đăng nhập hoặc mật khẩu không chính xác' });
+    }
+
+    const token = user.generateToken();
+    await user.save();
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        fullName: user.fullName,
+        phone: user.phone,
+        role: user.role,
+        isAdmin: user.isAdmin,
+        isActive: user.isActive,
+        permissions: user.permissions
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  res.json({
+    success: true,
+    user: {
+      id: req.user._id,
+      username: req.user.username,
+      fullName: req.user.fullName,
+      phone: req.user.phone,
+      role: req.user.role,
+      isAdmin: req.user.isAdmin,
+      isActive: req.user.isActive,
+      permissions: req.user.permissions
+    }
+  });
+});
+
+app.post('/api/auth/logout', authenticateToken, async (req, res) => {
+  try {
+    req.user.sessionToken = null;
+    req.user.tokenExpiresAt = null;
+    await req.user.save();
+    res.json({ success: true, message: 'Đăng xuất thành công' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==================== ADMIN USER & PERMISSION MANAGEMENT (RBAC) APIS ====================
+// Lấy danh sách tất cả người dùng và cấu hình phân quyền của họ
+app.get('/api/admin/users', authenticateToken, requirePermission('manageUsers'), async (req, res) => {
+  try {
+    const users = await User.find({}, '-passwordHash -passwordSalt').sort({ isAdmin: -1, createdAt: 1 });
+    res.json({ success: true, users });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Tạo người dùng mới và gán quyền trực tiếp
+app.post('/api/admin/users', authenticateToken, requirePermission('manageUsers'), async (req, res) => {
+  try {
+    const { username, password, fullName, phone, role, isActive, permissions } = req.body;
+    if (!username || !password || !fullName) {
+      return res.status(400).json({ success: false, error: 'Vui lòng nhập Tên đăng nhập, Mật khẩu và Họ tên' });
+    }
+    const cleanUsername = username.toLowerCase().trim();
+    const existing = await User.findOne({ username: cleanUsername });
+    if (existing) {
+      return res.status(400).json({ success: false, error: `Tên đăng nhập "${cleanUsername}" đã tồn tại trên hệ thống` });
+    }
+
+    const isUserAdmin = role === 'admin';
+    const newUser = new User({
+      username: cleanUsername,
+      fullName: fullName.trim(),
+      phone: phone ? phone.trim() : '',
+      role: role || 'custom',
+      isAdmin: isUserAdmin,
+      isActive: isActive !== false,
+      permissions: permissions || {
+        viewOverview: true,
+        manageAccounts: false,
+        manageTransactions: false,
+        manageDiningWork: true,
+        manageDiningFamily: false,
+        managePersonalHub: false,
+        manageDebts: false,
+        manageUsers: false,
+        manageConfig: false
+      }
+    });
+
+    if (isUserAdmin) {
+      Object.keys(newUser.permissions).forEach(k => {
+        newUser.permissions[k] = true;
+      });
+    }
+
+    newUser.setPassword(password);
+    await newUser.save();
+
+    res.json({
+      success: true,
+      message: `Đã tạo người dùng "${newUser.fullName}" thành công!`,
+      user: {
+        id: newUser._id,
+        username: newUser.username,
+        fullName: newUser.fullName,
+        phone: newUser.phone,
+        role: newUser.role,
+        isAdmin: newUser.isAdmin,
+        isActive: newUser.isActive,
+        permissions: newUser.permissions
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Cập nhật người dùng & lưu thay đổi phân quyền thời gian thực vào MongoDB
+app.put('/api/admin/users/:id', authenticateToken, requirePermission('manageUsers'), async (req, res) => {
+  try {
+    const { fullName, phone, role, isActive, permissions, password } = req.body;
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy người dùng' });
+    }
+
+    // Bảo vệ an toàn: không cho tự khóa tài khoản admin đang đăng nhập
+    if (String(targetUser._id) === String(req.user._id)) {
+      if (isActive === false) {
+        return res.status(400).json({ success: false, error: 'Bạn không thể tự khóa tài khoản của chính mình!' });
+      }
+    }
+
+    if (fullName) targetUser.fullName = fullName.trim();
+    if (phone !== undefined) targetUser.phone = phone.trim();
+    if (role !== undefined) targetUser.role = role;
+    if (isActive !== undefined) targetUser.isActive = Boolean(isActive);
+
+    if (role === 'admin') {
+      targetUser.isAdmin = true;
+    } else if (targetUser.username !== 'admin') {
+      targetUser.isAdmin = false;
+    }
+
+    // Cập nhật từng quyền chi tiết (Granular Permissions)
+    if (permissions && typeof permissions === 'object') {
+      targetUser.permissions = {
+        ...targetUser.permissions.toObject(),
+        ...permissions
+      };
+      if (targetUser.isAdmin) {
+        Object.keys(targetUser.permissions).forEach(k => {
+          targetUser.permissions[k] = true;
+        });
+      }
+    }
+
+    // Nếu có truyền mật khẩu mới -> cập nhật
+    if (password && password.trim().length > 0) {
+      targetUser.setPassword(password.trim());
+    }
+
+    await targetUser.save();
+
+    res.json({
+      success: true,
+      message: `Cập nhật phân quyền cho "${targetUser.fullName}" thành công!`,
+      user: {
+        id: targetUser._id,
+        username: targetUser.username,
+        fullName: targetUser.fullName,
+        phone: targetUser.phone,
+        role: targetUser.role,
+        isAdmin: targetUser.isAdmin,
+        isActive: targetUser.isActive,
+        permissions: targetUser.permissions
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Xóa người dùng
+app.delete('/api/admin/users/:id', authenticateToken, requirePermission('manageUsers'), async (req, res) => {
+  try {
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy người dùng' });
+    }
+    if (String(targetUser._id) === String(req.user._id)) {
+      return res.status(400).json({ success: false, error: 'Bạn không thể xóa tài khoản bạn đang đăng nhập' });
+    }
+    if (targetUser.username === 'admin') {
+      return res.status(400).json({ success: false, error: 'Không thể xóa tài khoản Quản trị hệ thống gốc (admin)' });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: `Đã xóa người dùng "${targetUser.fullName}"` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ==================== DASHBOARD FULL REAL-TIME API ====================
-app.get('/api/dashboard', async (req, res) => {
+app.get('/api/dashboard', authenticateToken, async (req, res) => {
   try {
     let config = await Config.findOne();
     if (!config) {
@@ -701,7 +996,15 @@ app.get('/api/dashboard', async (req, res) => {
         totalReceivable: totalReceivableDebt,
         totalPayable: totalPayableDebt
       },
-      allOrders: serviceOrders
+      allOrders: serviceOrders,
+      currentUser: {
+        id: req.user._id,
+        username: req.user.username,
+        fullName: req.user.fullName,
+        role: req.user.role,
+        isAdmin: req.user.isAdmin,
+        permissions: req.user.permissions
+      }
     });
   } catch (err) {
     console.error('Lỗi API dashboard:', err);
@@ -710,7 +1013,7 @@ app.get('/api/dashboard', async (req, res) => {
 });
 
 // ==================== 0. SỔ GIAO DỊCH THU / CHI / CHUYỂN KHOẢN (CRUD) ====================
-app.get('/api/transactions', async (req, res) => {
+app.get('/api/transactions', authenticateToken, async (req, res) => {
   try {
     const { type, accountName, hubRole, limit } = req.query;
     const query = {};
@@ -727,7 +1030,7 @@ app.get('/api/transactions', async (req, res) => {
   }
 });
 
-app.post('/api/transactions', async (req, res) => {
+app.post('/api/transactions', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
     const {
       date,
@@ -781,7 +1084,7 @@ app.post('/api/transactions', async (req, res) => {
   }
 });
 
-app.put('/api/transactions/:id', async (req, res) => {
+app.put('/api/transactions/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
     const oldTx = await Transaction.findById(req.params.id);
     if (!oldTx) return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
@@ -843,7 +1146,7 @@ app.put('/api/transactions/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/transactions/:id', async (req, res) => {
+app.delete('/api/transactions/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
     const tx = await Transaction.findById(req.params.id);
     if (!tx) return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
@@ -868,7 +1171,7 @@ app.delete('/api/transactions/:id', async (req, res) => {
 });
 
 // ==================== 1. TÀI KHOẢN NGÂN HÀNG & TIỀN MẶT (CRUD) ====================
-app.get('/api/accounts', async (req, res) => {
+app.get('/api/accounts', authenticateToken, async (req, res) => {
   try {
     const accounts = await Account.find().sort({ type: 1, name: 1 });
     res.json({ success: true, accounts });
@@ -877,7 +1180,7 @@ app.get('/api/accounts', async (req, res) => {
   }
 });
 
-app.post('/api/accounts', async (req, res) => {
+app.post('/api/accounts', authenticateToken, requirePermission('manageAccounts'), async (req, res) => {
   try {
     const { name, type, balance, accountNumber, hubRole, note } = req.body;
     if (!name || !name.trim()) {
@@ -897,7 +1200,7 @@ app.post('/api/accounts', async (req, res) => {
   }
 });
 
-app.put('/api/accounts/:id', async (req, res) => {
+app.put('/api/accounts/:id', authenticateToken, requirePermission('manageAccounts'), async (req, res) => {
   try {
     const { name, type, balance, accountNumber, hubRole, note } = req.body;
     const updateData = {};
@@ -916,7 +1219,7 @@ app.put('/api/accounts/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/accounts/:id', async (req, res) => {
+app.delete('/api/accounts/:id', authenticateToken, requirePermission('manageAccounts'), async (req, res) => {
   try {
     const acc = await Account.findByIdAndDelete(req.params.id);
     if (!acc) return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
@@ -927,7 +1230,7 @@ app.delete('/api/accounts/:id', async (req, res) => {
 });
 
 // ==================== 2. HŨ TIỀN HÀNG NỢ TỪNG NCC (CRUD) ====================
-app.get('/api/supplier-debts', async (req, res) => {
+app.get('/api/supplier-debts', authenticateToken, async (req, res) => {
   try {
     const list = await SupplierDebt.find().sort({ remainingAmount: -1, createdAt: -1 });
     res.json({ success: true, suppliers: list });
@@ -936,7 +1239,7 @@ app.get('/api/supplier-debts', async (req, res) => {
   }
 });
 
-app.post('/api/supplier-debts', async (req, res) => {
+app.post('/api/supplier-debts', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
     const { supplierName, remainingAmount, phone, bankInfo, notes } = req.body;
     if (!supplierName || !supplierName.trim()) {
@@ -956,7 +1259,7 @@ app.post('/api/supplier-debts', async (req, res) => {
   }
 });
 
-app.put('/api/supplier-debts/:id', async (req, res) => {
+app.put('/api/supplier-debts/:id', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
     const { supplierName, remainingAmount, phone, bankInfo, notes } = req.body;
     const updateData = {};
@@ -977,7 +1280,7 @@ app.put('/api/supplier-debts/:id', async (req, res) => {
   }
 });
 
-app.post('/api/supplier-debts/:id/pay', async (req, res) => {
+app.post('/api/supplier-debts/:id/pay', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
     const { amount } = req.body;
     const payAmt = Number(amount);
@@ -1002,7 +1305,7 @@ app.post('/api/supplier-debts/:id/pay', async (req, res) => {
   }
 });
 
-app.post('/api/supplier-debts/batch-pay-all', async (req, res) => {
+app.post('/api/supplier-debts/batch-pay-all', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
     await SupplierDebt.updateMany({}, { $set: { remainingAmount: 0 } });
     await ServiceOrder.updateMany({}, { $set: { supplierPaid: true } });
@@ -1012,7 +1315,7 @@ app.post('/api/supplier-debts/batch-pay-all', async (req, res) => {
   }
 });
 
-app.delete('/api/supplier-debts/:id', async (req, res) => {
+app.delete('/api/supplier-debts/:id', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
     const sup = await SupplierDebt.findByIdAndDelete(req.params.id);
     if (!sup) return res.status(404).json({ success: false, message: 'Không tìm thấy NCC' });
@@ -1023,7 +1326,7 @@ app.delete('/api/supplier-debts/:id', async (req, res) => {
 });
 
 // ==================== 3. LỊCH NHẮC DÒNG TIỀN (CRUD) ====================
-app.get('/api/reminders', async (req, res) => {
+app.get('/api/reminders', authenticateToken, async (req, res) => {
   try {
     const reminders = await CashflowReminder.find().sort({ date: 1, createdAt: 1 });
     res.json({ success: true, reminders });
@@ -1032,7 +1335,7 @@ app.get('/api/reminders', async (req, res) => {
   }
 });
 
-app.post('/api/reminders', async (req, res) => {
+app.post('/api/reminders', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
     const { date, title, amount, type, hubRole, notes } = req.body;
     if (!title || !title.trim()) {
@@ -1052,7 +1355,7 @@ app.post('/api/reminders', async (req, res) => {
   }
 });
 
-app.put('/api/reminders/:id', async (req, res) => {
+app.put('/api/reminders/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
     const { date, title, amount, type, hubRole, status, notes } = req.body;
     const updateData = {};
@@ -1072,7 +1375,7 @@ app.put('/api/reminders/:id', async (req, res) => {
   }
 });
 
-app.patch('/api/reminders/:id/toggle-status', async (req, res) => {
+app.patch('/api/reminders/:id/toggle-status', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
     const rem = await CashflowReminder.findById(req.params.id);
     if (!rem) return res.status(404).json({ success: false, message: 'Không tìm thấy dòng nhắc' });
@@ -1084,7 +1387,7 @@ app.patch('/api/reminders/:id/toggle-status', async (req, res) => {
   }
 });
 
-app.delete('/api/reminders/:id', async (req, res) => {
+app.delete('/api/reminders/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
     const rem = await CashflowReminder.findByIdAndDelete(req.params.id);
     if (!rem) return res.status(404).json({ success: false, message: 'Không tìm thấy dòng nhắc' });
@@ -1095,7 +1398,7 @@ app.delete('/api/reminders/:id', async (req, res) => {
 });
 
 // ==================== 4. SỔ NỢ 2 CHIỀU (CRUD) ====================
-app.get('/api/debts', async (req, res) => {
+app.get('/api/debts', authenticateToken, async (req, res) => {
   try {
     const debts = await Debt.find().sort({ dueDate: 1 });
     res.json({ success: true, debts });
@@ -1104,7 +1407,7 @@ app.get('/api/debts', async (req, res) => {
   }
 });
 
-app.post('/api/debts', async (req, res) => {
+app.post('/api/debts', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
     const { personName, amount, type, dueDate, note } = req.body;
     if (!personName || !personName.trim()) {
@@ -1123,7 +1426,7 @@ app.post('/api/debts', async (req, res) => {
   }
 });
 
-app.put('/api/debts/:id', async (req, res) => {
+app.put('/api/debts/:id', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
     const { personName, amount, type, dueDate, note, status } = req.body;
     const updateData = {};
@@ -1142,7 +1445,7 @@ app.put('/api/debts/:id', async (req, res) => {
   }
 });
 
-app.patch('/api/debts/:id/toggle-status', async (req, res) => {
+app.patch('/api/debts/:id/toggle-status', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
     const debt = await Debt.findById(req.params.id);
     if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản nợ' });
@@ -1154,7 +1457,7 @@ app.patch('/api/debts/:id/toggle-status', async (req, res) => {
   }
 });
 
-app.delete('/api/debts/:id', async (req, res) => {
+app.delete('/api/debts/:id', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
     const debt = await Debt.findByIdAndDelete(req.params.id);
     if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản nợ' });
@@ -1165,7 +1468,7 @@ app.delete('/api/debts/:id', async (req, res) => {
 });
 
 // ==================== 5. ĐƠN DỊCH VỤ / BÁN DẤU CRUD ====================
-app.post('/api/service-orders', async (req, res) => {
+app.post('/api/service-orders', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
     const { customerName, serviceName, costPrice, salePrice, supplierKey, supplierName, customerPaid, supplierPaid, note } = req.body;
     const order = await ServiceOrder.create({
@@ -1198,7 +1501,7 @@ app.post('/api/service-orders', async (req, res) => {
   }
 });
 
-app.put('/api/service-orders/:id', async (req, res) => {
+app.put('/api/service-orders/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
     const { customerName, serviceName, costPrice, salePrice, supplierName, customerPaid, supplierPaid, note } = req.body;
     const order = await ServiceOrder.findByIdAndUpdate(
@@ -1223,7 +1526,7 @@ app.put('/api/service-orders/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/service-orders/:id', async (req, res) => {
+app.delete('/api/service-orders/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
     const order = await ServiceOrder.findByIdAndDelete(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
@@ -1234,7 +1537,7 @@ app.delete('/api/service-orders/:id', async (req, res) => {
 });
 
 // ==================== 6. BỮA ĂN NHÓM & QUỸ GIA ĐÌNH CRUD ====================
-app.post('/api/dining/bill', async (req, res) => {
+app.post('/api/dining/bill', authenticateToken, async (req, res) => {
   try {
     const {
       date,
@@ -1250,13 +1553,19 @@ app.post('/api/dining/bill', async (req, res) => {
       notes
     } = req.body;
 
+    const targetCat = category === 'family' ? 'family' : 'work';
+    const requiredPerm = targetCat === 'family' ? 'manageDiningFamily' : 'manageDiningWork';
+    if (!req.user.isAdmin && !(req.user.permissions && req.user.permissions[requiredPerm])) {
+      return res.status(403).json({ success: false, message: `Bạn không có quyền quản lý ${targetCat === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
+    }
+
     const numTotal = Number(totalBill) || 0;
     const shouldDeduct = deductFromAccount !== false;
 
     const bill = await DiningLedger.create({
       date: date || new Date().toISOString().slice(0, 10),
       mealTitle: mealTitle || 'Bữa ăn nhóm',
-      category: category === 'family' ? 'family' : 'work',
+      category: targetCat,
       totalBill: numTotal,
       myShare: Number(myShare) || 0,
       splitMode: splitMode || 'equal',
@@ -1278,10 +1587,16 @@ app.post('/api/dining/bill', async (req, res) => {
   }
 });
 
-app.put('/api/dining/bill/:id', async (req, res) => {
+app.put('/api/dining/bill/:id', authenticateToken, async (req, res) => {
   try {
     const oldBill = await DiningLedger.findById(req.params.id);
     if (!oldBill) return res.status(404).json({ success: false, message: 'Không tìm thấy hóa đơn' });
+
+    const targetCat = (req.body.category || oldBill.category) === 'family' ? 'family' : 'work';
+    const requiredPerm = targetCat === 'family' ? 'manageDiningFamily' : 'manageDiningWork';
+    if (!req.user.isAdmin && !(req.user.permissions && req.user.permissions[requiredPerm])) {
+      return res.status(403).json({ success: false, message: `Bạn không có quyền quản lý ${targetCat === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
+    }
 
     // Hoàn tác số tiền cũ
     if (oldBill.deductFromAccount && oldBill.paidAccount && oldBill.totalBill > 0) {
@@ -1330,10 +1645,15 @@ app.put('/api/dining/bill/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/dining/bill/:id', async (req, res) => {
+app.delete('/api/dining/bill/:id', authenticateToken, async (req, res) => {
   try {
     const bill = await DiningLedger.findById(req.params.id);
     if (!bill) return res.status(404).json({ success: false, message: 'Không tìm thấy bữa ăn' });
+
+    const requiredPerm = bill.category === 'family' ? 'manageDiningFamily' : 'manageDiningWork';
+    if (!req.user.isAdmin && !(req.user.permissions && req.user.permissions[requiredPerm])) {
+      return res.status(403).json({ success: false, message: `Bạn không có quyền quản lý ${bill.category === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
+    }
 
     // Hoàn lại tiền ngân hàng nếu đã trừ
     if (bill.deductFromAccount && bill.paidAccount && bill.totalBill > 0) {
@@ -1348,9 +1668,15 @@ app.delete('/api/dining/bill/:id', async (req, res) => {
 });
 
 // ==================== 7. NẠP / TRẢ TIỀN ĂN (SETTLEMENTS CRUD) ====================
-app.post('/api/dining/settlement', async (req, res) => {
+app.post('/api/dining/settlement', authenticateToken, async (req, res) => {
   try {
     const { personName, amount, direction, category, note, date, topupKind, accountName, addToAccount } = req.body;
+    const targetCat = category === 'family' ? 'family' : 'work';
+    const requiredPerm = targetCat === 'family' ? 'manageDiningFamily' : 'manageDiningWork';
+    if (!req.user.isAdmin && !(req.user.permissions && req.user.permissions[requiredPerm])) {
+      return res.status(403).json({ success: false, message: `Bạn không có quyền quản lý ${targetCat === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
+    }
+
     const pKey = normalizeKey(personName);
     const numAmount = Number(amount) || 0;
     const shouldAdd = addToAccount !== false;
@@ -1358,7 +1684,7 @@ app.post('/api/dining/settlement', async (req, res) => {
     const settlement = await DiningSettlement.create({
       personKey: pKey,
       personName,
-      category: category === 'family' ? 'family' : 'work',
+      category: targetCat,
       amount: numAmount,
       direction: direction === 'out' ? 'out' : 'in',
       topupKind: topupKind || (direction === 'out' ? 'borrow' : 'prepaid'),
@@ -1380,10 +1706,16 @@ app.post('/api/dining/settlement', async (req, res) => {
   }
 });
 
-app.put('/api/dining/settlement/:id', async (req, res) => {
+app.put('/api/dining/settlement/:id', authenticateToken, async (req, res) => {
   try {
     const oldS = await DiningSettlement.findById(req.params.id);
     if (!oldS) return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
+
+    const targetCat = (req.body.category || oldS.category) === 'family' ? 'family' : 'work';
+    const requiredPerm = targetCat === 'family' ? 'manageDiningFamily' : 'manageDiningWork';
+    if (!req.user.isAdmin && !(req.user.permissions && req.user.permissions[requiredPerm])) {
+      return res.status(403).json({ success: false, message: `Bạn không có quyền quản lý ${targetCat === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
+    }
 
     // Hoàn tác tiền cũ
     if (oldS.addToAccount && oldS.accountName && oldS.amount > 0) {
@@ -1421,10 +1753,15 @@ app.put('/api/dining/settlement/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/dining/settlement/:id', async (req, res) => {
+app.delete('/api/dining/settlement/:id', authenticateToken, async (req, res) => {
   try {
     const s = await DiningSettlement.findById(req.params.id);
     if (!s) return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
+
+    const requiredPerm = s.category === 'family' ? 'manageDiningFamily' : 'manageDiningWork';
+    if (!req.user.isAdmin && !(req.user.permissions && req.user.permissions[requiredPerm])) {
+      return res.status(403).json({ success: false, message: `Bạn không có quyền quản lý ${s.category === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
+    }
 
     // Hoàn tác tiền ngân hàng
     if (s.addToAccount && s.accountName && s.amount > 0) {
@@ -1446,8 +1783,11 @@ app.delete('/api/dining/settlement/:id', async (req, res) => {
 });
 
 // ==================== CẤN TRỪ SỐ DƯ LIÊN QUỸ (KHÔNG CẦN CHUYỂN KHOẢN) ====================
-app.post('/api/dining/transfer-balance', async (req, res) => {
+app.post('/api/dining/transfer-balance', authenticateToken, async (req, res) => {
   try {
+    if (!req.user.isAdmin && !(req.user.permissions && (req.user.permissions.manageDiningWork || req.user.permissions.manageDiningFamily))) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền thực hiện cấn trừ số dư liên quỹ' });
+    }
     const { personName, fromCategory, toCategory, amount, date, note } = req.body;
     if (!personName || !personName.trim()) {
       return res.status(400).json({ success: false, message: 'Vui lòng chọn thành viên cần cấn trừ số dư' });
@@ -1517,11 +1857,15 @@ app.post('/api/dining/transfer-balance', async (req, res) => {
 });
 
 // ==================== 8. THÀNH VIÊN SỔ ĂN & GIA ĐÌNH ====================
-app.post('/api/dining/member', async (req, res) => {
+app.post('/api/dining/member', authenticateToken, async (req, res) => {
   try {
     const { name, openingBalance, group, phone, note } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'Thiếu tên người' });
     const targetGroup = group === 'family' ? 'family' : 'work';
+    const reqPerm = targetGroup === 'family' ? 'manageDiningFamily' : 'manageDiningWork';
+    if (!req.user.isAdmin && !(req.user.permissions && req.user.permissions[reqPerm])) {
+      return res.status(403).json({ success: false, message: `Bạn không có quyền quản lý ${targetGroup === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
+    }
     const pKey = normalizeKey(name);
     const existing = await DiningMember.findOne({ group: targetGroup, personKey: pKey });
     if (existing) {
@@ -1541,13 +1885,18 @@ app.post('/api/dining/member', async (req, res) => {
   }
 });
 
-app.put('/api/dining/member/:id', async (req, res) => {
+app.put('/api/dining/member/:id', authenticateToken, async (req, res) => {
   try {
     const { name, openingBalance, group, phone, note } = req.body;
     const member = await DiningMember.findById(req.params.id);
     if (!member) return res.status(404).json({ success: false, message: 'Không tìm thấy người này' });
 
     const targetGroup = group !== undefined ? (group === 'family' ? 'family' : 'work') : member.group;
+    const reqPerm = targetGroup === 'family' ? 'manageDiningFamily' : 'manageDiningWork';
+    if (!req.user.isAdmin && !(req.user.permissions && req.user.permissions[reqPerm])) {
+      return res.status(403).json({ success: false, message: `Bạn không có quyền quản lý ${targetGroup === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
+    }
+
     const targetName = name && name.trim() ? name.trim() : member.name;
     const targetKey = normalizeKey(targetName);
 
@@ -1575,10 +1924,17 @@ app.put('/api/dining/member/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/dining/member/:id', async (req, res) => {
+app.delete('/api/dining/member/:id', authenticateToken, async (req, res) => {
   try {
-    const member = await DiningMember.findByIdAndDelete(req.params.id);
+    const member = await DiningMember.findById(req.params.id);
     if (!member) return res.status(404).json({ success: false, message: 'Không tìm thấy thành viên' });
+
+    const reqPerm = member.group === 'family' ? 'manageDiningFamily' : 'manageDiningWork';
+    if (!req.user.isAdmin && !(req.user.permissions && req.user.permissions[reqPerm])) {
+      return res.status(403).json({ success: false, message: `Bạn không có quyền quản lý ${member.group === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
+    }
+
+    await member.deleteOne();
     res.json({ success: true, message: 'Đã xóa thành viên' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -1586,7 +1942,7 @@ app.delete('/api/dining/member/:id', async (req, res) => {
 });
 
 // ==================== 8.5. SỔ CHI TIÊU CÁ NHÂN & TIẾT KIỆM (HUB 4 CRUD) ====================
-app.post('/api/personal/expense', async (req, res) => {
+app.post('/api/personal/expense', authenticateToken, requirePermission('managePersonalHub'), async (req, res) => {
   try {
     const { title, category, type, amount, cycle, dueDay, status, paidAccount, deductFromAccount, notes, paidDate } = req.body;
     if (!title || !title.trim()) return res.status(400).json({ success: false, message: 'Thiếu tên khoản chi / hóa đơn' });
@@ -1617,7 +1973,7 @@ app.post('/api/personal/expense', async (req, res) => {
   }
 });
 
-app.put('/api/personal/expense/:id', async (req, res) => {
+app.put('/api/personal/expense/:id', authenticateToken, requirePermission('managePersonalHub'), async (req, res) => {
   try {
     const item = await PersonalExpense.findById(req.params.id);
     if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản chi cá nhân' });
@@ -1649,7 +2005,7 @@ app.put('/api/personal/expense/:id', async (req, res) => {
   }
 });
 
-app.put('/api/personal/expense/:id/toggle', async (req, res) => {
+app.put('/api/personal/expense/:id/toggle', authenticateToken, requirePermission('managePersonalHub'), async (req, res) => {
   try {
     const item = await PersonalExpense.findById(req.params.id);
     if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản chi' });
@@ -1675,7 +2031,7 @@ app.put('/api/personal/expense/:id/toggle', async (req, res) => {
   }
 });
 
-app.delete('/api/personal/expense/:id', async (req, res) => {
+app.delete('/api/personal/expense/:id', authenticateToken, requirePermission('managePersonalHub'), async (req, res) => {
   try {
     const item = await PersonalExpense.findById(req.params.id);
     if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản chi' });
@@ -1690,7 +2046,7 @@ app.delete('/api/personal/expense/:id', async (req, res) => {
   }
 });
 
-app.post('/api/personal/config', async (req, res) => {
+app.post('/api/personal/config', authenticateToken, requirePermission('managePersonalHub'), async (req, res) => {
   try {
     const { hub4MonthlyBudget, savingsRate, weeklyLimit } = req.body;
     const config = await Config.findOneAndUpdate(
@@ -1709,7 +2065,7 @@ app.post('/api/personal/config', async (req, res) => {
 });
 
 // ==================== 9. CẤU HÌNH HỆ THỐNG & RESET ====================
-app.post('/api/config', async (req, res) => {
+app.post('/api/config', authenticateToken, requirePermission('manageConfig'), async (req, res) => {
   try {
     const { weeklyLimit, initialCash } = req.body;
     const config = await Config.findOneAndUpdate(
