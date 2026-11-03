@@ -314,8 +314,14 @@ function cashFlowApp() {
       userEdit: false,
       changePassword: false,
       correctionRequest: false,
-      correctionList: false
+      correctionList: false,
+      memberStatement: false
     },
+
+    // Sao kê & lịch sử thu chi từng thành viên (Member Statements)
+    selectedMemberStatement: null,
+    memberStatementHistory: [],
+    memberStatementFilter: 'all',
 
     // Quản lý yêu cầu chỉnh sửa sổ quỹ (Correction Requests)
     correctionRequests: {
@@ -2001,6 +2007,130 @@ function cashFlowApp() {
       } catch (err) {
         alert('Lỗi: ' + err.message);
       }
+    },
+
+    // ==================== LỊCH SỬ THU CHI & SAO KÊ CHI TIẾT TỪNG NGƯỜI ====================
+    openMemberStatement(member) {
+      if (!member) return;
+      this.selectedMemberStatement = member;
+      this.memberStatementFilter = 'all';
+
+      const rawKey = member.personKey || normalizeMemberName(member.name);
+      const targetGroup = member.group || this.diningCategory || 'work';
+
+      // Lấy danh sách hóa đơn và nạp tiền
+      let allBills = [];
+      let allSettlements = [];
+      if (targetGroup === 'work') {
+        allBills = this.dashboard.card4_dining?.work?.bills || [];
+        allSettlements = this.dashboard.card4_dining?.work?.settlements || [];
+      } else if (targetGroup === 'family') {
+        allBills = this.dashboard.card4_dining?.family?.bills || [];
+        allSettlements = this.dashboard.card4_dining?.family?.settlements || [];
+      } else {
+        const wBills = this.dashboard.card4_dining?.work?.bills || [];
+        const fBills = this.dashboard.card4_dining?.family?.bills || [];
+        allBills = [...wBills, ...fBills];
+        const wSet = this.dashboard.card4_dining?.work?.settlements || [];
+        const fSet = this.dashboard.card4_dining?.family?.settlements || [];
+        allSettlements = [...wSet, ...fSet];
+      }
+
+      const events = [];
+
+      // 1. Số dư đầu kỳ
+      events.push({
+        id: 'opening_' + (member.id || member._id || rawKey),
+        date: 'Đầu kỳ',
+        isoDate: '1970-01-01',
+        type: 'opening',
+        typeLabel: '🏁 Số dư đầu kỳ',
+        title: 'Số dư chốt bàn giao ban đầu',
+        amount: member.openingBalance || 0,
+        direction: (member.openingBalance || 0) >= 0 ? 'in' : 'out',
+        note: 'Số dư bàn giao sổ',
+        accountName: ''
+      });
+
+      // 2. Các giao dịch Nạp (+) / Mượn (-) / Cấn trừ (⇄)
+      allSettlements.forEach(s => {
+        const sKey = s.personKey || normalizeMemberName(s.personName);
+        const sGroup = s.category || 'work';
+        if (sKey === rawKey && (targetGroup === 'all' || sGroup === targetGroup)) {
+          const isTopup = s.direction === 'in';
+          const isTransfer = Boolean(s.transferRef);
+          events.push({
+            id: s._id,
+            date: s.date,
+            isoDate: s.date || s.createdAt || '1970-01-01',
+            type: isTransfer ? 'transfer' : (isTopup ? 'topup' : 'borrow'),
+            typeLabel: isTransfer ? '⇄ Cấn trừ 2 sổ' : (isTopup ? '💰 Nạp tiền vào quỹ' : '💸 Mượn tiền quỹ'),
+            title: isTransfer ? (s.note || 'Cấn trừ số dư 2 sổ') : (isTopup ? 'Nạp tiền vào quỹ' : 'Mượn tiền từ quỹ'),
+            amount: s.amount || 0,
+            direction: isTopup ? 'in' : 'out',
+            note: s.note || '',
+            accountName: s.accountName || ''
+          });
+        }
+      });
+
+      // 3. Các bữa ăn đã tham gia (Ăn -)
+      allBills.forEach(b => {
+        const bGroup = b.category || 'work';
+        if (targetGroup !== 'all' && bGroup !== targetGroup) return;
+        (b.splits || []).forEach(sp => {
+          if (sp.isMe || normalizeMemberName(sp.personName) === 'toi') return;
+          const spKey = sp.personKey || normalizeMemberName(sp.personName);
+          if (spKey === rawKey && (sp.amount || 0) > 0) {
+            events.push({
+              id: b._id + '_' + spKey,
+              billId: b._id,
+              date: b.date,
+              isoDate: b.date || b.createdAt || '1970-01-01',
+              type: 'meal',
+              typeLabel: '🍜 Tiền ăn bữa trưa',
+              title: b.mealTitle || 'Bữa ăn chung',
+              amount: sp.amount || 0,
+              direction: 'out',
+              note: b.notes || (b.category === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'),
+              accountName: b.paidAccount || ''
+            });
+          }
+        });
+      });
+
+      // Sắp xếp thời gian tăng dần để tính số dư lũy kế
+      events.sort((a, b) => {
+        if (a.type === 'opening') return -1;
+        if (b.type === 'opening') return 1;
+        return (a.isoDate || '').localeCompare(b.isoDate || '');
+      });
+
+      // Tính số dư lũy kế (Running Balance) sau mỗi giao dịch
+      let running = 0;
+      events.forEach((ev) => {
+        if (ev.type === 'opening') {
+          running = ev.amount;
+        } else if (ev.direction === 'in') {
+          running += ev.amount;
+        } else {
+          running -= ev.amount;
+        }
+        ev.balanceAfter = running;
+      });
+
+      // Đảo ngược danh sách để hiển thị giao dịch mới nhất lên đầu (cho tiện theo dõi)
+      this.memberStatementHistory = [...events].reverse();
+      this.modals.memberStatement = true;
+    },
+
+    get filteredMemberStatementHistory() {
+      if (this.memberStatementFilter === 'all') return this.memberStatementHistory;
+      if (this.memberStatementFilter === 'meals') return this.memberStatementHistory.filter(e => e.type === 'meal');
+      if (this.memberStatementFilter === 'topups') return this.memberStatementHistory.filter(e => e.type === 'topup');
+      if (this.memberStatementFilter === 'borrow') return this.memberStatementHistory.filter(e => e.type === 'borrow');
+      if (this.memberStatementFilter === 'transfer') return this.memberStatementHistory.filter(e => e.type === 'transfer');
+      return this.memberStatementHistory;
     },
 
     // ==================== 9. CẤU HÌNH HỆ THỐNG ====================

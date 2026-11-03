@@ -1159,11 +1159,14 @@
 
                       <!-- Họ & Tên -->
                       <td class="py-2.5 px-3 border-r border-slate-200 whitespace-nowrap">
-                        <div class="flex items-center gap-1.5">
-                          <span class="font-bold text-slate-900 text-[13px]" x-text="m.name"></span>
+                        <div class="flex items-center gap-1.5 cursor-pointer group select-none"
+                             @click="openMemberStatement(m)"
+                             title="Bấm để xem lịch sử thu chi &amp; sao kê chi tiết của thành viên này">
+                          <span class="font-bold text-slate-900 group-hover:text-emerald-700 group-hover:underline text-[13px]" x-text="m.name"></span>
                           <span class="px-1.5 py-0.5 rounded text-[10px] font-medium"
                                 :class="m.group === 'family' ? 'bg-amber-100 text-amber-800' : 'bg-indigo-50 text-indigo-700'"
                                 x-text="m.group === 'family' ? 'Gia đình' : 'Đồng nghiệp'"></span>
+                          <i class="fa-solid fa-receipt text-[10px] text-slate-300 group-hover:text-emerald-600 transition"></i>
                         </div>
                       </td>
 
@@ -1184,9 +1187,12 @@
                           x-text="(m.eaten > 0 ? '-' : '') + formatVND(m.eaten || 0)"></td>
 
                       <!-- Số Dư Hiện Tại -->
-                      <td class="py-2.5 px-3 text-right font-mono font-bold border-r border-slate-200"
-                          :class="m.currentBalance > 0 ? 'text-emerald-700 bg-emerald-50/40' : (m.currentBalance < 0 ? 'text-rose-600 bg-rose-50/40' : 'text-slate-500')"
-                          x-text="formatVND(m.currentBalance || 0)"></td>
+                      <td class="py-2.5 px-3 text-right font-mono font-bold border-r border-slate-200 cursor-pointer group"
+                          @click="openMemberStatement(m)"
+                          title="Bấm để xem chi tiết biến động số dư"
+                          :class="m.currentBalance > 0 ? 'text-emerald-700 bg-emerald-50/40 hover:bg-emerald-100/50' : (m.currentBalance < 0 ? 'text-rose-600 bg-rose-50/40 hover:bg-rose-100/50' : 'text-slate-500 hover:bg-slate-100')">
+                        <span class="group-hover:underline" x-text="formatVND(m.currentBalance || 0)"></span>
+                      </td>
 
                       <!-- Trạng Thái -->
                       <td class="py-2.5 px-3 text-center border-r border-slate-200 whitespace-nowrap">
@@ -1200,44 +1206,55 @@
 
                       <!-- Thao Tác -->
                       <td class="py-2 px-3 text-center whitespace-nowrap">
-                        <!-- Quản lý (Admin, Staff) -->
-                        <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
-                             class="inline-flex items-center gap-1">
-                          <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'in'; modals.settlement = true"
-                                  title="Nạp thêm tiền vào quỹ"
-                                  class="px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold transition border border-emerald-200">
-                            + Nạp
+                        <div class="inline-flex items-center gap-1">
+                          <!-- Nút Xem Lịch Sử (Ai cũng được xem) -->
+                          <button type="button" @click="openMemberStatement(m)"
+                                  title="Xem lịch sử thu chi &amp; sao kê chi tiết của người này"
+                                  class="px-2 py-0.5 rounded bg-sky-50 hover:bg-sky-100 text-sky-700 text-[11px] font-semibold transition border border-sky-200 flex items-center gap-1">
+                            <i class="fa-solid fa-clock-rotate-left text-[10px]"></i>
+                            <span>Lịch Sử</span>
                           </button>
-                          <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'out'; modals.settlement = true"
-                                  title="Mượn tiền quỹ"
-                                  class="px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 text-[11px] font-semibold transition border border-amber-200">
-                            Mượn
-                          </button>
-                          <button type="button" x-show="isDualMember(m.name)"
-                                  @click="openTransferModal(m.name, m.group)"
-                                  title="Cấn trừ / Chuyển số dư giữa 2 sổ"
-                                  class="px-2 py-0.5 rounded bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-semibold transition border border-purple-200">
-                            ⇄ Chuyển
-                          </button>
-                          <button type="button" @click="openMemberModal(m)"
-                                  title="Sửa đầu kỳ / tên"
-                                  class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs hover:bg-slate-100 transition">
-                            <i class="fa-solid fa-pen"></i>
-                          </button>
-                          <button type="button" @click="deleteMember(m.id || m._id, m.name)"
-                                  title="Xóa thành viên"
-                                  class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs hover:bg-rose-50 transition">
-                            <i class="fa-solid fa-trash-can"></i>
-                          </button>
-                        </div>
 
-                        <!-- Khách (Chỉ xem) -->
-                        <div x-show="!currentUser?.isAdmin && !currentUser?.permissions?.manageDiningWork && !currentUser?.permissions?.manageDiningFamily && currentUser?.permissions?.viewDining">
-                          <button type="button" @click="openNewCorrectionModal(m.group, 'Số dư thành viên: ' + m.name, m.currentBalance)"
-                                  class="px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold transition border border-sky-200 flex items-center gap-1 mx-auto">
-                            <i class="fa-solid fa-flag text-[9px]"></i>
-                            <span>Báo Sai</span>
-                          </button>
+                          <!-- Quản lý (Admin, Staff) -->
+                          <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
+                               class="inline-flex items-center gap-1">
+                            <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'in'; modals.settlement = true"
+                                    title="Nạp thêm tiền vào quỹ"
+                                    class="px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold transition border border-emerald-200">
+                              + Nạp
+                            </button>
+                            <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'out'; modals.settlement = true"
+                                    title="Mượn tiền quỹ"
+                                    class="px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 text-[11px] font-semibold transition border border-amber-200">
+                              Mượn
+                            </button>
+                            <button type="button" x-show="isDualMember(m.name)"
+                                    @click="openTransferModal(m.name, m.group)"
+                                    title="Cấn trừ / Chuyển số dư giữa 2 sổ"
+                                    class="px-2 py-0.5 rounded bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-semibold transition border border-purple-200">
+                              ⇄ Chuyển
+                            </button>
+                            <button type="button" @click="openMemberModal(m)"
+                                    title="Sửa đầu kỳ / tên"
+                                    class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs hover:bg-slate-100 transition">
+                              <i class="fa-solid fa-pen"></i>
+                            </button>
+                            <button type="button" @click="deleteMember(m.id || m._id, m.name)"
+                                    title="Xóa thành viên"
+                                    class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs hover:bg-rose-50 transition">
+                              <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                          </div>
+
+                          <!-- Khách (Chỉ xem): Nút Báo Sai -->
+                          <div x-show="!currentUser?.isAdmin && !currentUser?.permissions?.manageDiningWork && !currentUser?.permissions?.manageDiningFamily && currentUser?.permissions?.viewDining">
+                            <button type="button" @click="openNewCorrectionModal(m.group, 'Số dư thành viên: ' + m.name, m.currentBalance)"
+                                    class="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-amber-50 hover:text-amber-800 text-slate-600 text-[11px] font-semibold transition border border-slate-200 flex items-center gap-1"
+                                    title="Báo cáo sai sót số dư người này">
+                              <i class="fa-solid fa-flag text-[9px]"></i>
+                              <span>Báo Sai</span>
+                            </button>
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -1270,12 +1287,17 @@
                   <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-center gap-1.5">
                       <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-600 font-mono text-[11px] font-bold flex items-center justify-center shrink-0" x-text="idx + 1"></span>
-                      <strong class="text-sm font-bold text-slate-900" x-text="m.name"></strong>
+                      <strong class="text-sm font-bold text-slate-900 cursor-pointer hover:text-emerald-700 hover:underline flex items-center gap-1"
+                              @click="openMemberStatement(m)"
+                              title="Bấm để xem lịch sử thu chi &amp; sao kê chi tiết">
+                        <span x-text="m.name"></span>
+                        <i class="fa-solid fa-receipt text-[10px] text-slate-300"></i>
+                      </strong>
                       <span class="px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap"
                             :class="m.group === 'family' ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700'"
                             x-text="m.group === 'family' ? 'Gia đình' : 'Đồng nghiệp'"></span>
                     </div>
-                    <div class="flex items-center gap-1.5 mt-1">
+                    <div class="flex items-center gap-1.5 mt-1 cursor-pointer" @click="openMemberStatement(m)">
                       <span class="w-2 h-2 rounded-full shrink-0" :class="m.currentBalance >= 0 ? 'bg-emerald-500' : 'bg-rose-500'"></span>
                       <strong class="text-xs font-bold"
                               :class="m.currentBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'"
@@ -1284,28 +1306,49 @@
                   </div>
 
                   <div class="flex flex-wrap items-center gap-1 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
-                    <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'in'; modals.settlement = true" title="Nạp tiền"
-                            class="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition">
-                      + Nạp
+                    <button type="button" @click="openMemberStatement(m)" title="Xem sao kê thu chi chi tiết"
+                            class="px-2 py-1 rounded-md bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold transition border border-sky-200 flex items-center gap-1">
+                      <i class="fa-solid fa-clock-rotate-left text-[10px]"></i>
+                      <span>Lịch Sử</span>
                     </button>
-                    <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'out'; modals.settlement = true" title="Mượn tiền"
-                            class="px-2 py-1 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-semibold transition">
-                      Mượn
-                    </button>
-                    <button type="button" x-show="isDualMember(m.name)"
-                            @click="openTransferModal(m.name, m.group)"
-                            title="Cấn trừ / Chuyển số dư giữa 2 sổ"
-                            class="px-2 py-1 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold transition">
-                      ⇄ Chuyển
-                    </button>
-                    <button type="button" @click="openMemberModal(m)" title="Sửa"
-                            class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs">
-                      <i class="fa-solid fa-pen"></i>
-                    </button>
-                    <button type="button" @click="deleteMember(m.id || m._id, m.name)" title="Xoá"
-                            class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs">
-                      <i class="fa-solid fa-trash-can"></i>
-                    </button>
+
+                    <!-- Quản lý (Admin, Staff) -->
+                    <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
+                         class="flex flex-wrap items-center gap-1">
+                      <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'in'; modals.settlement = true" title="Nạp tiền"
+                              class="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition">
+                        + Nạp
+                      </button>
+                      <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'out'; modals.settlement = true" title="Mượn tiền"
+                              class="px-2 py-1 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-semibold transition">
+                        Mượn
+                      </button>
+                      <button type="button" x-show="isDualMember(m.name)"
+                              @click="openTransferModal(m.name, m.group)"
+                              title="Cấn trừ / Chuyển số dư giữa 2 sổ"
+                              class="px-2 py-1 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold transition">
+                        ⇄ Chuyển
+                      </button>
+                      <button type="button" @click="openMemberModal(m)" title="Sửa"
+                              class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs">
+                        <i class="fa-solid fa-pen"></i>
+                      </button>
+                      <button type="button" @click="deleteMember(m.id || m._id, m.name)" title="Xoá"
+                              class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs">
+                        <i class="fa-solid fa-trash-can"></i>
+                      </button>
+                    </div>
+
+                    <!-- Khách (Chỉ xem) -->
+                    <div x-show="!currentUser?.isAdmin && !currentUser?.permissions?.manageDiningWork && !currentUser?.permissions?.manageDiningFamily && currentUser?.permissions?.viewDining"
+                         class="flex items-center gap-1">
+                      <button type="button" @click="openNewCorrectionModal(m.group, 'Số dư thành viên: ' + m.name, m.currentBalance)"
+                              class="px-2 py-1 rounded-md bg-slate-100 hover:bg-amber-50 hover:text-amber-800 text-slate-600 text-xs font-semibold transition border border-slate-200 flex items-center gap-1"
+                              title="Báo cáo sai sót số dư người này">
+                        <i class="fa-solid fa-flag text-[9px]"></i>
+                        <span>Báo Sai</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -3468,6 +3511,194 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL: LỊCH SỬ THU CHI & SAO KÊ CHI TIẾT TỪNG THÀNH VIÊN -->
+  <div x-show="modals.memberStatement" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div @click.away="modals.memberStatement = false"
+         class="bg-white rounded-2xl max-w-3xl w-full p-4 sm:p-6 shadow-2xl border border-slate-100 max-h-[92vh] flex flex-col">
+      
+      <!-- Header -->
+      <div class="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-3.5 gap-2">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-10 h-10 rounded-xl bg-slate-900 text-emerald-400 font-extrabold text-base flex items-center justify-center shrink-0 shadow-sm">
+            <span x-text="(selectedMemberStatement?.name || 'M').charAt(0).toUpperCase()"></span>
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <h3 class="text-base font-extrabold text-slate-900 truncate" x-text="selectedMemberStatement?.name"></h3>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold"
+                    :class="selectedMemberStatement?.group === 'family' ? 'bg-amber-100 text-amber-800' : 'bg-indigo-100 text-indigo-800'"
+                    x-text="selectedMemberStatement?.group === 'family' ? '🏡 Quỹ Gia Đình' : '🍜 Quỹ Ăn Đồng Nghiệp'"></span>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                    :class="selectedMemberStatement?.currentBalance > 0 ? 'bg-emerald-100 text-emerald-800' : (selectedMemberStatement?.currentBalance < 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-600')"
+                    x-text="selectedMemberStatement?.currentBalance > 0 ? 'Còn quỹ' : (selectedMemberStatement?.currentBalance < 0 ? 'Đang nợ' : 'Hòa')"></span>
+            </div>
+            <p class="text-xs text-slate-400 mt-0.5">Sổ chi tiết thu chi, các bữa ăn đã tham gia và lịch sử nạp/mượn quỹ</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+          <!-- Member Switcher Dropdown inside modal for quick switching -->
+          <select @change="openMemberStatement(filteredMembers.find(m => ((m.group || '') + '_' + (m.personKey || m.name)) === $event.target.value))"
+                  class="hidden sm:block px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 focus:outline-none cursor-pointer">
+            <template x-for="mem in filteredMembers" :key="(mem.group || '') + '_' + (mem.personKey || mem.name)">
+              <option :value="(mem.group || '') + '_' + (mem.personKey || mem.name)"
+                      :selected="mem.name === selectedMemberStatement?.name && mem.group === selectedMemberStatement?.group"
+                      x-text="mem.name + ' (' + (mem.currentBalance >= 0 ? '+' : '') + formatMoney(mem.currentBalance) + ')'"></option>
+            </template>
+          </select>
+
+          <button @click="modals.memberStatement = false" class="text-slate-400 hover:text-slate-600 text-lg p-1.5 rounded-lg hover:bg-slate-100 transition">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Member Financial Summary (5 KPI Boxes) -->
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3.5 text-xs">
+        <!-- 1. Dư Đầu Kỳ -->
+        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70">
+          <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Dư Đầu Kỳ</span>
+          <strong class="font-mono text-xs sm:text-sm font-bold text-slate-700 block mt-0.5" x-text="formatVND(selectedMemberStatement?.openingBalance || 0)"></strong>
+        </div>
+
+        <!-- 2. Nạp Thêm (+) -->
+        <div class="p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-100">
+          <span class="text-[10px] font-semibold text-emerald-800 uppercase tracking-wider block">Đã Nạp (+)</span>
+          <strong class="font-mono text-xs sm:text-sm font-bold text-emerald-700 block mt-0.5" x-text="'+' + formatVND(selectedMemberStatement?.topups || 0)"></strong>
+        </div>
+
+        <!-- 3. Mượn Quỹ (-) -->
+        <div class="p-2.5 rounded-xl bg-amber-50/60 border border-amber-100">
+          <span class="text-[10px] font-semibold text-amber-800 uppercase tracking-wider block">Đã Mượn (-)</span>
+          <strong class="font-mono text-xs sm:text-sm font-bold text-amber-700 block mt-0.5" x-text="'-' + formatVND(selectedMemberStatement?.borrowed || 0)"></strong>
+        </div>
+
+        <!-- 4. Đã Ăn (-) -->
+        <div class="p-2.5 rounded-xl bg-rose-50/60 border border-rose-100">
+          <span class="text-[10px] font-semibold text-rose-800 uppercase tracking-wider block">Tiền Ăn (<span x-text="selectedMemberStatement?.mealCount || 0"></span> bữa)</span>
+          <strong class="font-mono text-xs sm:text-sm font-bold text-rose-600 block mt-0.5" x-text="'-' + formatVND(selectedMemberStatement?.eaten || 0)"></strong>
+        </div>
+
+        <!-- 5. Số Dư Hiện Tại -->
+        <div class="col-span-2 sm:col-span-1 p-2.5 rounded-xl border"
+             :class="selectedMemberStatement?.currentBalance > 0 ? 'bg-emerald-50 border-emerald-200' : (selectedMemberStatement?.currentBalance < 0 ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200')">
+          <span class="text-[10px] font-bold uppercase tracking-wider block"
+                :class="selectedMemberStatement?.currentBalance > 0 ? 'text-emerald-800' : (selectedMemberStatement?.currentBalance < 0 ? 'text-rose-800' : 'text-slate-600')">
+            Số Dư Thực Tế
+          </span>
+          <strong class="font-mono text-xs sm:text-sm font-extrabold block mt-0.5"
+                  :class="selectedMemberStatement?.currentBalance > 0 ? 'text-emerald-700' : (selectedMemberStatement?.currentBalance < 0 ? 'text-rose-600' : 'text-slate-800')"
+                  x-text="formatVND(selectedMemberStatement?.currentBalance || 0)"></strong>
+        </div>
+      </div>
+
+      <!-- Filter Tabs by Transaction Type -->
+      <div class="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-100 text-xs">
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <button @click="memberStatementFilter = 'all'"
+                  :class="memberStatementFilter === 'all' ? 'bg-slate-900 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                  class="px-2.5 py-1 rounded-lg transition whitespace-nowrap">Tất cả (<span x-text="memberStatementHistory.length"></span>)</button>
+          <button @click="memberStatementFilter = 'meals'"
+                  :class="memberStatementFilter === 'meals' ? 'bg-rose-600 text-white font-bold' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'"
+                  class="px-2.5 py-1 rounded-lg transition whitespace-nowrap">🍜 Tiền ăn (<span x-text="memberStatementHistory.filter(e => e.type === 'meal').length"></span>)</button>
+          <button @click="memberStatementFilter = 'topups'"
+                  :class="memberStatementFilter === 'topups' ? 'bg-emerald-600 text-white font-bold' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'"
+                  class="px-2.5 py-1 rounded-lg transition whitespace-nowrap">💰 Nạp tiền (<span x-text="memberStatementHistory.filter(e => e.type === 'topup').length"></span>)</button>
+          <button @click="memberStatementFilter = 'borrow'"
+                  :class="memberStatementFilter === 'borrow' ? 'bg-amber-600 text-white font-bold' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'"
+                  class="px-2.5 py-1 rounded-lg transition whitespace-nowrap">💸 Mượn quỹ (<span x-text="memberStatementHistory.filter(e => e.type === 'borrow').length"></span>)</button>
+          <button @click="memberStatementFilter = 'transfer'"
+                  :class="memberStatementFilter === 'transfer' ? 'bg-purple-600 text-white font-bold' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'"
+                  class="px-2.5 py-1 rounded-lg transition whitespace-nowrap">⇄ Cấn trừ (<span x-text="memberStatementHistory.filter(e => e.type === 'transfer').length"></span>)</button>
+        </div>
+      </div>
+
+      <!-- Transactions Statement List / Table -->
+      <div class="overflow-y-auto space-y-2 pr-1 flex-1 text-xs">
+        <template x-for="item in filteredMemberStatementHistory" :key="item.id">
+          <div class="p-3 rounded-xl border border-slate-200/80 hover:border-slate-300 bg-white transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-2xs">
+            <!-- Left Info -->
+            <div class="flex items-start gap-2.5 min-w-0 flex-1">
+              <div class="w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0 mt-0.5 sm:mt-0 font-bold"
+                   :class="{
+                     'bg-rose-50 text-rose-600': item.type === 'meal',
+                     'bg-emerald-50 text-emerald-600': item.type === 'topup',
+                     'bg-amber-50 text-amber-600': item.type === 'borrow',
+                     'bg-purple-50 text-purple-600': item.type === 'transfer',
+                     'bg-slate-100 text-slate-700': item.type === 'opening'
+                   }">
+                <i :class="{
+                  'fa-solid fa-bowl-rice': item.type === 'meal',
+                  'fa-solid fa-arrow-down': item.type === 'topup',
+                  'fa-solid fa-arrow-up': item.type === 'borrow',
+                  'fa-solid fa-arrow-right-arrow-left': item.type === 'transfer',
+                  'fa-solid fa-flag-checkered': item.type === 'opening'
+                }"></i>
+              </div>
+
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="px-1.5 py-0.5 rounded font-mono text-[10px] font-bold bg-slate-100 text-slate-700 whitespace-nowrap"
+                        x-text="item.date === 'Đầu kỳ' ? 'Đầu kỳ' : formatDate(item.date)"></span>
+                  <strong class="font-bold text-slate-900" x-text="item.title"></strong>
+                  <span x-show="item.accountName" class="px-1.5 py-0.2 rounded text-[10px] font-mono bg-slate-100 text-slate-600" x-text="item.accountName"></span>
+                </div>
+                <p x-show="item.note" class="text-[11px] text-slate-400 mt-0.5 truncate" x-text="item.note"></p>
+              </div>
+            </div>
+
+            <!-- Right Amount & Balance After -->
+            <div class="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
+              <!-- Phát sinh -->
+              <div class="text-left sm:text-right">
+                <span class="text-[10px] text-slate-400 block font-normal">Phát sinh:</span>
+                <strong class="font-mono text-xs sm:text-sm font-bold"
+                        :class="item.type === 'opening' ? 'text-slate-800' : (item.direction === 'in' ? 'text-emerald-600' : 'text-rose-600')"
+                        x-text="(item.type === 'opening' ? '' : (item.direction === 'in' ? '+' : '-')) + formatVND(Math.abs(item.amount))"></strong>
+              </div>
+
+              <!-- Số dư lũy kế -->
+              <div class="text-right border-l border-slate-100 pl-3 min-w-[95px]">
+                <span class="text-[10px] text-slate-400 block font-normal">Số dư còn lại:</span>
+                <strong class="font-mono text-xs sm:text-sm font-extrabold"
+                        :class="item.balanceAfter > 0 ? 'text-emerald-700' : (item.balanceAfter < 0 ? 'text-rose-600' : 'text-slate-600')"
+                        x-text="formatVND(item.balanceAfter)"></strong>
+              </div>
+
+              <!-- Nút báo sai nếu thấy bất thường -->
+              <div class="border-l border-slate-100 pl-2">
+                <button type="button" @click="openNewCorrectionModal(selectedMemberStatement?.group, item.title + ' (' + formatDate(item.date) + ')', Math.abs(item.amount))"
+                        class="p-1.5 rounded-lg border border-slate-200 hover:border-amber-300 hover:bg-amber-50 text-slate-400 hover:text-amber-700 transition"
+                        title="Báo cáo sai sót khoản này">
+                  <i class="fa-solid fa-flag text-[10px]"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <div x-show="filteredMemberStatementHistory.length === 0" class="py-12 text-center text-slate-400">
+          <i class="fa-solid fa-receipt text-3xl mb-2 block opacity-30"></i>
+          <span>Không có giao dịch nào phù hợp với bộ lọc.</span>
+        </div>
+      </div>
+
+      <!-- Footer Buttons -->
+      <div class="pt-3 border-t border-slate-100 flex items-center justify-between mt-2">
+        <span class="text-xs text-slate-400">Dữ liệu đối chiếu tự động từ các hóa đơn và lịch sử nạp quỹ</span>
+        <button type="button" @click="modals.memberStatement = false"
+                class="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition">Đóng</button>
+      </div>
     </div>
   </div>
 
