@@ -325,7 +325,7 @@
       <!-- ==================================================================== -->
       <!-- TAB 1: TỔNG QUAN (EXECUTIVE DASHBOARD)                               -->
       <!-- ==================================================================== -->
-      <div x-show="activeTab === 'overview'" class="space-y-6">
+      <div x-show="activeTab === 'overview' && (currentUser?.isAdmin || currentUser?.permissions?.viewOverview)" class="space-y-6">
 
         <!-- 1. HERO METRIC CARDS (4 CARDS) -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -753,7 +753,7 @@
       <!-- ==================================================================== -->
       <!-- TAB 2: SỔ GIAO DỊCH THU / CHI (TRANSACTIONS LEDGER WORKSPACE)       -->
       <!-- ==================================================================== -->
-      <div x-show="activeTab === 'transactions'" class="space-y-5">
+      <div x-show="activeTab === 'transactions' && (currentUser?.isAdmin || currentUser?.permissions?.manageTransactions)" class="space-y-5">
         
         <div class="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/80 shadow-card space-y-5">
           
@@ -922,7 +922,7 @@
       <!-- ==================================================================== -->
       <!-- TAB 3: SỔ QUỸ ĂN & GIA ĐÌNH (DINING & FAMILY FUND WORKSPACE)        -->
       <!-- ==================================================================== -->
-      <div x-show="activeTab === 'dining'" class="space-y-5">
+      <div x-show="activeTab === 'dining' && (currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily)" class="space-y-5">
         
         <div class="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/80 shadow-card space-y-5">
           
@@ -1369,7 +1369,7 @@
       <!-- ==================================================================== -->
       <!-- TAB 4: CÔNG NỢ & NHÀ CUNG CẤP (DEBTS & SUPPLIERS WORKSPACE)         -->
       <!-- ==================================================================== -->
-      <div x-show="activeTab === 'debts'" class="space-y-6">
+      <div x-show="activeTab === 'debts' && (currentUser?.isAdmin || currentUser?.permissions?.manageDebts)" class="space-y-6">
         
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -1511,7 +1511,7 @@
       <!-- ==================================================================== -->
       <!-- TAB 5: SỔ CHI TIÊU CÁ NHÂN & TIẾT KIỆM (HUB 4 WORKSPACE)            -->
       <!-- ==================================================================== -->
-      <div x-show="activeTab === 'personal'" class="space-y-6">
+      <div x-show="activeTab === 'personal' && (currentUser?.isAdmin || currentUser?.permissions?.managePersonalHub)" class="space-y-6">
         
         <div class="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/80 shadow-card space-y-6">
           

@@ -326,6 +326,7 @@ function cashFlowApp() {
           if (data.success && data.user) {
             this.currentUser = data.user;
             this.isLoggedIn = true;
+            this.ensureValidActiveTab();
             await this.fetchDashboard();
           } else {
             this.logout(false);
@@ -336,6 +337,46 @@ function cashFlowApp() {
       } else {
         this.isLoggedIn = false;
         this.loading = false;
+      }
+    },
+
+    ensureValidActiveTab() {
+      if (!this.currentUser) return;
+      const p = this.currentUser.permissions || {};
+      const isAdmin = Boolean(this.currentUser.isAdmin);
+
+      if (isAdmin) return;
+
+      const isAllowed = {
+        overview: Boolean(p.viewOverview),
+        transactions: Boolean(p.manageTransactions),
+        dining: Boolean(p.manageDiningWork || p.manageDiningFamily),
+        personal: Boolean(p.managePersonalHub),
+        debts: Boolean(p.manageDebts)
+      };
+
+      // Nếu tab hiện tại không được phép xem -> tự động chuyển sang tab đầu tiên được phép
+      if (!isAllowed[this.activeTab]) {
+        if (isAllowed.dining) {
+          this.activeTab = 'dining';
+        } else if (isAllowed.transactions) {
+          this.activeTab = 'transactions';
+        } else if (isAllowed.personal) {
+          this.activeTab = 'personal';
+        } else if (isAllowed.debts) {
+          this.activeTab = 'debts';
+        } else if (isAllowed.overview) {
+          this.activeTab = 'overview';
+        }
+      }
+
+      // Tự động chọn đúng phân hệ trong sổ ăn nếu chỉ có quyền 1 bên
+      if (this.activeTab === 'dining') {
+        if (p.manageDiningFamily && !p.manageDiningWork) {
+          this.diningCategory = 'family';
+        } else if (p.manageDiningWork && !p.manageDiningFamily) {
+          this.diningCategory = 'work';
+        }
       }
     },
 
@@ -377,6 +418,7 @@ function cashFlowApp() {
           localStorage.setItem('cfo_token', data.token);
           this.currentUser = data.user;
           this.isLoggedIn = true;
+          this.ensureValidActiveTab();
           this.loginForm.password = '';
           this.loginForm.error = '';
           this.notify(`Xin chào, ${data.user.fullName}!`);
@@ -502,7 +544,7 @@ function cashFlowApp() {
         p.manageUsers = false;
         p.manageConfig = false;
       } else if (roleType === 'colleague') {
-        p.viewOverview = true;
+        p.viewOverview = false;
         p.manageAccounts = false;
         p.manageTransactions = false;
         p.manageDiningWork = true;
@@ -512,7 +554,7 @@ function cashFlowApp() {
         p.manageUsers = false;
         p.manageConfig = false;
       } else if (roleType === 'family') {
-        p.viewOverview = true;
+        p.viewOverview = false;
         p.manageAccounts = false;
         p.manageTransactions = false;
         p.manageDiningWork = false;
@@ -522,7 +564,7 @@ function cashFlowApp() {
         p.manageUsers = false;
         p.manageConfig = false;
       } else if (roleType === 'partner') {
-        p.viewOverview = true;
+        p.viewOverview = false;
         p.manageAccounts = false;
         p.manageTransactions = false;
         p.manageDiningWork = false;
@@ -813,6 +855,10 @@ function cashFlowApp() {
         if (data.success) {
           this.error = null;
           this.dashboard = data;
+          if (data.currentUser) {
+            this.currentUser = data.currentUser;
+          }
+          this.ensureValidActiveTab();
           this.configForm.weeklyLimit = data.config.weeklyLimit;
           if (data.card4_personal_hub) {
             this.personalConfigForm.hub4MonthlyBudget = data.card4_personal_hub.monthlyBudget || 6000000;
