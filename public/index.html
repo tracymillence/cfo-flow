@@ -1,10 +1,13 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="vi" class="h-full bg-slate-50 font-sans">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>CFO Flow - Quản Lý Dòng Tiền &amp; Tài Chính Cá Nhân</title>
+  <title>CFO Flow - Quản Lý Dòng Tiền &amp; Sổ Quỹ Cá Nhân</title>
   
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💎</text></svg>">
+
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -13,48 +16,45 @@
         extend: {
           colors: {
             navy: {
-              DEFAULT: '#1E293B',
-              50: '#F8FAFC',
-              100: '#F1F5F9',
-              600: '#334155',
-              700: '#1E293B',
-              800: '#0F172A',
-              900: '#020617'
+              DEFAULT: '#0F172A',
+              800: '#1E293B',
+              900: '#0F172A',
             },
             mint: {
               DEFAULT: '#10B981',
               50: '#ECFDF5',
               100: '#D1FAE5',
+              500: '#10B981',
               600: '#059669',
-              700: '#047857'
+              700: '#047857',
+              800: '#065F46',
             }
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+            mono: ['SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'monospace'],
           }
         }
       }
     }
   </script>
 
-  <!-- FontAwesome 6 CDN -->
+  <!-- FontAwesome 6 -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <!-- Google Fonts Inter -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 
-  <!-- Alpine.js 3 CDN -->
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+  <!-- Alpine.js 3 -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
 
   <style>
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      background-color: #F8FAFC;
-      color: #0F172A;
-    }
-    .font-mono {
-      font-family: 'JetBrains Mono', monospace;
-    }
     [x-cloak] { display: none !important; }
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type=number] {
+      -moz-appearance: textfield;
+    }
   </style>
 </head>
 <body x-data="cashFlowApp()" class="min-h-screen flex flex-col antialiased selection:bg-slate-200">
@@ -86,6 +86,11 @@
 
       <!-- Action Buttons -->
       <div class="flex items-center gap-2">
+        <button type="button" @click="openTransactionModal()"
+                class="px-3 py-1.5 rounded-xl bg-navy-800 hover:bg-navy-900 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+          <i class="fa-solid fa-plus text-[10px]"></i>
+          <span>+ Giao Dịch</span>
+        </button>
         <button type="button" @click="openAccountModal()"
                 class="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs">
           <i class="fa-solid fa-building-columns text-indigo-500 text-[11px]"></i>
@@ -144,149 +149,73 @@
 
       <!-- ==================== BANNER: 4 TÀI KHOẢN DÒNG TIỀN CỐT LÕI ==================== -->
       <section class="rounded-2xl bg-gradient-to-r from-navy-800 to-slate-900 p-5 text-white shadow-sm space-y-4">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700/60 pb-3">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="w-2.5 h-2.5 rounded-full bg-mint animate-pulse"></span>
-              <h2 class="text-sm font-bold tracking-wide uppercase">Hệ Thống Tách Biệt 4 Tài Khoản Tài Chính Cốt Lõi</h2>
-            </div>
-            <p class="text-xs text-slate-300 mt-0.5">Phân bổ dòng tiền minh bạch • Không lẫn lộn tiền nhà, tiền ăn hộ, tiền NCC và tiền túi</p>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-700/60 pb-3">
+          <div class="flex items-center gap-2.5">
+            <div class="w-2.5 h-2.5 rounded-full bg-mint animate-pulse"></div>
+            <h2 class="text-sm font-bold uppercase tracking-wider text-slate-200">
+              Quy Trình 4 Tài Khoản Dòng Tiền Độc Lập
+            </h2>
           </div>
-          <div class="flex items-center gap-2">
-            <button type="button" @click="openAccountModal()"
-                    class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xs transition flex items-center gap-1.5">
-              <i class="fa-solid fa-plus text-[10px]"></i>
-              <span>Thêm Ngân Hàng / Ví</span>
-            </button>
-          </div>
+          <span class="text-[11px] text-slate-400">Kiểm soát dòng tiền thông minh • Không lẫn lộn quỹ</span>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <!-- Hub 1: Thu nhập & Kinh doanh -->
-          <div class="p-3.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition flex flex-col justify-between">
-            <div>
-              <div class="flex items-center justify-between text-xs font-bold text-emerald-400">
-                <span>1. HUB THU NHẬP</span>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <!-- Hub 1: Thu Nhập & Kinh Doanh -->
+          <div class="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-indigo-300 text-[11px] flex items-center gap-1.5">
                 <i class="fa-solid fa-briefcase"></i>
-              </div>
-              <p class="text-[11px] text-slate-300 mt-1">Lương, Tip, Bán dấu &amp; DV</p>
-              <div class="text-lg font-extrabold font-mono text-white mt-2"
-                   x-text="formatVND(dashboard.accounts.hubs.hub1_income ? dashboard.accounts.hubs.hub1_income.balance : 0)"></div>
+                <span>1. HUB KINH DOANH</span>
+              </span>
+              <span class="px-1.5 py-0.2 rounded text-[10px] bg-indigo-950/80 text-indigo-300 font-mono">Hub Chính</span>
             </div>
-            <div class="mt-2 pt-2 border-t border-white/10 text-[10px] text-slate-300">
-              Quy tắc: Tách vốn trả NCC ngay khi thu khách
-            </div>
+            <p class="text-[11px] text-slate-400">Nhận lương, tip, tiền bán dịch vụ. Tách ngay tiền vốn NCC vào Hũ tiền hàng.</p>
+            <div class="pt-1 text-sm font-extrabold font-mono text-white"
+                 x-text="formatVND(dashboard.accounts.hubs?.hub1_income?.balance || 0)"></div>
           </div>
 
-          <!-- Hub 2: Quỹ Ứng tiền Ăn -->
-          <div class="p-3.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition flex flex-col justify-between">
-            <div>
-              <div class="flex items-center justify-between text-xs font-bold text-amber-400">
+          <!-- Hub 2: Quỹ Ứng Ăn Nhóm -->
+          <div class="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-mint-400 text-[11px] flex items-center gap-1.5">
+                <i class="fa-solid fa-bowl-rice"></i>
                 <span>2. QUỸ ỨNG ĂN NHÓM</span>
-                <i class="fa-solid fa-utensils"></i>
-              </div>
-              <p class="text-[11px] text-slate-300 mt-1">Vốn lưu động 2 - 3tr trả hộ</p>
-              <div class="text-lg font-extrabold font-mono text-white mt-2"
-                   x-text="formatVND(dashboard.accounts.hubs.hub2_dining ? dashboard.accounts.hubs.hub2_dining.balance : 0)"></div>
+              </span>
+              <span class="px-1.5 py-0.2 rounded text-[10px] bg-emerald-950/80 text-mint-400 font-mono">Vốn 2-3tr</span>
             </div>
-            <div class="mt-2 pt-2 border-t border-white/10 text-[10px] text-slate-300">
-              Quy tắc: Trả hộ/thu lại chỉ quét đúng tài khoản này
-            </div>
+            <p class="text-[11px] text-slate-400">Chỉ dùng tài khoản này trả hộ ăn trưa &amp; nhận đồng nghiệp chuyển trả.</p>
+            <div class="pt-1 text-sm font-extrabold font-mono text-white"
+                 x-text="formatVND(dashboard.accounts.hubs?.hub2_dining?.balance || 0)"></div>
           </div>
 
           <!-- Hub 3: Quỹ Gia Đình -->
-          <div class="p-3.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition flex flex-col justify-between">
-            <div>
-              <div class="flex items-center justify-between text-xs font-bold text-sky-400">
+          <div class="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-amber-300 text-[11px] flex items-center gap-1.5">
+                <i class="fa-solid fa-people-roof"></i>
                 <span>3. QUỸ GIA ĐÌNH (6 NGƯỜI)</span>
-                <i class="fa-solid fa-house"></i>
-              </div>
-              <p class="text-[11px] text-slate-300 mt-1">Điện nước, đồ dùng, ăn uống</p>
-              <div class="text-lg font-extrabold font-mono text-white mt-2"
-                   x-text="formatVND(dashboard.accounts.hubs.hub3_family ? dashboard.accounts.hubs.hub3_family.balance : 0)"></div>
+              </span>
+              <span class="px-1.5 py-0.2 rounded text-[10px] bg-amber-950/80 text-amber-300 font-mono">Cố định tháng</span>
             </div>
-            <div class="mt-2 pt-2 border-t border-white/10 text-[10px] text-slate-300">
-              Quy tắc: Trích khoản CỐ ĐỊNH đầu tháng từ Hub 1
-            </div>
+            <p class="text-[11px] text-slate-400">Trích đầu tháng từ Hub chính. Chi tiền điện nước, đồ gia đình &amp; ăn uống chung.</p>
+            <div class="pt-1 text-sm font-extrabold font-mono text-white"
+                 x-text="formatVND(dashboard.accounts.hubs?.hub3_family?.balance || 0)"></div>
           </div>
 
-          <!-- Hub 4: Chi Tiêu Cá Nhân & Tiết Kiệm -->
-          <div class="p-3.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition flex flex-col justify-between">
-            <div>
-              <div class="flex items-center justify-between text-xs font-bold text-pink-400">
+          <!-- Hub 4: Chi Tiêu Cá Nhân -->
+          <div class="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-purple-300 text-[11px] flex items-center gap-1.5">
+                <i class="fa-solid fa-wallet"></i>
                 <span>4. CÁ NHÂN &amp; TIẾT KIỆM</span>
-                <i class="fa-solid fa-heart"></i>
-              </div>
-              <p class="text-[11px] text-slate-300 mt-1">Tiền nhà, tiêu vặt 2 người</p>
-              <div class="text-lg font-extrabold font-mono text-white mt-2"
-                   x-text="formatVND(dashboard.accounts.hubs.hub4_personal ? dashboard.accounts.hubs.hub4_personal.balance : 0)"></div>
+              </span>
+              <span class="px-1.5 py-0.2 rounded text-[10px] bg-purple-950/80 text-purple-300 font-mono">Hạn mức tuần</span>
             </div>
-            <div class="mt-2 pt-2 border-t border-white/10 text-[10px] text-slate-300">
-              Quy tắc: Trích 10-15% tiết kiệm • Tiêu theo tuần 1.5tr
-            </div>
+            <p class="text-[11px] text-slate-400">Trích 10-15% tiết kiệm trước. Tiêu hết hạn mức tuần (1.5tr) là dừng.</p>
+            <div class="pt-1 text-sm font-extrabold font-mono text-white"
+                 x-text="formatVND(dashboard.accounts.hubs?.hub4_personal?.balance || 0)"></div>
           </div>
         </div>
-      </section>
-
-      <!-- ==================== NHẬP / CHỈNH SỬA ĐƠN DỊCH VỤ ==================== -->
-      <section class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm space-y-3"
-               :class="editingOrderId ? 'ring-2 ring-indigo-500/40 bg-indigo-50/20' : ''">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <div class="w-2.5 h-2.5 rounded-full" :class="editingOrderId ? 'bg-indigo-600 animate-pulse' : 'bg-mint'"></div>
-            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700"
-                x-text="editingOrderId ? 'Chỉnh Sửa Đơn Hàng Dịch Vụ' : 'Nhập Đơn Dịch Vụ Mới (Reset pass thuế / Khắc dấu)'"></h2>
-          </div>
-          <div class="flex items-center gap-2">
-            <button type="button" x-show="editingOrderId" @click="cancelEditServiceOrder()"
-                    class="text-[11px] text-red-600 hover:underline font-semibold">
-              <i class="fa-solid fa-xmark mr-0.5"></i> Huỷ Chỉnh Sửa
-            </button>
-            <span class="text-[11px] text-slate-400 font-medium hidden sm:inline">Tự tách Hũ NCC &amp; Lợi nhuận</span>
-          </div>
-        </div>
-
-        <form @submit.prevent="submitServiceOrder()" class="space-y-3">
-          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-            <div class="md:col-span-1">
-              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Khách hàng / Công ty</label>
-              <input type="text" x-model="serviceForm.customerName" placeholder="VD: Chị Vy ChipZB" required
-                     class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
-            </div>
-
-            <div class="md:col-span-1">
-              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Loại dịch vụ</label>
-              <select x-model="serviceForm.serviceType"
-                      class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none bg-white">
-                <option value="Reset pass thuế">Reset pass thuế</option>
-                <option value="Bán dấu / Khắc dấu">Bán dấu / Khắc dấu</option>
-                <option value="Chữ ký số">Chữ ký số</option>
-                <option value="Dịch vụ khác">Dịch vụ khác</option>
-              </select>
-            </div>
-
-            <div class="md:col-span-1">
-              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Giá vốn NCC (đ)</label>
-              <input type="number" x-model.number="serviceForm.costPrice" placeholder="420000" required
-                     class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
-            </div>
-
-            <div class="md:col-span-1">
-              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Giá bán thu khách (đ)</label>
-              <input type="number" x-model.number="serviceForm.salePrice" placeholder="600000" required
-                     class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
-            </div>
-
-            <div class="md:col-span-1 flex items-end">
-              <button type="submit"
-                      class="w-full py-2.5 px-3 rounded-xl text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1.5"
-                      :class="editingOrderId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-navy-800 hover:bg-navy-900'">
-                <i :class="editingOrderId ? 'fa-solid fa-check' : 'fa-solid fa-plus'" class="text-[11px]"></i>
-                <span x-text="editingOrderId ? 'Cập Nhật Đơn' : 'Thêm Đơn DV'"></span>
-              </button>
-            </div>
-          </div>
-        </form>
       </section>
 
       <!-- ==================== 5 MAIN DASHBOARD CARDS ==================== -->
@@ -320,58 +249,76 @@
                 <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">TỔNG TIỀN THỰC TẾ HIỆN CÓ:</span>
                 <div class="text-2xl font-extrabold font-mono text-navy-800 mt-1"
                      x-text="formatVND(dashboard.accounts.totalCash)"></div>
-                <p class="text-[11px] text-slate-400 mt-0.5">Tổng cộng từ tất cả ngân hàng, ví và tiền mặt</p>
+                <p class="text-[11px] text-slate-500 mt-1">Cộng dồn từ tất cả ngân hàng, ví MoMo và ví tiền mặt</p>
               </div>
 
-              <div class="p-3.5 rounded-xl bg-mint-50/70 border border-mint-200">
-                <span class="text-[11px] font-bold text-mint-800 uppercase tracking-wider">TIỀN KHẢ DỤNG (ĐÃ TRỪ HŨ NCC):</span>
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">TIỀN THỰC SỰ KHẢ DỤNG:</span>
                 <div class="text-2xl font-extrabold font-mono mt-1"
                      :class="dashboard.card1_cash.spendableCash >= 0 ? 'text-mint-700' : 'text-red-600'"
                      x-text="formatVND(dashboard.card1_cash.spendableCash)"></div>
-                <p class="text-[11px] text-mint-700 mt-0.5">Đã bảo vệ Hũ tiền hàng <span class="font-mono font-bold" x-text="formatVND(dashboard.supplierPot.totalAmount)"></span></p>
+                <p class="text-[11px] text-slate-500 mt-1">
+                  = Tổng tiền mặt - <strong class="text-amber-600 font-mono" x-text="formatVND(dashboard.card1_cash.supplierPot)"></strong> (Hũ nợ NCC)
+                </p>
               </div>
             </div>
 
-            <!-- Danh sách từng tài khoản thực tế -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-              <template x-for="acc in dashboard.accounts.list" :key="acc._id">
-                <div class="p-3.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition shadow-2xs space-y-2 group">
-                  <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                      <div class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold"
-                           :class="acc.type === 'bank' ? 'bg-indigo-50 text-indigo-600' : (acc.type === 'ewallet' ? 'bg-pink-50 text-pink-600' : 'bg-amber-50 text-amber-600')">
-                        <i :class="acc.type === 'bank' ? 'fa-solid fa-building-columns' : (acc.type === 'ewallet' ? 'fa-solid fa-wallet' : 'fa-solid fa-money-bill-1')"></i>
-                      </div>
-                      <div>
-                        <strong class="text-xs font-bold text-navy-800" x-text="acc.name"></strong>
-                        <p class="text-[10px] text-slate-400" x-text="acc.accountNumber || (acc.type === 'bank' ? 'Ngân hàng' : (acc.type === 'ewallet' ? 'Ví điện tử' : 'Tiền mặt'))"></p>
-                      </div>
-                    </div>
+            <!-- Danh sách từng tài khoản ngân hàng & tiền mặt -->
+            <div class="space-y-2.5 pt-1">
+              <div class="flex items-center justify-between text-xs font-bold text-slate-600 px-1">
+                <span>Tài khoản / Ngân hàng</span>
+                <span>Số dư thực tế</span>
+              </div>
 
-                    <!-- Thao tác Sửa / Xoá -->
-                    <div class="flex items-center gap-1">
-                      <button type="button" @click="quickUpdateBalance(acc)" title="Sửa nhanh số tiền"
-                              class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs transition">
-                        <i class="fa-solid fa-pen text-[10px]"></i>
-                      </button>
-                      <button type="button" @click="openAccountModal(acc)" title="Sửa chi tiết"
-                              class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-400 hover:text-navy-800 text-xs transition">
-                        <i class="fa-solid fa-gear text-[10px]"></i>
-                      </button>
-                      <button type="button" @click="deleteAccount(acc._id, acc.name)" title="Xoá tài khoản"
-                              class="p-1.5 rounded-lg border border-slate-200 hover:bg-red-50 text-slate-400 hover:text-red-600 text-xs transition">
-                        <i class="fa-solid fa-trash-can text-[10px]"></i>
-                      </button>
+              <template x-for="acc in dashboard.accounts.list" :key="acc._id">
+                <div class="p-3 rounded-xl border border-slate-200 hover:border-slate-300 bg-white transition shadow-2xs flex items-center justify-between gap-3 group">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs"
+                         :class="{
+                           'bg-indigo-50 text-indigo-600': acc.type === 'bank',
+                           'bg-pink-50 text-pink-600': acc.type === 'ewallet',
+                           'bg-emerald-50 text-emerald-600': acc.type === 'cash'
+                         }">
+                      <i :class="{
+                        'fa-solid fa-building-columns': acc.type === 'bank',
+                        'fa-solid fa-mobile-screen': acc.type === 'ewallet',
+                        'fa-solid fa-money-bill-wave': acc.type === 'cash'
+                      }"></i>
+                    </div>
+                    <div>
+                      <div class="flex items-center gap-2">
+                        <strong class="text-xs font-bold text-slate-800" x-text="acc.name"></strong>
+                        <span class="px-1.5 py-0.2 rounded text-[10px] font-medium"
+                              :class="{
+                                'bg-indigo-50 text-indigo-700': acc.hubRole === 'hub1_income',
+                                'bg-mint-50 text-mint-700': acc.hubRole === 'hub2_dining',
+                                'bg-amber-50 text-amber-700': acc.hubRole === 'hub3_family',
+                                'bg-purple-50 text-purple-700': acc.hubRole === 'hub4_personal'
+                              }"
+                              x-text="acc.hubRole === 'hub1_income' ? 'Hub 1' : (acc.hubRole === 'hub2_dining' ? 'Hub 2' : (acc.hubRole === 'hub3_family' ? 'Hub 3' : 'Hub 4'))"></span>
+                      </div>
+                      <p class="text-[10px] text-slate-400 font-mono mt-0.5" x-text="acc.accountNumber || acc.note || 'Số dư thực tế'"></p>
                     </div>
                   </div>
 
-                  <!-- Số tiền thực tế -->
-                  <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
-                    <span class="text-[11px] text-slate-400 font-medium">Số tiền thực tế:</span>
-                    <strong class="font-mono text-sm text-navy-800 font-extrabold cursor-pointer hover:text-indigo-600"
-                            @click="quickUpdateBalance(acc)"
-                            title="Bấm để sửa số tiền"
-                            x-text="formatVND(acc.balance)"></strong>
+                  <div class="flex items-center gap-2">
+                    <button type="button" @click="quickUpdateBalance(acc)" title="Bấm để sửa nhanh số tiền"
+                            class="text-right hover:bg-slate-50 px-2 py-1 rounded-lg transition">
+                      <strong class="text-sm font-extrabold font-mono text-navy-800 group-hover:text-indigo-600"
+                              x-text="formatVND(acc.balance)"></strong>
+                      <span class="block text-[9px] text-slate-400 font-normal">Chạm để sửa</span>
+                    </button>
+
+                    <div class="flex items-center gap-1 border-l border-slate-100 pl-2">
+                      <button type="button" @click="openAccountModal(acc)" title="Sửa thông tin"
+                              class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs">
+                        <i class="fa-solid fa-pen"></i>
+                      </button>
+                      <button type="button" @click="deleteAccount(acc._id, acc.name)" title="Xoá tài khoản"
+                              class="p-1 rounded text-slate-400 hover:text-red-600 text-xs">
+                        <i class="fa-solid fa-trash-can"></i>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </template>
@@ -379,52 +326,79 @@
           </section>
 
           <!-- ==================== CARD 2: HẠN MỨC TIÊU TUẦN ==================== -->
-          <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm flex flex-col justify-between"
-               :class="dashboard.card2_weekly.isBrake ? 'ring-2 ring-red-400' : ''">
-            <div>
-              <div class="flex items-center justify-between text-xs font-semibold mb-2">
-                <span class="text-slate-500">2. HẠN MỨC TIÊU TUẦN (VÍ TIÊU RIÊNG 2 BẠN)</span>
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold"
-                      :class="dashboard.card2_weekly.isBrake 
-                        ? 'bg-red-100 text-red-800 animate-pulse' 
-                        : (dashboard.card2_weekly.isWarning ? 'bg-amber-100 text-amber-800' : 'bg-mint-50 text-mint-700')"
-                      x-text="dashboard.card2_weekly.isBrake ? 'TỰ ĐỘNG PHANH' : (dashboard.card2_weekly.isWarning ? 'CHÚ Ý 80%' : 'AN TOÀN')"></span>
+          <section class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div class="flex items-center gap-2">
+                <i class="fa-solid fa-gauge-high text-navy-800 text-sm"></i>
+                <h3 class="text-sm font-bold text-navy-800">2. Hạn Mức Tiêu Tuần (Tuần 1 / Tháng 11)</h3>
               </div>
-              <div class="flex items-baseline gap-2">
-                <span class="text-2xl font-extrabold font-mono text-navy-800"
-                      x-text="formatVND(dashboard.card2_weekly.spent)"></span>
-                <span class="text-xs font-mono text-slate-400" x-text="'/ ' + formatVND(dashboard.card2_weekly.limit)"></span>
-              </div>
-              <p class="text-[11px] text-slate-400 mt-1">Cơm trưa cá nhân + chi sinh hoạt trong tuần (Hết hạn mức tuần thì tự nấu ăn)</p>
+              <button type="button" @click="modals.config = true" class="text-xs text-indigo-600 hover:underline font-semibold">
+                Sửa hạn mức
+              </button>
             </div>
 
             <!-- Progress Bar -->
-            <div class="mt-4">
-              <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                <div class="h-full rounded-full transition-all duration-300"
-                     :class="dashboard.card2_weekly.isBrake ? 'bg-red-500' : (dashboard.card2_weekly.isWarning ? 'bg-amber-500' : 'bg-mint')"
+            <div>
+              <div class="flex items-center justify-between text-xs font-bold mb-1.5">
+                <span class="text-slate-600">
+                  Đã tiêu tuần này: <strong class="font-mono text-navy-800" x-text="formatVND(dashboard.card2_weekly.spent)"></strong>
+                </span>
+                <span class="font-mono font-bold"
+                      :class="dashboard.card2_weekly.percent >= 100 ? 'text-red-600' : (dashboard.card2_weekly.percent >= 80 ? 'text-amber-600' : 'text-mint-700')"
+                      x-text="dashboard.card2_weekly.percent + '%'"></span>
+              </div>
+
+              <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200">
+                <div class="h-full rounded-full transition-all duration-500"
+                     :class="{
+                       'bg-mint-500': dashboard.card2_weekly.percent < 80,
+                       'bg-amber-500': dashboard.card2_weekly.percent >= 80 && dashboard.card2_weekly.percent < 100,
+                       'bg-red-500': dashboard.card2_weekly.percent >= 100
+                     }"
                      :style="'width: ' + Math.min(100, dashboard.card2_weekly.percent) + '%'"></div>
               </div>
-            </div>
-          </div>
 
-          <!-- ==================== CARD 4: SỔ QUỸ ĂN NHÓM THEO TỪNG NGƯỜI & CƠM TRƯA CÁ NHÂN ==================== -->
-          <section class="rounded-2xl bg-white border border-slate-200 p-5 sm:p-6 shadow-sm space-y-5">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+                <span>0đ</span>
+                <span>Cảnh báo: 80% (1.200.000đ)</span>
+                <span class="font-mono font-semibold" x-text="formatVND(dashboard.card2_weekly.limit)"></span>
+              </div>
+            </div>
+
+            <div class="p-3 rounded-xl border text-xs flex items-center gap-2"
+                 :class="{
+                   'bg-mint-50/60 border-mint-200 text-mint-800': dashboard.card2_weekly.percent < 80,
+                   'bg-amber-50 border-amber-200 text-amber-800': dashboard.card2_weekly.percent >= 80 && dashboard.card2_weekly.percent < 100,
+                   'bg-red-50 border-red-200 text-red-800': dashboard.card2_weekly.percent >= 100
+                 }">
+              <i class="fa-solid" :class="{
+                'fa-circle-check text-mint-600': dashboard.card2_weekly.percent < 80,
+                'fa-triangle-exclamation text-amber-600': dashboard.card2_weekly.percent >= 80 && dashboard.card2_weekly.percent < 100,
+                'fa-hand text-red-600': dashboard.card2_weekly.percent >= 100
+              }"></i>
+              <span x-show="dashboard.card2_weekly.percent < 80">Hạn mức an toàn. Hãy giữ nhịp chi tiêu này tới Chủ Nhật!</span>
+              <span x-show="dashboard.card2_weekly.percent >= 80 && dashboard.card2_weekly.percent < 100">Đã tiêu trên 80% hạn mức tuần. Cân nhắc hạn chế ăn ngoài!</span>
+              <span x-show="dashboard.card2_weekly.percent >= 100"><strong>PHANH GẤP!</strong> Đã vượt hạn mức 1.500.000đ. Bắt buộc dừng ăn ngoài / mua sắm.</span>
+            </div>
+          </section>
+
+          <!-- ==================== CARD 4: SỔ QUỸ ĂN NHÓM & QUỸ GIA ĐÌNH ==================== -->
+          <section id="dining-section" class="rounded-2xl bg-white border border-slate-200 p-5 sm:p-6 shadow-sm space-y-5">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
               <div>
                 <div class="flex items-center gap-2">
                   <span class="w-2.5 h-2.5 rounded-full bg-mint"></span>
                   <h3 class="text-base font-bold text-navy-800">4. Sổ Quỹ Ăn Nhóm Theo Từng Người &amp; Cơm Trưa Cá Nhân</h3>
                 </div>
                 <p class="text-xs text-slate-500 mt-1">
-                  Nhập số ban đầu từng người • Ăn hàng ngày tự trừ • Nạp tiền tự trừ nợ / cộng quỹ riêng
+                  Tách bạch 2 sổ quỹ: Quỹ ứng ăn nhóm (Hub 2) &amp; Quỹ gia đình (Hub 3) • Trừ tiền ngân hàng thời gian thực
                 </p>
               </div>
               <div class="flex items-center gap-2">
                 <button type="button" @click="openMemberModal()"
                         class="px-3 py-1.5 rounded-xl border border-amber-300 bg-amber-50/70 hover:bg-amber-100 text-amber-800 font-semibold text-xs transition flex items-center gap-1.5 shadow-2xs">
                   <i class="fa-solid fa-user-group text-amber-600 text-[11px]"></i>
-                  <span>Số đầu kỳ từng người</span>
+                  <span>Thành viên &amp; Đầu kỳ</span>
                 </button>
                 <div class="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700">
                   Tháng: 11 / 2026
@@ -432,59 +406,99 @@
               </div>
             </div>
 
-            <!-- 3 TOP SUMMARY BOXES -->
+            <!-- CHỌN LOẠI QUỸ (SEGMENTED PILLS) & HÀNH ĐỘNG GHI BỮA ĂN -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 p-1.5 rounded-xl bg-slate-100 border border-slate-200">
+              <div class="flex items-center gap-1">
+                <button type="button" @click="diningCategory = 'work'"
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+                        :class="diningCategory === 'work' ? 'bg-white text-navy-800 shadow-2xs' : 'text-slate-600 hover:text-navy-800'">
+                  <i class="fa-solid fa-briefcase text-[11px] text-indigo-500"></i>
+                  <span>Quỹ Ăn Nhóm Đồng Nghiệp</span>
+                </button>
+
+                <button type="button" @click="diningCategory = 'family'"
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+                        :class="diningCategory === 'family' ? 'bg-white text-navy-800 shadow-2xs' : 'text-slate-600 hover:text-navy-800'">
+                  <i class="fa-solid fa-people-roof text-[11px] text-mint-700"></i>
+                  <span>Quỹ Gia Đình (6 Người)</span>
+                </button>
+
+                <button type="button" @click="diningCategory = 'all'"
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+                        :class="diningCategory === 'all' ? 'bg-white text-navy-800 shadow-2xs' : 'text-slate-600 hover:text-navy-800'">
+                  <i class="fa-solid fa-layer-group text-[11px] text-amber-500"></i>
+                  <span>Tất Cả</span>
+                </button>
+              </div>
+
+              <!-- Action Buttons for Dining -->
+              <div class="flex items-center gap-2">
+                <button type="button" @click="openNewDiningBillModal()"
+                        class="px-3 py-1.5 rounded-lg bg-navy-800 hover:bg-navy-900 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+                  <i class="fa-solid fa-plus text-[10px]"></i>
+                  <span>Ghi Hóa Đơn / Bữa Ăn</span>
+                </button>
+                <button type="button" @click="openSettlementModal()"
+                        class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1 shadow-2xs">
+                  <i class="fa-solid fa-hand-holding-dollar text-mint-700 text-[11px]"></i>
+                  <span>Thu / Nạp Tiền</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 3 TOP SUMMARY BOXES DYNAMIC THEO LOẠI QUỸ -->
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <!-- Box 1: Thu / Chi thực tế tháng này -->
               <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col justify-between">
                 <div>
-                  <h4 class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">1. THU / CHI THỰC TẾ THÁNG NÀY</h4>
+                  <h4 class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">1. THU / CHI THỰC TẾ</h4>
                   <div class="space-y-1 text-xs">
                     <div class="flex items-center justify-between">
-                      <span class="text-slate-600" x-text="'Chi trả bill (' + dashboard.card4_dining.billCount + '):'"></span>
-                      <strong class="font-mono text-red-600" x-text="'-' + formatVND(dashboard.card4_dining.billPaidTotal)"></strong>
+                      <span class="text-slate-600" x-text="'Chi trả bill (' + currentDiningData.billCount + '):'"></span>
+                      <strong class="font-mono text-red-600" x-text="'-' + formatVND(currentDiningData.billPaidTotal)"></strong>
                     </div>
                     <div class="flex items-center justify-between">
-                      <span class="text-slate-600" x-text="'Các bạn nạp vào TK (' + dashboard.card4_dining.topupCount + '):'"></span>
-                      <strong class="font-mono text-mint-700" x-text="'+' + formatVND(dashboard.card4_dining.totalTopups)"></strong>
+                      <span class="text-slate-600" x-text="'Mọi người nạp vào (' + currentDiningData.topupCount + '):'"></span>
+                      <strong class="font-mono text-mint-700" x-text="'+' + formatVND(currentDiningData.totalTopups)"></strong>
                     </div>
                     <div class="flex items-center justify-between">
                       <span class="text-slate-600">Cho mượn tiền quỹ:</span>
-                      <strong class="font-mono text-amber-600" x-text="'-' + formatVND(dashboard.card4_dining.totalBorrowed)"></strong>
+                      <strong class="font-mono text-amber-600" x-text="'-' + formatVND(currentDiningData.totalBorrowed)"></strong>
                     </div>
                   </div>
                 </div>
                 <div class="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500">
-                  Trong đó phần các bạn ăn: <strong class="font-mono text-slate-700" x-text="formatVND(dashboard.card4_dining.colleaguesEatenTotal)"></strong>
+                  Phần mọi người ăn: <strong class="font-mono text-slate-700" x-text="formatVND(currentDiningData.colleaguesEatenTotal)"></strong>
                 </div>
               </div>
 
-              <!-- Box 2: Tổng hợp sổ 14 người -->
+              <!-- Box 2: Tổng hợp sổ từng người -->
               <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col justify-between">
                 <div>
                   <div class="flex items-center justify-between mb-2">
                     <h4 class="text-[11px] font-bold text-slate-500 uppercase tracking-wider" 
-                        x-text="'2. TỔNG HỢP SỔ (' + dashboard.card4_dining.members.length + ' NGƯỜI)'"></h4>
+                        x-text="'2. TỔNG HỢP SỔ (' + (currentDiningData.members?.length || 0) + ' NGƯỜI)'"></h4>
                     <button type="button" @click="openMemberModal()" class="text-[10px] text-indigo-600 hover:underline font-semibold">Sửa đầu kỳ</button>
                   </div>
                   <div class="space-y-1.5 text-xs">
                     <div class="flex items-center justify-between">
                       <span class="flex items-center gap-1.5 text-slate-600">
                         <span class="w-2 h-2 rounded-full bg-mint"></span>
-                        <span x-text="'Còn dư quỹ (' + dashboard.card4_dining.surplusCount + '):'"></span>
+                        <span x-text="'Còn dư quỹ (' + currentDiningData.surplusCount + '):'"></span>
                       </span>
-                      <strong class="font-mono text-mint-700 text-sm" x-text="formatVND(dashboard.card4_dining.totalSurplusFund)"></strong>
+                      <strong class="font-mono text-mint-700 text-sm" x-text="formatVND(currentDiningData.totalSurplusFund)"></strong>
                     </div>
                     <div class="flex items-center justify-between">
                       <span class="flex items-center gap-1.5 text-slate-600">
                         <span class="w-2 h-2 rounded-full bg-red-500"></span>
-                        <span x-text="'Đang nợ tôi (' + dashboard.card4_dining.debtCount + '):'"></span>
+                        <span x-text="'Đang nợ tôi (' + currentDiningData.debtCount + '):'"></span>
                       </span>
-                      <strong class="font-mono text-red-600 text-sm" x-text="formatVND(dashboard.card4_dining.totalDebtReceivable)"></strong>
+                      <strong class="font-mono text-red-600 text-sm" x-text="formatVND(currentDiningData.totalDebtReceivable)"></strong>
                     </div>
                   </div>
                 </div>
                 <div class="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-400">
-                  Ăn hàng ngày &amp; nạp tiền tự động bù trừ riêng từng người
+                  Bù trừ tự động theo từng bữa ăn &amp; khoản nạp
                 </div>
               </div>
 
@@ -492,14 +506,14 @@
               <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col justify-between">
                 <div>
                   <div class="flex items-center justify-between mb-2">
-                    <h4 class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">3. PHẦN ĂN CHỦ SỔ (GHI TÔI)</h4>
+                    <h4 class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">3. PHẦN ĂN CHỦ SỔ (TÔI)</h4>
                     <span class="text-[10px] text-slate-400 font-medium">Khớp sổ cá nhân</span>
                   </div>
                   <div class="text-2xl font-extrabold font-mono text-navy-800"
-                       x-text="formatVND(dashboard.card4_dining.myShareTotal)"></div>
+                       x-text="formatVND(currentDiningData.myShareTotal)"></div>
                 </div>
                 <div class="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-400">
-                  Tự cộng từ phần Tôi trong các bữa ăn tháng này
+                  Tự động tính từ các bữa ăn bạn có tham gia
                 </div>
               </div>
             </div>
@@ -512,28 +526,28 @@
                           class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                           :class="diningTab === 'members' ? 'bg-navy-800 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
                     <i class="fa-solid fa-users text-[11px]"></i>
-                    <span x-text="'Sổ từng người (' + dashboard.card4_dining.members.length + ')'"></span>
+                    <span x-text="'Sổ từng người (' + (currentDiningData.members?.length || 0) + ')'"></span>
                   </button>
 
                   <button type="button" @click="diningTab = 'bills'"
                           class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                           :class="diningTab === 'bills' ? 'bg-navy-800 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
                     <i class="fa-solid fa-bowl-rice text-[11px]"></i>
-                    <span x-text="'Ăn hàng ngày (' + dashboard.card4_dining.billCount + ')'"></span>
+                    <span x-text="'Ăn hàng ngày (' + (currentDiningData.bills?.length || 0) + ')'"></span>
                   </button>
 
                   <button type="button" @click="diningTab = 'settlements'"
                           class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
                           :class="diningTab === 'settlements' ? 'bg-navy-800 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
                     <i class="fa-solid fa-money-bill-wave text-[11px]"></i>
-                    <span x-text="'Nạp / Mượn (' + dashboard.card4_dining.topupCount + ')'"></span>
+                    <span x-text="'Nạp / Mượn (' + (currentDiningData.settlements?.length || 0) + ')'"></span>
                   </button>
                 </div>
 
                 <button type="button" @click="openMemberModal()"
                         class="text-xs text-navy-800 hover:text-navy-900 font-semibold flex items-center gap-1">
                   <i class="fa-solid fa-plus-circle text-[11px] text-mint"></i>
-                  <span>Thêm / Sửa thành viên</span>
+                  <span>Thêm thành viên</span>
                 </button>
               </div>
 
@@ -542,20 +556,20 @@
                 <button type="button" @click="memberFilter = 'all'"
                         class="px-2.5 py-1 rounded-lg text-xs font-semibold transition"
                         :class="memberFilter === 'all' ? 'bg-navy-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        x-text="'Tất cả (' + dashboard.card4_dining.members.length + ')'"></button>
+                        x-text="'Tất cả (' + (currentDiningData.members?.length || 0) + ')'"></button>
 
                 <button type="button" @click="memberFilter = 'surplus'"
                         class="px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1"
                         :class="memberFilter === 'surplus' ? 'bg-mint-700 text-white' : 'bg-mint-50 text-mint-700 hover:bg-mint-100'">
                   <span class="w-1.5 h-1.5 rounded-full bg-mint"></span>
-                  <span x-text="'Còn dư quỹ (' + dashboard.card4_dining.surplusCount + ')'"></span>
+                  <span x-text="'Còn dư quỹ (' + (currentDiningData.surplusCount || 0) + ')'"></span>
                 </button>
 
                 <button type="button" @click="memberFilter = 'debt'"
                         class="px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1"
                         :class="memberFilter === 'debt' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-600 hover:bg-red-100'">
                   <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                  <span x-text="'Đang nợ (' + dashboard.card4_dining.debtCount + ')'"></span>
+                  <span x-text="'Đang nợ (' + (currentDiningData.debtCount || 0) + ')'"></span>
                 </button>
               </div>
             </div>
@@ -568,6 +582,9 @@
                     <div>
                       <div class="flex items-center gap-2">
                         <strong class="text-sm font-bold text-navy-800" x-text="m.name"></strong>
+                        <span class="px-1.5 py-0.2 rounded text-[10px]"
+                              :class="m.group === 'family' ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700'"
+                              x-text="m.group === 'family' ? 'Gia đình' : 'Đồng nghiệp'"></span>
                         <span x-show="m.mealCount > 0" class="px-1.5 py-0.2 rounded bg-slate-100 text-[10px] text-slate-500"
                               x-text="m.mealCount + ' bữa T11'"></span>
                       </div>
@@ -581,17 +598,17 @@
 
                     <!-- Action Buttons -->
                     <div class="flex items-center gap-1">
-                      <button type="button" @click="openSettlementModal(m.name, 'in')" title="Nạp tiền quỹ"
+                      <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'in'; modals.settlement = true" title="Nạp tiền quỹ"
                               class="px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1">
                         <i class="fa-solid fa-plus text-[10px] text-mint"></i>
                         <span>Nạp</span>
                       </button>
-                      <button type="button" @click="openSettlementModal(m.name, 'out')" title="Mượn tiền quỹ"
+                      <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'out'; modals.settlement = true" title="Mượn tiền quỹ"
                               class="px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1">
                         <i class="fa-solid fa-hand-holding-dollar text-[10px] text-amber-500"></i>
                         <span>Mượn</span>
                       </button>
-                      <button type="button" @click="openMemberModal(m)" title="Sửa số đầu kỳ"
+                      <button type="button" @click="openMemberModal(m)" title="Sửa thông tin"
                               class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-navy-800 transition">
                         <i class="fa-solid fa-pen text-[10px]"></i>
                       </button>
@@ -612,14 +629,23 @@
               </template>
             </div>
 
-            <!-- TAB 2: ĂN HÀNG NGÀY -->
+            <!-- TAB 2: ĂN HÀNG NGÀY (BILLS) -->
             <div x-show="diningTab === 'bills'" class="space-y-3 pt-1">
-              <template x-for="b in dashboard.card4_dining.bills" :key="b._id">
+              <template x-for="b in currentDiningData.bills" :key="b._id">
                 <div class="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-2.5">
                   <div class="flex items-center justify-between">
                     <div>
-                      <strong class="text-sm font-bold text-navy-800" x-text="b.mealTitle"></strong>
-                      <p class="text-[11px] text-slate-400 font-mono" x-text="formatDate(b.date)"></p>
+                      <div class="flex items-center gap-2">
+                        <strong class="text-sm font-bold text-navy-800" x-text="b.mealTitle"></strong>
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold"
+                              :class="b.category === 'family' ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700'"
+                              x-text="b.category === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'"></span>
+                        <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold"
+                              x-text="b.paidAccount || 'Vietcombank'"></span>
+                        <span x-show="b.deductFromAccount" class="px-1.5 py-0.2 rounded bg-mint-50 text-mint-700 text-[10px] font-medium">✓ Đã trừ ngân hàng</span>
+                        <span x-show="b.deductWeeklyLimit" class="px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 text-[10px] font-medium">Trừ hạn mức tuần</span>
+                      </div>
+                      <p class="text-[11px] text-slate-400 font-mono mt-0.5" x-text="formatDate(b.date) + (b.notes ? ' • ' + b.notes : '')"></p>
                     </div>
                     <div class="flex items-center gap-3">
                       <div class="text-right">
@@ -654,11 +680,14 @@
                   </div>
                 </div>
               </template>
+              <p x-show="!currentDiningData.bills || currentDiningData.bills.length === 0" class="text-xs text-slate-400 italic text-center py-4">
+                Chưa có bữa ăn hoặc khoản chi nào trong sổ này.
+              </p>
             </div>
 
-            <!-- TAB 3: NẠP / MƯỢN -->
+            <!-- TAB 3: NẠP / MƯỢN (SETTLEMENTS) -->
             <div x-show="diningTab === 'settlements'" class="space-y-2.5 pt-1">
-              <template x-for="s in dashboard.card4_dining.settlements" :key="s._id">
+              <template x-for="s in currentDiningData.settlements" :key="s._id">
                 <div class="p-3.5 rounded-xl border border-slate-200 bg-white shadow-2xs flex items-center justify-between">
                   <div class="flex items-center gap-3">
                     <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
@@ -666,8 +695,13 @@
                       <i :class="s.direction === 'in' ? 'fa-solid fa-arrow-down' : 'fa-solid fa-arrow-up'"></i>
                     </div>
                     <div>
-                      <strong class="text-xs font-bold text-navy-800" x-text="s.personName"></strong>
-                      <p class="text-[11px] text-slate-400" x-text="s.note || (s.direction === 'in' ? 'Nạp tiền quỹ' : 'Mượn tiền quỹ')"></p>
+                      <div class="flex items-center gap-2">
+                        <strong class="text-xs font-bold text-navy-800" x-text="s.personName"></strong>
+                        <span class="px-1.5 py-0.2 rounded text-[10px] font-mono bg-slate-100 text-slate-600"
+                              x-text="s.accountName || 'Vietcombank'"></span>
+                        <span x-show="s.addToAccount" class="text-[10px] text-mint-700">✓ Đã cân đối TK</span>
+                      </div>
+                      <p class="text-[11px] text-slate-400 mt-0.5" x-text="s.note || (s.direction === 'in' ? 'Nạp tiền vào quỹ' : 'Mượn tiền từ quỹ')"></p>
                     </div>
                   </div>
 
@@ -680,9 +714,13 @@
                     </div>
 
                     <div class="flex items-center gap-1 border-l border-slate-200 pl-3">
-                      <button type="button" @click="editSettlement(s)" title="Chỉnh sửa giao dịch"
+                      <button type="button" @click="openSettlementModal(s)" title="Chỉnh sửa giao dịch"
                               class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition text-xs">
                         <i class="fa-solid fa-pen text-[11px]"></i>
+                      </button>
+                      <button type="button" @click="copySettlement(s)" title="Copy giao dịch"
+                              class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-indigo-600 transition text-xs">
+                        <i class="fa-solid fa-copy text-[11px]"></i>
                       </button>
                       <button type="button" @click="deleteSettlement(s._id, s.personName)" title="Xoá giao dịch"
                               class="p-1.5 rounded-lg border border-slate-200 hover:bg-red-50 text-slate-400 hover:text-red-600 transition text-xs">
@@ -692,6 +730,9 @@
                   </div>
                 </div>
               </template>
+              <p x-show="!currentDiningData.settlements || currentDiningData.settlements.length === 0" class="text-xs text-slate-400 italic text-center py-4">
+                Chưa có giao dịch nạp hoặc mượn quỹ nào.
+              </p>
             </div>
           </section>
 
@@ -788,37 +829,40 @@
               </button>
             </div>
 
-            <p class="text-[11px] text-slate-400">Các mốc thu/chi dự kiến, chuyển quỹ &amp; lương theo mốc thời gian</p>
-
+            <!-- Timeline Reminders List -->
             <div class="space-y-2.5">
               <template x-for="r in dashboard.reminders" :key="r._id">
-                <div class="p-3 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition shadow-2xs space-y-1.5"
+                <div class="p-3 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition shadow-2xs space-y-2"
                      :class="r.status === 'completed' ? 'opacity-60 bg-slate-50' : ''">
-                  <div class="flex items-center justify-between">
+                  <div class="flex items-center justify-between text-xs">
                     <div class="flex items-center gap-2">
-                      <span class="text-[10px] px-1.5 py-0.2 rounded font-bold"
-                            :class="r.type === 'income' ? 'bg-mint-50 text-mint-700' : (r.type === 'expense' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600')"
-                            x-text="r.type === 'income' ? 'Tiền Vào' : (r.type === 'expense' ? 'Tiền Ra' : 'Nhắc Việc')"></span>
-                      <strong class="text-xs text-slate-800"
-                              :class="r.status === 'completed' ? 'line-through text-slate-400' : ''"
-                              x-text="r.title"></strong>
+                      <span class="px-2 py-0.5 rounded font-mono text-[10px] font-bold"
+                            :class="r.type === 'income' ? 'bg-mint-50 text-mint-700' : 'bg-red-50 text-red-600'"
+                            x-text="formatDate(r.date)"></span>
+                      <strong class="text-slate-800 text-xs" x-text="r.title"></strong>
                     </div>
-                    <strong x-show="r.amount > 0" class="font-mono text-xs font-bold"
-                            :class="r.type === 'income' ? 'text-mint-700' : (r.type === 'expense' ? 'text-red-600' : 'text-slate-700')"
-                            x-text="(r.type === 'income' ? '+' : (r.type === 'expense' ? '-' : '')) + formatVND(r.amount)"></strong>
+                    <span class="font-mono font-bold text-xs"
+                          :class="r.type === 'income' ? 'text-mint-700' : 'text-red-600'"
+                          x-text="(r.type === 'income' ? '+' : '-') + formatVND(r.amount)"></span>
                   </div>
 
-                  <!-- Thao tác Đã xong, Sửa, Xoá từng dòng lịch nhắc -->
+                  <!-- Actions: Toggle Completed, Sửa, Copy, Xoá -->
                   <div class="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                    <span class="text-slate-400 font-mono text-[10px]" x-text="formatDate(r.date)"></span>
-                    <div class="flex items-center gap-1.5">
-                      <button type="button" @click="toggleReminderStatus(r._id)" title="Đánh dấu hoàn tất"
-                              class="px-2 py-0.5 rounded text-[10px] font-semibold transition"
-                              :class="r.status === 'completed' ? 'bg-mint-100 text-mint-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                              x-text="r.status === 'completed' ? '✓ Đã Xong' : 'Chờ Thực Hiện'"></button>
+                    <button type="button" @click="toggleReminderStatus(r._id)"
+                            class="px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-1"
+                            :class="r.status === 'completed' ? 'bg-mint-100 text-mint-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
+                      <i class="fa-solid" :class="r.status === 'completed' ? 'fa-check' : 'fa-clock'"></i>
+                      <span x-text="r.status === 'completed' ? 'Đã hoàn thành' : 'Đang chờ'"></span>
+                    </button>
+
+                    <div class="flex items-center gap-1">
                       <button type="button" @click="openReminderModal(r)" title="Sửa dòng nhắc"
                               class="p-1 rounded text-slate-500 hover:text-navy-800 text-[10px]">
                         <i class="fa-solid fa-pen"></i>
+                      </button>
+                      <button type="button" @click="copyReminder(r)" title="Copy dòng nhắc"
+                              class="p-1 rounded text-indigo-600 hover:text-indigo-800 text-[10px]">
+                        <i class="fa-solid fa-copy"></i>
                       </button>
                       <button type="button" @click="deleteReminder(r._id, r.title)" title="Xoá dòng nhắc"
                               class="p-1 rounded text-slate-400 hover:text-red-600 text-[10px]">
@@ -829,12 +873,12 @@
                 </div>
               </template>
               <p x-show="dashboard.reminders.length === 0" class="text-xs text-slate-400 italic text-center py-2">
-                Chưa có lịch nhắc dòng tiền nào. Bấm nút "+ Thêm Dòng Nhắc" để tạo mới!
+                Không có lịch nhắc dòng tiền nào.
               </p>
             </div>
           </section>
 
-          <!-- ==================== SỔ NỢ 2 CHIỀU (TÔI NỢ / BẠN NỢ) ==================== -->
+          <!-- ==================== SỔ NỢ 2 CHIỀU (CÁ NHÂN) ==================== -->
           <section class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm space-y-4">
             <div class="flex items-center justify-between pb-3 border-b border-slate-100">
               <div class="flex items-center gap-2">
@@ -914,11 +958,643 @@
 
       </div>
 
+      <!-- ==================== FULL SECTION: SỔ GIAO DỊCH THU / CHI THỜI GIAN THỰC (REQUEST 1) ==================== -->
+      <section id="transactions-ledger" class="rounded-2xl bg-white border border-slate-200 p-5 sm:p-6 shadow-sm space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          <div>
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-receipt text-navy-800 text-base"></i>
+              <h3 class="text-base font-bold text-navy-800">Sổ Giao Dịch Thu / Chi Thời Gian Thực</h3>
+            </div>
+            <p class="text-xs text-slate-500 mt-1">
+              Ghi lại mọi giao dịch thực tế • Tự động trừ/cộng vào từng ngân hàng • Phân bổ theo 4 Hubs
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" @click="openTransactionModal()"
+                    class="px-3.5 py-2 rounded-xl bg-navy-800 hover:bg-navy-900 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+              <i class="fa-solid fa-plus text-[10px]"></i>
+              <span>Ghi Giao Dịch Mới</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- TRANSACTION SUMMARY PILLS -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="p-3.5 rounded-xl bg-mint-50/70 border border-mint-200">
+            <span class="text-[11px] font-bold text-mint-800 uppercase tracking-wider">TỔNG THU NHẬP (+):</span>
+            <div class="text-lg font-extrabold font-mono text-mint-700 mt-0.5" x-text="formatVND(totalIncomeTransactions)"></div>
+          </div>
+          <div class="p-3.5 rounded-xl bg-red-50/70 border border-red-200">
+            <span class="text-[11px] font-bold text-red-800 uppercase tracking-wider">TỔNG CHI TIÊU (-):</span>
+            <div class="text-lg font-extrabold font-mono text-red-600 mt-0.5" x-text="formatVND(totalExpenseTransactions)"></div>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+            <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">DÒNG TIỀN RÒNG:</span>
+            <div class="text-lg font-extrabold font-mono mt-0.5"
+                 :class="(totalIncomeTransactions - totalExpenseTransactions) >= 0 ? 'text-navy-800' : 'text-red-600'"
+                 x-text="formatVND(totalIncomeTransactions - totalExpenseTransactions)"></div>
+          </div>
+        </div>
+
+        <!-- FILTERS BAR -->
+        <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <button type="button" @click="txFilter.type = 'all'"
+                    class="px-2.5 py-1 rounded-lg font-semibold transition"
+                    :class="txFilter.type === 'all' ? 'bg-navy-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
+              Tất Cả (<span x-text="dashboard.transactions.length"></span>)
+            </button>
+            <button type="button" @click="txFilter.type = 'expense'"
+                    class="px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1"
+                    :class="txFilter.type === 'expense' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-600 hover:bg-red-100'">
+              Chi Tiêu (-)
+            </button>
+            <button type="button" @click="txFilter.type = 'income'"
+                    class="px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1"
+                    :class="txFilter.type === 'income' ? 'bg-mint-700 text-white' : 'bg-mint-50 text-mint-700 hover:bg-mint-100'">
+              Thu Nhập (+)
+            </button>
+            <button type="button" @click="txFilter.type = 'transfer'"
+                    class="px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1"
+                    :class="txFilter.type === 'transfer' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'">
+              Chuyển Khoản (⇄)
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2 text-xs">
+            <!-- Filter by Bank Account -->
+            <select x-model="txFilter.accountName"
+                    class="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-navy-600">
+              <option value="all">Tất cả ngân hàng</option>
+              <template x-for="acc in dashboard.accounts.list" :key="acc._id">
+                <option :value="acc.name" x-text="acc.name"></option>
+              </template>
+            </select>
+
+            <!-- Filter by Hub Role -->
+            <select x-model="txFilter.hubRole"
+                    class="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-navy-600">
+              <option value="all">Tất cả Hubs</option>
+              <option value="hub1_income">Hub 1: Kinh Doanh</option>
+              <option value="hub2_dining">Hub 2: Ăn Nhóm</option>
+              <option value="hub3_family">Hub 3: Gia Đình</option>
+              <option value="hub4_personal">Hub 4: Cá Nhân</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- TRANSACTIONS LIST -->
+        <div class="space-y-2.5 pt-1">
+          <template x-for="t in filteredTransactions" :key="t._id">
+            <div class="p-3.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
+              <div class="flex items-start sm:items-center gap-3">
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 sm:mt-0"
+                     :class="{
+                       'bg-red-50 text-red-600': t.type === 'expense',
+                       'bg-mint-50 text-mint-700': t.type === 'income',
+                       'bg-indigo-50 text-indigo-700': t.type === 'transfer'
+                     }">
+                  <i :class="{
+                    'fa-solid fa-arrow-up': t.type === 'expense',
+                    'fa-solid fa-arrow-down': t.type === 'income',
+                    'fa-solid fa-right-left': t.type === 'transfer'
+                  }"></i>
+                </div>
+
+                <div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <strong class="text-xs font-bold text-navy-800" x-text="t.title"></strong>
+                    <span class="px-1.5 py-0.2 rounded text-[10px] font-mono bg-slate-100 text-slate-700 font-semibold"
+                          x-text="t.accountName"></span>
+                    <span x-show="t.type === 'transfer' && t.toAccountName" class="text-[10px] text-slate-400">
+                      ➔ <strong class="text-slate-700" x-text="t.toAccountName"></strong>
+                    </span>
+                    <span class="px-1.5 py-0.2 rounded text-[10px] font-medium"
+                          :class="{
+                            'bg-indigo-50 text-indigo-700': t.hubRole === 'hub1_income',
+                            'bg-mint-50 text-mint-700': t.hubRole === 'hub2_dining',
+                            'bg-amber-50 text-amber-700': t.hubRole === 'hub3_family',
+                            'bg-purple-50 text-purple-700': t.hubRole === 'hub4_personal'
+                          }"
+                          x-text="t.hubRole === 'hub1_income' ? 'Hub 1 Kinh Doanh' : (t.hubRole === 'hub2_dining' ? 'Hub 2 Ăn Nhóm' : (t.hubRole === 'hub3_family' ? 'Hub 3 Gia Đình' : 'Hub 4 Cá Nhân'))"></span>
+                    <span x-show="t.impactsWeeklyLimit" class="px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 text-[10px] font-bold">
+                      Trừ Hạn Mức Tuần
+                    </span>
+                  </div>
+
+                  <p class="text-[11px] text-slate-400 font-mono mt-0.5"
+                     x-text="formatDate(t.date) + (t.category ? ' • ' + t.category : '') + (t.notes ? ' • ' + t.notes : '')"></p>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between sm:justify-end gap-3 self-end sm:self-center">
+                <div class="text-right">
+                  <strong class="text-sm font-extrabold font-mono"
+                          :class="{
+                            'text-red-600': t.type === 'expense',
+                            'text-mint-700': t.type === 'income',
+                            'text-indigo-600': t.type === 'transfer'
+                          }"
+                          x-text="(t.type === 'expense' ? '-' : (t.type === 'income' ? '+' : '⇄ ')) + formatVND(t.amount)"></strong>
+                </div>
+
+                <div class="flex items-center gap-1 border-l border-slate-200 pl-2">
+                  <button type="button" @click="openTransactionModal(t)" title="Sửa giao dịch"
+                          class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition text-xs">
+                    <i class="fa-solid fa-pen text-[10px]"></i>
+                  </button>
+                  <button type="button" @click="copyTransaction(t)" title="Copy giao dịch"
+                          class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-indigo-600 transition text-xs">
+                    <i class="fa-solid fa-copy text-[10px]"></i>
+                  </button>
+                  <button type="button" @click="deleteTransaction(t._id, t.title)" title="Xoá giao dịch"
+                          class="p-1.5 rounded-lg border border-slate-200 hover:bg-red-50 text-slate-400 hover:text-red-600 transition text-xs">
+                    <i class="fa-solid fa-trash-can text-[10px]"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <p x-show="filteredTransactions.length === 0" class="text-xs text-slate-400 italic text-center py-6">
+            Không tìm thấy giao dịch nào phù hợp với bộ lọc.
+          </p>
+        </div>
+      </section>
+
     </div>
 
   </main>
 
   <!-- ==================== MODALS ==================== -->
+
+  <!-- MODAL: GHI / SỬA GIAO DỊCH THU CHI (REQUEST 1) -->
+  <div x-show="modals.transaction" x-cloak
+       class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-md w-full shadow-xl space-y-4 max-h-[90vh] overflow-y-auto"
+         @click.away="modals.transaction = false">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <h3 class="text-sm font-bold text-navy-800"
+            x-text="editingTransactionId ? 'Chỉnh Sửa Giao Dịch Thu / Chi' : 'Ghi Giao Dịch Mới (Cập Nhật Số Dư Realtime)'"></h3>
+        <button type="button" @click="modals.transaction = false" class="text-slate-400 hover:text-slate-700">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="submitTransaction()" class="space-y-3">
+        <!-- Loại giao dịch -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Loại giao dịch</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button type="button" @click="transactionForm.type = 'expense'; transactionForm.impactsWeeklyLimit = (transactionForm.hubRole === 'hub4_personal')"
+                    class="py-2 rounded-xl text-xs font-bold border transition text-center"
+                    :class="transactionForm.type === 'expense' ? 'bg-red-50 border-red-500 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              💸 Chi Tiêu (-)
+            </button>
+            <button type="button" @click="transactionForm.type = 'income'; transactionForm.impactsWeeklyLimit = false"
+                    class="py-2 rounded-xl text-xs font-bold border transition text-center"
+                    :class="transactionForm.type === 'income' ? 'bg-mint-50 border-mint-500 text-mint-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              💰 Thu Nhập (+)
+            </button>
+            <button type="button" @click="transactionForm.type = 'transfer'; transactionForm.impactsWeeklyLimit = false"
+                    class="py-2 rounded-xl text-xs font-bold border transition text-center"
+                    :class="transactionForm.type === 'transfer' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              ⇄ Chuyển Ví
+            </button>
+          </div>
+        </div>
+
+        <!-- Tên giao dịch -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tên giao dịch / Nội dung</label>
+          <input type="text" x-model="transactionForm.title" required placeholder="VD: Tiền điện nước, Mua đồ siêu thị, Lương tháng..."
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <!-- Số tiền -->
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền (đ)</label>
+            <input type="number" x-model.number="transactionForm.amount" required placeholder="VD: 150000"
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
+          </div>
+          <!-- Ngày giao dịch -->
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ngày giao dịch</label>
+            <input type="date" x-model="transactionForm.date" required
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Tài khoản ngân hàng nguồn -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">
+            <span x-text="transactionForm.type === 'transfer' ? 'Từ tài khoản (Trừ tiền)' : (transactionForm.type === 'expense' ? 'Tài khoản chi tiền (Trừ số dư)' : 'Tài khoản nhận tiền (Cộng số dư)')"></span>
+          </label>
+          <select x-model="transactionForm.accountName" required
+                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none bg-white">
+            <template x-for="acc in dashboard.accounts.list" :key="acc._id">
+              <option :value="acc.name" x-text="acc.name + ' (Hiện có: ' + formatVND(acc.balance) + ')'"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Tài khoản đích nếu chuyển khoản -->
+        <div x-show="transactionForm.type === 'transfer'">
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Đến tài khoản (Cộng tiền)</label>
+          <select x-model="transactionForm.toAccountName"
+                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none bg-white">
+            <option value="">-- Chọn tài khoản nhận --</option>
+            <template x-for="acc in dashboard.accounts.list" :key="acc._id">
+              <option :value="acc.name" x-text="acc.name + ' (Hiện có: ' + formatVND(acc.balance) + ')'"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Phân loại Hub và Danh mục -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Thuộc Hub nào</label>
+            <select x-model="transactionForm.hubRole"
+                    class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none bg-white">
+              <option value="hub1_income">Hub 1: Kinh Doanh</option>
+              <option value="hub2_dining">Hub 2: Ăn Nhóm</option>
+              <option value="hub3_family">Hub 3: Gia Đình</option>
+              <option value="hub4_personal">Hub 4: Cá Nhân</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Danh mục</label>
+            <input type="text" x-model="transactionForm.category" placeholder="VD: Ăn uống, Hóa đơn..."
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Trừ hạn mức tuần -->
+        <div x-show="transactionForm.type === 'expense'" class="pt-1">
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-700 font-medium">
+            <input type="checkbox" x-model="transactionForm.impactsWeeklyLimit"
+                   class="rounded text-navy-800 focus:ring-navy-600 w-4 h-4">
+            <span>Tính vào Hạn Mức Tiêu Tuần (Hub 4)</span>
+          </label>
+          <p class="text-[10px] text-slate-400 ml-6 mt-0.5">Bật tính năng này nếu đây là khoản ăn uống/tiêu vặt cá nhân của bạn để kiểm soát hạn mức tuần.</p>
+        </div>
+
+        <!-- Ghi chú -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ghi chú (Tùy chọn)</label>
+          <input type="text" x-model="transactionForm.notes" placeholder="VD: Quét mã QR, hóa đơn số..."
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2 border-t border-slate-100">
+          <button type="button" @click="modals.transaction = false"
+                  class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
+          <button type="submit"
+                  class="px-4 py-2 rounded-xl text-white text-xs font-bold transition"
+                  :class="editingTransactionId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-navy-800 hover:bg-navy-900'"
+                  x-text="editingTransactionId ? 'Cập Nhật Giao Dịch' : 'Lưu Giao Dịch & Cập Nhật Số Dư'"></button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: GHI / SỬA BỮA ĂN & KHOẢN CHI NHÓM (REQUEST 2 ENGINE) -->
+  <div x-show="modals.diningBill" x-cloak
+       class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-lg w-full shadow-xl space-y-4 max-h-[90vh] overflow-y-auto"
+         @click.away="modals.diningBill = false">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <h3 class="text-sm font-bold text-navy-800"
+            x-text="editingDiningId ? 'Chỉnh Sửa Hóa Đơn / Bữa Ăn' : 'Ghi Bữa Ăn & Chia Tiền Tự Động (Trừ TK Realtime)'"></h3>
+        <button type="button" @click="modals.diningBill = false" class="text-slate-400 hover:text-slate-700">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="submitDiningBill()" class="space-y-3.5">
+        <!-- 1. Chọn loại quỹ: Ăn nhóm hay Gia đình -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Loại sổ quỹ</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" @click="diningBillForm.category = 'work'; onBillCategoryChange()"
+                    class="py-2 px-3 rounded-xl text-xs font-bold border transition text-center flex items-center justify-center gap-1.5"
+                    :class="diningBillForm.category === 'work' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              <i class="fa-solid fa-briefcase"></i>
+              <span>Quỹ Ăn Đồng Nghiệp</span>
+            </button>
+            <button type="button" @click="diningBillForm.category = 'family'; onBillCategoryChange()"
+                    class="py-2 px-3 rounded-xl text-xs font-bold border transition text-center flex items-center justify-center gap-1.5"
+                    :class="diningBillForm.category === 'family' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              <i class="fa-solid fa-people-roof"></i>
+              <span>Quỹ Gia Đình (6 Người)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Tên bữa ăn -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tên bữa ăn / Nội dung chi tiêu</label>
+          <input type="text" x-model="diningBillForm.mealTitle" required placeholder="VD: Cơm trưa văn phòng, Lẩu cuối tuần..."
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+        </div>
+
+        <!-- 3. Tổng tiền bill & Ngày -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tổng tiền bill (đ)</label>
+            <input type="number" x-model.number="diningBillForm.totalBill" @input="recalculateBillSplits()" required placeholder="VD: 156000"
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ngày giao dịch</label>
+            <input type="date" x-model="diningBillForm.date" required
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+          </div>
+        </div>
+
+        <!-- 4. Tài khoản ngân hàng chi trả & Checkbox trừ tiền -->
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Thanh toán từ tài khoản nào</label>
+            <select x-model="diningBillForm.paidAccount" required
+                    class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none bg-white">
+              <template x-for="acc in dashboard.accounts.list" :key="acc._id">
+                <option :value="acc.name" x-text="acc.name + ' (Số dư: ' + formatVND(acc.balance) + ')'"></option>
+              </template>
+            </select>
+          </div>
+
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-700 font-medium pt-1">
+            <input type="checkbox" x-model="diningBillForm.deductFromAccount"
+                   class="rounded text-navy-800 focus:ring-navy-600 w-4 h-4">
+            <span>Tự động trừ <strong class="font-mono text-navy-800" x-text="formatVND(diningBillForm.totalBill)"></strong> vào tài khoản ngân hàng này</span>
+          </label>
+        </div>
+
+        <!-- 5. Cách chia tiền -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="text-[11px] font-semibold text-slate-500">Cách chia tiền</label>
+            <div class="flex items-center gap-2 text-xs">
+              <button type="button" @click="diningBillForm.splitMode = 'equal'; recalculateBillSplits()"
+                      class="px-2 py-0.5 rounded-md font-semibold text-[11px] transition"
+                      :class="diningBillForm.splitMode === 'equal' ? 'bg-navy-800 text-white' : 'bg-slate-100 text-slate-600'">
+                Chia Đều (Equal)
+              </button>
+              <button type="button" @click="diningBillForm.splitMode = 'custom'; recalculateBillSplits()"
+                      class="px-2 py-0.5 rounded-md font-semibold text-[11px] transition"
+                      :class="diningBillForm.splitMode === 'custom' ? 'bg-navy-800 text-white' : 'bg-slate-100 text-slate-600'">
+                Tự Nhập Tiền
+              </button>
+            </div>
+          </div>
+
+          <!-- Danh sách người tham gia -->
+          <div class="p-3 rounded-xl border border-slate-200 bg-white space-y-2">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100 text-[11px]">
+              <span class="font-bold text-slate-600">Chọn người tham gia bữa ăn:</span>
+              <div class="flex items-center gap-2">
+                <button type="button" @click="selectAllParticipants(true)" class="text-indigo-600 hover:underline">Chọn tất cả</button>
+                <span>•</span>
+                <button type="button" @click="selectAllParticipants(false)" class="text-slate-400 hover:underline">Bỏ chọn</button>
+              </div>
+            </div>
+
+            <!-- Chủ sổ (Tôi) -->
+            <div class="flex items-center justify-between p-2 rounded-lg bg-mint-50/60 border border-mint-200 text-xs">
+              <label class="flex items-center gap-2 cursor-pointer font-bold text-mint-900">
+                <input type="checkbox" x-model="diningBillForm.includeMe" @change="recalculateBillSplits()"
+                       class="rounded text-mint-600 focus:ring-mint-600 w-4 h-4">
+                <span>👤 Tôi (Chủ sổ)</span>
+              </label>
+              <span class="font-mono font-extrabold text-mint-700" x-text="formatVND(diningBillForm.myShare)"></span>
+            </div>
+
+            <!-- Các thành viên khác -->
+            <div class="space-y-1.5 max-h-48 overflow-y-auto pt-1">
+              <template x-for="p in diningBillForm.participants" :key="p.personKey">
+                <div class="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-50 text-xs border border-transparent hover:border-slate-100">
+                  <label class="flex items-center gap-2 cursor-pointer text-slate-800">
+                    <input type="checkbox" x-model="p.selected" @change="recalculateBillSplits()"
+                           class="rounded text-navy-800 focus:ring-navy-600 w-3.5 h-3.5">
+                    <span x-text="p.name"></span>
+                  </label>
+
+                  <div>
+                    <!-- Equal Split display -->
+                    <span x-show="diningBillForm.splitMode === 'equal'" class="font-mono text-slate-600"
+                          :class="p.selected ? 'font-bold' : 'text-slate-300'"
+                          x-text="p.selected ? formatVND(p.customAmount) : '0đ'"></span>
+
+                    <!-- Custom Split input -->
+                    <input x-show="diningBillForm.splitMode === 'custom'" type="number"
+                           x-model.number="p.customAmount" @input="recalculateBillSplits()"
+                           :disabled="!p.selected"
+                           placeholder="0"
+                           class="w-24 px-2 py-1 rounded-lg border border-slate-200 text-right font-mono text-xs focus:ring-1 focus:ring-navy-600 focus:outline-none disabled:opacity-40">
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. Checkbox Trừ phần của tôi vào Hạn mức tuần -->
+        <div class="p-3 rounded-xl bg-purple-50/60 border border-purple-200 space-y-1">
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-purple-900 font-bold">
+            <input type="checkbox" x-model="diningBillForm.deductWeeklyLimit"
+                   class="rounded text-purple-600 focus:ring-purple-600 w-4 h-4">
+            <span>Trừ phần ăn của Tôi (<span class="font-mono" x-text="formatVND(diningBillForm.myShare)"></span>) vào Hạn Mức Tiêu Tuần (Hub 4)</span>
+          </label>
+          <p class="text-[10px] text-purple-700 ml-6">
+            Bật tính năng này nếu đây là bữa ăn trưa / tối cá nhân của bạn. Tắt nếu được cơ quan đài thọ hoặc chi từ nguồn riêng.
+          </p>
+        </div>
+
+        <!-- 7. Ghi chú -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ghi chú thêm (Tùy chọn)</label>
+          <input type="text" x-model="diningBillForm.notes" placeholder="VD: Quán cơm bà Năm, bill gồm nước ngọt..."
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2 border-t border-slate-100">
+          <button type="button" @click="modals.diningBill = false"
+                  class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
+          <button type="submit"
+                  class="px-4 py-2 rounded-xl text-white text-xs font-bold transition"
+                  :class="editingDiningId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-navy-800 hover:bg-navy-900'"
+                  x-text="editingDiningId ? 'Cập Nhật Hóa Đơn' : 'Lưu Bữa Ăn & Trừ Tiền Ngân Hàng'"></button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: NẠP / TRẢ TIỀN QUỸ (SETTLEMENTS) -->
+  <div x-show="modals.settlement" x-cloak
+       class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-sm w-full shadow-xl space-y-4"
+         @click.away="modals.settlement = false">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <h3 class="text-sm font-bold text-navy-800"
+            x-text="editingSettlementId ? 'Chỉnh Sửa Giao Dịch Nạp / Mượn' : (settlementForm.direction === 'in' ? 'Ghi Nhận Thu / Nạp Tiền Quỹ' : 'Ghi Nhận Mượn Tiền Quỹ')"></h3>
+        <button type="button" @click="modals.settlement = false" class="text-slate-400 hover:text-slate-700">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="submitSettlement()" class="space-y-3">
+        <!-- Quỹ -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Thuộc quỹ nào</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" @click="settlementForm.category = 'work'"
+                    class="py-1.5 rounded-xl text-xs font-bold border transition text-center"
+                    :class="settlementForm.category === 'work' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              Quỹ Ăn Nhóm
+            </button>
+            <button type="button" @click="settlementForm.category = 'family'"
+                    class="py-1.5 rounded-xl text-xs font-bold border transition text-center"
+                    :class="settlementForm.category === 'family' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              Quỹ Gia Đình
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Người nạp / mượn</label>
+          <input type="text" x-model="settlementForm.personName" required placeholder="VD: Yến, Long, Bố..."
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Hành động</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" @click="settlementForm.direction = 'in'"
+                    class="py-2 rounded-xl text-xs font-bold border transition text-center"
+                    :class="settlementForm.direction === 'in' ? 'bg-mint-50 border-mint-500 text-mint-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              + Nạp Tiền
+            </button>
+            <button type="button" @click="settlementForm.direction = 'out'"
+                    class="py-2 rounded-xl text-xs font-bold border transition text-center"
+                    :class="settlementForm.direction === 'out' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              💸 Mượn Tiền
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền (đ)</label>
+          <input type="number" x-model.number="settlementForm.amount" required placeholder="VD: 300000"
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
+        </div>
+
+        <!-- Ngân hàng nhận / xuất tiền -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">
+            <span x-text="settlementForm.direction === 'in' ? 'Nạp vào tài khoản nào (Cộng tiền)' : 'Xuất từ tài khoản nào (Trừ tiền)'"></span>
+          </label>
+          <select x-model="settlementForm.accountName" required
+                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none bg-white">
+            <template x-for="acc in dashboard.accounts.list" :key="acc._id">
+              <option :value="acc.name" x-text="acc.name + ' (Dư: ' + formatVND(acc.balance) + ')'"></option>
+            </template>
+          </select>
+        </div>
+
+        <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-700 font-medium">
+          <input type="checkbox" x-model="settlementForm.addToAccount"
+                 class="rounded text-navy-800 focus:ring-navy-600 w-4 h-4">
+          <span>Tự động cân đối số dư vào tài khoản ngân hàng này</span>
+        </label>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ngày giao dịch</label>
+            <input type="date" x-model="settlementForm.date" required
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Hình thức</label>
+            <select x-model="settlementForm.topupKind"
+                    class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none bg-white">
+              <option value="prepaid">Nạp trước</option>
+              <option value="repay_old">Trả nợ cũ</option>
+              <option value="borrow">Mượn tiền</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ghi chú</label>
+          <input type="text" x-model="settlementForm.note" placeholder="VD: CK MoMo, Tiền mặt..."
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2 border-t border-slate-100">
+          <button type="button" @click="modals.settlement = false"
+                  class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
+          <button type="submit"
+                  class="px-4 py-2 rounded-xl text-white text-xs font-bold transition"
+                  :class="editingSettlementId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-navy-800 hover:bg-navy-900'"
+                  x-text="editingSettlementId ? 'Cập Nhật' : 'Lưu Thu Tiền'"></button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: THÀNH VIÊN SỔ ĂN & GIA ĐÌNH -->
+  <div x-show="modals.member" x-cloak
+       class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-sm w-full shadow-xl space-y-4"
+         @click.away="modals.member = false">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <h3 class="text-sm font-bold text-navy-800" x-text="editingMemberId ? 'Cập Nhật Thành Viên' : 'Thêm Thành Viên Mới'"></h3>
+        <button type="button" @click="modals.member = false" class="text-slate-400 hover:text-slate-700">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="submitMember()" class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tên thành viên</label>
+          <input type="text" x-model="memberForm.name" required placeholder="VD: Yến, Bố, Mẹ..."
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Nhóm thành viên</label>
+          <select x-model="memberForm.group"
+                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none bg-white">
+            <option value="work">Quỹ Ăn Đồng Nghiệp (Hub 2)</option>
+            <option value="family">Quỹ Gia Đình 6 Người (Hub 3)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số dư đầu kỳ (đ) (Dương: Còn quỹ, Âm: Đang nợ)</label>
+          <input type="number" x-model.number="memberForm.openingBalance" required placeholder="VD: 1276411 hoặc -8004088"
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ghi chú / Số điện thoại</label>
+          <input type="text" x-model="memberForm.note" placeholder="VD: SĐT, số tài khoản..."
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2 border-t border-slate-100">
+          <button type="button" @click="modals.member = false"
+                  class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
+          <button type="submit"
+                  class="px-4 py-2 rounded-xl bg-navy-800 hover:bg-navy-900 text-white text-xs font-bold transition">Lưu Thành Viên</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- MODAL: THÊM / SỬA TÀI KHOẢN NGÂN HÀNG & TIỀN MẶT -->
   <div x-show="modals.account" x-cloak
@@ -949,12 +1625,13 @@
               <option value="cash">Tiền mặt</option>
             </select>
           </div>
+
           <div>
-            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Thuộc Hub nào</label>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Phân bổ Hub</label>
             <select x-model="accountForm.hubRole"
                     class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none bg-white">
-              <option value="hub1_income">Hub 1: Thu Nhập</option>
-              <option value="hub2_dining">Hub 2: Quỹ Ăn</option>
+              <option value="hub1_income">Hub 1: Kinh Doanh</option>
+              <option value="hub2_dining">Hub 2: Ăn Nhóm</option>
               <option value="hub3_family">Hub 3: Gia Đình</option>
               <option value="hub4_personal">Hub 4: Cá Nhân</option>
             </select>
@@ -962,29 +1639,30 @@
         </div>
 
         <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền thực tế hiện có (đ)</label>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số dư thực tế hiện có (đ)</label>
           <input type="number" x-model.number="accountForm.balance" required placeholder="VD: 3280742"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
 
         <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tài khoản / Ghi chú (tuỳ chọn)</label>
-          <input type="text" x-model="accountForm.accountNumber" placeholder="VD: 101888... hoặc Ví chi tiêu"
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tài khoản / Mô tả</label>
+          <input type="text" x-model="accountForm.accountNumber" placeholder="VD: 9876543210 (VCB)"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
 
-        <div class="pt-2 flex justify-end gap-2">
+        <div class="pt-2 flex justify-end gap-2 border-t border-slate-100">
           <button type="button" @click="modals.account = false"
                   class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
           <button type="submit"
-                  class="px-4 py-2 rounded-xl bg-navy-800 hover:bg-navy-900 text-white text-xs font-bold transition"
-                  x-text="editingAccountId ? 'Cập Nhật' : 'Lưu Tài Khoản'"></button>
+                  class="px-4 py-2 rounded-xl text-white text-xs font-bold transition"
+                  :class="editingAccountId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-navy-800 hover:bg-navy-900'"
+                  x-text="editingAccountId ? 'Cập Nhật Tài Khoản' : 'Thêm Tài Khoản'"></button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL: THÊM / SỬA NHÀ CUNG CẤP (SUPPLIER DEBTS) -->
+  <!-- MODAL: THÊM / SỬA NHÀ CUNG CẤP -->
   <div x-show="modals.supplier" x-cloak
        class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-sm w-full shadow-xl space-y-4"
@@ -998,47 +1676,48 @@
 
       <form @submit.prevent="submitSupplier()" class="space-y-3">
         <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tên Nhà Cung Cấp</label>
-          <input type="text" x-model="supplierForm.supplierName" required placeholder="VD: Xưởng Khắc Dấu Tuấn Hương"
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tên nhà cung cấp</label>
+          <input type="text" x-model="supplierForm.supplierName" required placeholder="VD: NCC Pass Thuế, Xưởng Khắc Dấu..."
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
 
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền nợ thực tế hiện tại (đ)</label>
-          <input type="number" x-model.number="supplierForm.remainingAmount" required placeholder="VD: 190000"
+          <input type="number" x-model.number="supplierForm.remainingAmount" required placeholder="VD: 420000"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
 
         <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số điện thoại / STK chuyển khoản</label>
-          <input type="text" x-model="supplierForm.bankInfo" placeholder="VD: STK 0987... Vietcombank"
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Thông tin chuyển khoản / SĐT</label>
+          <input type="text" x-model="supplierForm.bankInfo" placeholder="VD: STK 123456 - VCB"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
 
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ghi chú</label>
-          <input type="text" x-model="supplierForm.notes" placeholder="VD: Vốn dấu hoặc pass thuế"
+          <input type="text" x-model="supplierForm.notes" placeholder="VD: Trả dồn vào ngày 30 cuối tháng"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
 
-        <div class="pt-2 flex justify-end gap-2">
+        <div class="pt-2 flex justify-end gap-2 border-t border-slate-100">
           <button type="button" @click="modals.supplier = false"
                   class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
           <button type="submit"
-                  class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition"
-                  x-text="editingSupplierId ? 'Cập Nhật NCC' : 'Lưu Nhà Cung Cấp'"></button>
+                  class="px-4 py-2 rounded-xl text-white text-xs font-bold transition"
+                  :class="editingSupplierId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-amber-600 hover:bg-amber-700'"
+                  x-text="editingSupplierId ? 'Cập Nhật NCC' : 'Thêm Nhà Cung Cấp'"></button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL: THÊM / SỬA LỊCH NHẮC DÒNG TIỀN -->
+  <!-- MODAL: LỊCH NHẮC DÒNG TIỀN -->
   <div x-show="modals.reminder" x-cloak
        class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-sm w-full shadow-xl space-y-4"
          @click.away="modals.reminder = false">
       <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-        <h3 class="text-sm font-bold text-navy-800" x-text="editingReminderId ? 'Chỉnh Sửa Dòng Nhắc Dòng Tiền' : 'Thêm Dòng Nhắc Dòng Tiền Mới'"></h3>
+        <h3 class="text-sm font-bold text-navy-800" x-text="editingReminderId ? 'Chỉnh Sửa Dòng Nhắc' : 'Thêm Lịch Nhắc Dòng Tiền'"></h3>
         <button type="button" @click="modals.reminder = false" class="text-slate-400 hover:text-slate-700">
           <i class="fa-solid fa-xmark text-sm"></i>
         </button>
@@ -1046,251 +1725,122 @@
 
       <form @submit.prevent="submitReminder()" class="space-y-3">
         <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Nội dung nhắc việc</label>
-          <input type="text" x-model="reminderForm.title" required placeholder="VD: Nhận lương, Trả tiền điện..."
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Nội dung nhắc nhở</label>
+          <input type="text" x-model="reminderForm.title" required placeholder="VD: Nhận lương, Trả nợ NCC..."
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
 
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ngày nhắc</label>
-            <input type="date" x-model="reminderForm.date" required
-                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
-          </div>
-          <div>
             <label class="block text-[11px] font-semibold text-slate-500 mb-1">Loại dòng tiền</label>
             <select x-model="reminderForm.type"
                     class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none bg-white">
-              <option value="income">Tiền Vào (Thu)</option>
-              <option value="expense">Tiền Ra (Chi)</option>
-              <option value="reminder">Nhắc Việc Chung</option>
+              <option value="expense">Chi tiền (-)</option>
+              <option value="income">Thu tiền (+)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Phân bổ Hub</label>
+            <select x-model="reminderForm.hubRole"
+                    class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none bg-white">
+              <option value="hub1_income">Hub 1: Kinh Doanh</option>
+              <option value="hub2_dining">Hub 2: Ăn Nhóm</option>
+              <option value="hub3_family">Hub 3: Gia Đình</option>
+              <option value="hub4_personal">Hub 4: Cá Nhân</option>
             </select>
           </div>
         </div>
 
         <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền liên quan (đ, nếu có)</label>
-          <input type="number" x-model.number="reminderForm.amount" placeholder="VD: 17000000"
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền dự kiến (đ)</label>
+          <input type="number" x-model.number="reminderForm.amount" required placeholder="VD: 17000000"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
 
         <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Thuộc quỹ nào</label>
-          <select x-model="reminderForm.hubRole"
-                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none bg-white">
-            <option value="hub1_income">Hub 1: Thu Nhập &amp; Kinh Doanh</option>
-            <option value="hub2_dining">Hub 2: Quỹ Ứng Ăn Nhóm</option>
-            <option value="hub3_family">Hub 3: Quỹ Gia Đình (6 người)</option>
-            <option value="hub4_personal">Hub 4: Chi Tiêu Cá Nhân</option>
-          </select>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ngày nhắc hẹn</label>
+          <input type="date" x-model="reminderForm.date" required
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
 
-        <div class="pt-2 flex justify-end gap-2">
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ghi chú</label>
+          <input type="text" x-model="reminderForm.notes" placeholder="VD: Hạn chót, chú ý số dư..."
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2 border-t border-slate-100">
           <button type="button" @click="modals.reminder = false"
                   class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
           <button type="submit"
-                  class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition"
-                  x-text="editingReminderId ? 'Cập Nhật' : 'Lưu Lịch Nhắc'"></button>
+                  class="px-4 py-2 rounded-xl text-white text-xs font-bold transition"
+                  :class="editingReminderId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-navy-800 hover:bg-navy-900'"
+                  x-text="editingReminderId ? 'Cập Nhật Dòng Nhắc' : 'Lưu Dòng Nhắc'"></button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL: THÊM / SỬA SỔ NỢ 2 CHIỀU -->
+  <!-- MODAL: SỔ NỢ 2 CHIỀU -->
   <div x-show="modals.debt" x-cloak
        class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-md w-full shadow-xl space-y-4"
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-sm w-full shadow-xl space-y-4"
          @click.away="modals.debt = false">
       <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-        <h3 class="text-sm font-bold text-navy-800" x-text="editingDebtId ? 'Chỉnh Sửa Khoản Nợ' : 'Thêm Khoản Nợ 2 Chiều Mới'"></h3>
+        <h3 class="text-sm font-bold text-navy-800" x-text="editingDebtId ? 'Chỉnh Sửa Khoản Nợ' : 'Thêm Khoản Nợ Mới'"></h3>
         <button type="button" @click="modals.debt = false" class="text-slate-400 hover:text-slate-700">
           <i class="fa-solid fa-xmark text-sm"></i>
         </button>
       </div>
 
       <form @submit.prevent="submitDebt()" class="space-y-3">
-        <div class="grid grid-cols-2 gap-2">
-          <button type="button" @click="debtForm.type = 'receivable'"
-                  class="py-1.5 rounded-xl text-xs font-bold border transition text-center"
-                  :class="debtForm.type === 'receivable' ? 'bg-mint-50 border-mint-500 text-mint-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
-            Bạn Nợ Tôi (Thu)
-          </button>
-          <button type="button" @click="debtForm.type = 'payable'"
-                  class="py-1.5 rounded-xl text-xs font-bold border transition text-center"
-                  :class="debtForm.type === 'payable' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
-            Tôi Nợ Bạn (Trả)
-          </button>
-        </div>
         <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Người liên quan</label>
-          <input type="text" x-model="debtForm.personName" required placeholder="VD: Yến"
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Chiều ghi nhận nợ</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" @click="debtForm.type = 'receivable'"
+                    class="py-2 rounded-xl text-xs font-bold border transition text-center"
+                    :class="debtForm.type === 'receivable' ? 'bg-mint-50 border-mint-500 text-mint-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              Bạn nợ tôi (Thu về)
+            </button>
+            <button type="button" @click="debtForm.type = 'payable'"
+                    class="py-2 rounded-xl text-xs font-bold border transition text-center"
+                    :class="debtForm.type === 'payable' ? 'bg-red-50 border-red-500 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              Tôi nợ bạn (Phải trả)
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tên đối tượng nợ</label>
+          <input type="text" x-model="debtForm.personName" required placeholder="VD: Chị Lan, Bạn Tuấn..."
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền (đ)</label>
-            <input type="number" x-model.number="debtForm.amount" required placeholder="300000"
-                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
-          </div>
-          <div>
-            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Hạn trả</label>
-            <input type="date" x-model="debtForm.dueDate" required
-                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
-          </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền (đ)</label>
+          <input type="number" x-model.number="debtForm.amount" required placeholder="VD: 500000"
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Hạn thanh toán hẹn</label>
+          <input type="date" x-model="debtForm.dueDate" required
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
+        </div>
+
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ghi chú</label>
-          <input type="text" x-model="debtForm.note" placeholder="VD: Mượn tiền, mua đồ hộ..."
+          <input type="text" x-model="debtForm.note" placeholder="VD: Tiền vay mặt, mua hộ đồ Shopee..."
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
-        <div class="pt-2 flex justify-end gap-2">
+
+        <div class="pt-2 flex justify-end gap-2 border-t border-slate-100">
           <button type="button" @click="modals.debt = false"
                   class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
           <button type="submit"
                   class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition"
                   x-text="editingDebtId ? 'Cập Nhật Khoản Nợ' : 'Lưu Khoản Nợ'"></button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- MODAL: GHI / SỬA BỮA ĂN -->
-  <div x-show="modals.diningBill" x-cloak
-       class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-md w-full shadow-xl space-y-4"
-         @click.away="modals.diningBill = false">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-        <h3 class="text-sm font-bold text-navy-800" x-text="editingDiningId ? 'Chỉnh Sửa Bữa Ăn Nhóm' : 'Ghi Bữa Ăn Nhóm Mới'"></h3>
-        <button type="button" @click="modals.diningBill = false" class="text-slate-400 hover:text-slate-700">
-          <i class="fa-solid fa-xmark text-sm"></i>
-        </button>
-      </div>
-
-      <form @submit.prevent="submitDiningBill()" class="space-y-3">
-        <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tên bữa ăn</label>
-          <input type="text" x-model="diningBillForm.mealTitle" required
-                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tổng tiền bill (đ)</label>
-            <input type="number" x-model.number="diningBillForm.totalBill" required
-                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
-          </div>
-          <div>
-            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ngày</label>
-            <input type="date" x-model="diningBillForm.date" required
-                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
-          </div>
-        </div>
-        <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Chi tiết chia tiền (Mỗi người 1 dòng, cú pháp: Tên: Số tiền)</label>
-          <textarea x-model="diningBillForm.splitsText" rows="5" required
-                    class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none"></textarea>
-          <p class="text-[10px] text-slate-400 mt-1">Dòng ghi "Tôi: số tiền" sẽ tự động cộng vào phần ăn của chủ sổ.</p>
-        </div>
-        <div class="pt-2 flex justify-end gap-2">
-          <button type="button" @click="modals.diningBill = false"
-                  class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
-          <button type="submit"
-                  class="px-4 py-2 rounded-xl text-white text-xs font-bold transition"
-                  :class="editingDiningId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-navy-800 hover:bg-navy-900'"
-                  x-text="editingDiningId ? 'Cập Nhật Bữa Ăn' : 'Lưu Bữa Ăn'"></button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- MODAL: NẠP / MƯỢN TIỀN QUỸ -->
-  <div x-show="modals.settlement" x-cloak
-       class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-sm w-full shadow-xl space-y-4"
-         @click.away="modals.settlement = false">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-        <h3 class="text-sm font-bold text-navy-800"
-            x-text="editingSettlementId ? 'Chỉnh Sửa Giao Dịch Nạp / Mượn' : (settlementForm.direction === 'in' ? 'Ghi Nhận Nạp Tiền Quỹ' : 'Ghi Nhận Mượn Tiền Quỹ')"></h3>
-        <button type="button" @click="modals.settlement = false" class="text-slate-400 hover:text-slate-700">
-          <i class="fa-solid fa-xmark text-sm"></i>
-        </button>
-      </div>
-
-      <form @submit.prevent="submitSettlement()" class="space-y-3">
-        <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Người nạp / mượn</label>
-          <input type="text" x-model="settlementForm.personName" required
-                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
-        </div>
-        <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Hành động</label>
-          <div class="grid grid-cols-2 gap-2">
-            <button type="button" @click="settlementForm.direction = 'in'"
-                    class="py-2 rounded-xl text-xs font-bold border transition text-center"
-                    :class="settlementForm.direction === 'in' ? 'bg-mint-50 border-mint-500 text-mint-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
-              + Nạp Tiền
-            </button>
-            <button type="button" @click="settlementForm.direction = 'out'"
-                    class="py-2 rounded-xl text-xs font-bold border transition text-center"
-                    :class="settlementForm.direction === 'out' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-600'">
-              💸 Mượn Tiền
-            </button>
-          </div>
-        </div>
-        <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền (đ)</label>
-          <input type="number" x-model.number="settlementForm.amount" required placeholder="VD: 300000"
-                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
-        </div>
-        <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ngày giao dịch</label>
-          <input type="date" x-model="settlementForm.date" required
-                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
-        </div>
-        <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ghi chú</label>
-          <input type="text" x-model="settlementForm.note" placeholder="VD: CK MoMo, Mượn tiền..."
-                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
-        </div>
-        <div class="pt-2 flex justify-end gap-2">
-          <button type="button" @click="modals.settlement = false"
-                  class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
-          <button type="submit"
-                  class="px-4 py-2 rounded-xl text-white text-xs font-bold transition"
-                  :class="editingSettlementId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-navy-800 hover:bg-navy-900'"
-                  x-text="editingSettlementId ? 'Cập Nhật' : 'Lưu Giao Dịch'"></button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- MODAL: SỬA SỐ ĐẦU KỲ TỪNG NGƯỜI -->
-  <div x-show="modals.member" x-cloak
-       class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-sm w-full shadow-xl space-y-4"
-         @click.away="modals.member = false">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-        <h3 class="text-sm font-bold text-navy-800" x-text="editingMemberId ? 'Cập Nhật Thành Viên' : 'Thêm Thành Viên Mới'"></h3>
-        <button type="button" @click="modals.member = false" class="text-slate-400 hover:text-slate-700">
-          <i class="fa-solid fa-xmark text-sm"></i>
-        </button>
-      </div>
-
-      <form @submit.prevent="submitMember()" class="space-y-3">
-        <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tên thành viên</label>
-          <input type="text" x-model="memberForm.name" required placeholder="VD: Yến"
-                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-navy-600 focus:outline-none">
-        </div>
-        <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số dư đầu kỳ (đ) (Dương: Còn quỹ, Âm: Đang nợ)</label>
-          <input type="number" x-model.number="memberForm.openingBalance" required placeholder="VD: 1276411 hoặc -8004088"
-                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
-        </div>
-        <div class="pt-2 flex justify-end gap-2">
-          <button type="button" @click="modals.member = false"
-                  class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
-          <button type="submit"
-                  class="px-4 py-2 rounded-xl bg-navy-800 hover:bg-navy-900 text-white text-xs font-bold transition">Cập Nhật</button>
         </div>
       </form>
     </div>
@@ -1302,7 +1852,7 @@
     <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-sm w-full shadow-xl space-y-4"
          @click.away="modals.config = false">
       <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-        <h3 class="text-sm font-bold text-navy-800">Cài Đặt Dòng Tiền Ban Đầu</h3>
+        <h3 class="text-sm font-bold text-navy-800">Cài Đặt Hạn Mức Tuần</h3>
         <button type="button" @click="modals.config = false" class="text-slate-400 hover:text-slate-700">
           <i class="fa-solid fa-xmark text-sm"></i>
         </button>
@@ -1314,7 +1864,7 @@
           <input type="number" x-model.number="configForm.weeklyLimit" required
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-navy-600 focus:outline-none">
         </div>
-        <div class="pt-2 flex justify-end gap-2">
+        <div class="pt-2 flex justify-end gap-2 border-t border-slate-100">
           <button type="button" @click="modals.config = false"
                   class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
           <button type="submit"

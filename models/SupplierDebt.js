@@ -10,3 +10,4 @@ const supplierDebtSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 module.exports = mongoose.model('SupplierDebt', supplierDebtSchema);
+

@@ -6,7 +6,7 @@ function cashFlowApp() {
       accounts: { totalCash: 0, list: [], hubs: {} },
       supplierPot: { totalAmount: 0, suppliers: [] },
       card1_cash: { totalCash: 0, spendableCash: 0, supplierPot: 0 },
-      card2_weekly: { limit: 1500000, spent: 0, percent: 0, isWarning: false, isBrake: false },
+      card2_weekly: { limit: 1500000, spent: 0, percent: 0, isWarning: false, isBrake: false, breakdown: {} },
       card4_dining: {
         billPaidTotal: 0,
         billCount: 0,
@@ -21,8 +21,13 @@ function cashFlowApp() {
         debtCount: 0,
         members: [],
         bills: [],
-        settlements: []
+        settlements: [],
+        work: null,
+        family: null,
+        combined: null,
+        allMembers: []
       },
+      transactions: [],
       reminders: [],
       allDebts: [],
       debtSummary: { totalReceivable: 0, totalPayable: 0 },
@@ -30,12 +35,18 @@ function cashFlowApp() {
     },
 
     // View tabs
-    activeTab: 'overview', // 'overview' | 'accounts' | 'suppliers' | 'timeline' | 'debts'
-    diningTab: 'members',  // 'members' | 'bills' | 'settlements'
-    memberFilter: 'all',   // 'all' | 'surplus' | 'debt'
-    debtFilter: 'all',     // 'all' | 'receivable' | 'payable' | 'pending' | 'paid'
+    activeTab: 'overview',
+    diningCategory: 'work', // 'work' (Ăn nhóm đồng nghiệp) | 'family' (Quỹ gia đình) | 'all' (Tất cả)
+    diningTab: 'members',   // 'members' | 'bills' | 'settlements'
+    memberFilter: 'all',    // 'all' | 'surplus' | 'debt'
+    debtFilter: 'all',      // 'all' | 'receivable' | 'payable' | 'pending' | 'paid'
+    txFilter: {
+      type: 'all',
+      accountName: 'all',
+      hubRole: 'all'
+    },
 
-    // Editing State Trackers
+    // Editing Trackers
     editingAccountId: null,
     editingSupplierId: null,
     editingReminderId: null,
@@ -44,11 +55,12 @@ function cashFlowApp() {
     editingDiningId: null,
     editingSettlementId: null,
     editingMemberId: null,
+    editingTransactionId: null,
 
-    // Forms
+    // ==================== FORMS ====================
     accountForm: {
       name: '',
-      type: 'bank', // 'bank' | 'ewallet' | 'cash'
+      type: 'bank',
       balance: '',
       accountNumber: '',
       hubRole: 'hub1_income',
@@ -67,13 +79,13 @@ function cashFlowApp() {
       date: new Date().toISOString().slice(0, 10),
       title: '',
       amount: '',
-      type: 'reminder', // 'income' | 'expense' | 'reminder'
+      type: 'expense',
       hubRole: 'hub1_income',
       notes: ''
     },
 
     debtForm: {
-      type: 'receivable', // 'receivable' (Họ nợ tôi) | 'payable' (Tôi nợ họ)
+      type: 'receivable',
       personName: '',
       amount: '',
       dueDate: new Date().toISOString().slice(0, 10),
@@ -90,26 +102,54 @@ function cashFlowApp() {
       date: new Date().toISOString().slice(0, 10)
     },
 
-    diningBillForm: {
-      mealTitle: 'Cơm trưa nhóm',
-      totalBill: 156000,
+    // Sổ Giao Dịch Thu / Chi (Request 1)
+    transactionForm: {
       date: new Date().toISOString().slice(0, 10),
-      notes: '',
-      splitsText: 'Tôi: 31200\nYến: 31200\nHải: 31200\nHoài: 31200\nHP: 31200'
+      title: '',
+      amount: '',
+      type: 'expense', // 'expense' | 'income' | 'transfer'
+      accountName: 'Vietcombank',
+      toAccountName: '',
+      category: 'Ăn uống cá nhân',
+      hubRole: 'hub4_personal',
+      impactsWeeklyLimit: true,
+      notes: ''
+    },
+
+    // Sổ Ăn & Quỹ Nhóm / Gia Đình (Request 2)
+    diningBillForm: {
+      category: 'work', // 'work' | 'family'
+      mealTitle: 'Cơm trưa văn phòng',
+      date: new Date().toISOString().slice(0, 10),
+      totalBill: 150000,
+      paidAccount: 'Vietcombank',
+      deductFromAccount: true,
+      deductWeeklyLimit: true,
+      splitMode: 'equal', // 'equal' | 'custom'
+      includeMe: true,
+      myShare: 0,
+      participants: [], // [{ personKey, name, selected, customAmount }]
+      notes: ''
     },
 
     settlementForm: {
+      category: 'work',
       personName: '',
       amount: '',
-      direction: 'in', // 'in' = nạp tiền, 'out' = mượn tiền
+      direction: 'in', // 'in' = nạp tiền/trả nợ, 'out' = mượn quỹ
       topupKind: 'prepaid',
+      accountName: 'Vietcombank',
+      addToAccount: true,
       note: '',
       date: new Date().toISOString().slice(0, 10)
     },
 
     memberForm: {
       name: '',
-      openingBalance: 0
+      group: 'work', // 'work' | 'family'
+      openingBalance: 0,
+      phone: '',
+      note: ''
     },
 
     configForm: {
@@ -117,7 +157,7 @@ function cashFlowApp() {
       weeklyLimit: 1500000
     },
 
-    // Modals
+    // Modals visibility state
     modals: {
       account: false,
       supplier: false,
@@ -127,6 +167,7 @@ function cashFlowApp() {
       diningBill: false,
       settlement: false,
       member: false,
+      transaction: false,
       config: false
     },
 
@@ -140,7 +181,7 @@ function cashFlowApp() {
     notify(msg) {
       this.toast.message = msg;
       this.toast.show = true;
-      setTimeout(() => { this.toast.show = false; }, 3000);
+      setTimeout(() => { this.toast.show = false; }, 3200);
     },
 
     formatVND(num) {
@@ -155,8 +196,17 @@ function cashFlowApp() {
       return str;
     },
 
+    // Current Dining Scope Data (Work vs Family vs Combined)
+    get currentDiningData() {
+      const d = this.dashboard.card4_dining;
+      if (this.diningCategory === 'family' && d.family) return d.family;
+      if (this.diningCategory === 'all' && d.combined) return d.combined;
+      if (d.work) return d.work;
+      return d;
+    },
+
     get filteredMembers() {
-      const list = this.dashboard.card4_dining.members || [];
+      const list = this.currentDiningData.members || [];
       if (this.memberFilter === 'surplus') return list.filter(m => m.currentBalance >= 0);
       if (this.memberFilter === 'debt') return list.filter(m => m.currentBalance < 0);
       return list;
@@ -169,6 +219,28 @@ function cashFlowApp() {
       if (this.debtFilter === 'pending') return list.filter(d => d.status === 'pending');
       if (this.debtFilter === 'paid') return list.filter(d => d.status === 'paid');
       return list;
+    },
+
+    get filteredTransactions() {
+      const list = this.dashboard.transactions || [];
+      return list.filter(t => {
+        if (this.txFilter.type !== 'all' && t.type !== this.txFilter.type) return false;
+        if (this.txFilter.accountName !== 'all' && t.accountName !== this.txFilter.accountName) return false;
+        if (this.txFilter.hubRole !== 'all' && t.hubRole !== this.txFilter.hubRole) return false;
+        return true;
+      });
+    },
+
+    get totalIncomeTransactions() {
+      return (this.dashboard.transactions || [])
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + (t.amount || 0), 0);
+    },
+
+    get totalExpenseTransactions() {
+      return (this.dashboard.transactions || [])
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + (t.amount || 0), 0);
     },
 
     async fetchDashboard() {
@@ -190,7 +262,99 @@ function cashFlowApp() {
       }
     },
 
-    // ==================== 1. TÀI KHOẢN NGÂN HÀNG & TIỀN MẶT (CRUD) ====================
+    // ==================== 1. SỔ GIAO DỊCH THU / CHI / CHUYỂN KHOẢN (REQUEST 1) ====================
+    openTransactionModal(tx = null) {
+      if (tx) {
+        this.editingTransactionId = tx._id;
+        this.transactionForm = {
+          date: tx.date || new Date().toISOString().slice(0, 10),
+          title: tx.title,
+          amount: tx.amount,
+          type: tx.type || 'expense',
+          accountName: tx.accountName || 'Vietcombank',
+          toAccountName: tx.toAccountName || '',
+          category: tx.category || 'Chi tiêu',
+          hubRole: tx.hubRole || 'hub4_personal',
+          impactsWeeklyLimit: Boolean(tx.impactsWeeklyLimit),
+          notes: tx.notes || ''
+        };
+      } else {
+        this.editingTransactionId = null;
+        const defaultAcc = (this.dashboard.accounts.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
+        this.transactionForm = {
+          date: new Date().toISOString().slice(0, 10),
+          title: '',
+          amount: '',
+          type: 'expense',
+          accountName: defaultAcc,
+          toAccountName: '',
+          category: 'Ăn uống cá nhân',
+          hubRole: 'hub4_personal',
+          impactsWeeklyLimit: true,
+          notes: ''
+        };
+      }
+      this.modals.transaction = true;
+    },
+
+    copyTransaction(tx) {
+      this.editingTransactionId = null;
+      this.transactionForm = {
+        date: new Date().toISOString().slice(0, 10),
+        title: tx.title + ' (Bản sao)',
+        amount: tx.amount,
+        type: tx.type || 'expense',
+        accountName: tx.accountName || 'Vietcombank',
+        toAccountName: tx.toAccountName || '',
+        category: tx.category || 'Chi tiêu',
+        hubRole: tx.hubRole || 'hub4_personal',
+        impactsWeeklyLimit: Boolean(tx.impactsWeeklyLimit),
+        notes: tx.notes || ''
+      };
+      this.modals.transaction = true;
+      this.notify('📋 Đã sao chép giao dịch!');
+    },
+
+    async submitTransaction() {
+      try {
+        const url = this.editingTransactionId ? `/api/transactions/${this.editingTransactionId}` : '/api/transactions';
+        const method = this.editingTransactionId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.transactionForm)
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(this.editingTransactionId ? '✓ Đã cập nhật giao dịch & số dư ngân hàng!' : '✓ Đã lưu giao dịch & cập nhật số dư ngân hàng!');
+          this.modals.transaction = false;
+          this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi hệ thống: ' + err.message);
+      }
+    },
+
+    async deleteTransaction(id, title) {
+      if (!confirm(`Xóa giao dịch "${title}"?\nSố dư tài khoản ngân hàng liên quan sẽ được tự động hoàn tác.`)) return;
+      try {
+        const res = await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('🗑️ Đã xóa giao dịch & hoàn lại số dư!');
+          this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi hệ thống: ' + err.message);
+      }
+    },
+
+    // ==================== 2. TÀI KHOẢN NGÂN HÀNG & TIỀN MẶT (CRUD) ====================
     openAccountModal(acc = null) {
       if (acc) {
         this.editingAccountId = acc._id;
@@ -216,36 +380,8 @@ function cashFlowApp() {
       this.modals.account = true;
     },
 
-    async quickUpdateBalance(acc) {
-      const newBalanceStr = prompt(`Cập nhật số tiền thực tế đang có tại "${acc.name}":`, acc.balance);
-      if (newBalanceStr === null) return;
-      const newBalance = parseFloat(newBalanceStr.replace(/[^\d.-]/g, ''));
-      if (isNaN(newBalance)) {
-        alert('Vui lòng nhập số tiền hợp lệ!');
-        return;
-      }
-      try {
-        const res = await fetch(`/api/accounts/${acc._id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...acc, balance: newBalance })
-        });
-        const data = await res.json();
-        if (data.success) {
-          this.notify(`✓ Đã cập nhật số dư ${acc.name}: ${this.formatVND(newBalance)}`);
-          this.fetchDashboard();
-        }
-      } catch (err) {
-        alert('Lỗi: ' + err.message);
-      }
-    },
-
     async submitAccount() {
       try {
-        if (!this.accountForm.name) {
-          alert('Vui lòng nhập tên ngân hàng / ví / tiền mặt!');
-          return;
-        }
         const url = this.editingAccountId ? `/api/accounts/${this.editingAccountId}` : '/api/accounts';
         const method = this.editingAccountId ? 'PUT' : 'POST';
 
@@ -259,19 +395,31 @@ function cashFlowApp() {
           this.notify(this.editingAccountId ? '✓ Đã cập nhật tài khoản!' : '✓ Đã thêm tài khoản mới!');
           this.modals.account = false;
           this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
         alert('Lỗi: ' + err.message);
       }
     },
 
-    async deleteAccount(id, name) {
-      if (!confirm(`Xác nhận xóa tài khoản "${name}"?`)) return;
+    async quickUpdateBalance(acc) {
+      const input = prompt(`Cập nhật số tiền thực tế cho ${acc.name}:`, acc.balance);
+      if (input === null) return;
+      const newBal = parseFloat(input.replace(/[^\d.-]/g, ''));
+      if (isNaN(newBal)) {
+        alert('Vui lòng nhập số hợp lệ!');
+        return;
+      }
       try {
-        const res = await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/accounts/${acc._id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ balance: newBal })
+        });
         const data = await res.json();
         if (data.success) {
-          this.notify(`🗑️ Đã xóa tài khoản "${name}"!`);
+          this.notify(`✓ Đã cập nhật ${acc.name}: ${this.formatVND(newBal)}`);
           this.fetchDashboard();
         }
       } catch (err) {
@@ -279,16 +427,30 @@ function cashFlowApp() {
       }
     },
 
-    // ==================== 2. NỢ TỪNG NHÀ CUNG CẤP (SUPPLIER DEBTS CRUD) ====================
-    openSupplierModal(s = null) {
-      if (s) {
-        this.editingSupplierId = s._id;
+    async deleteAccount(id, name) {
+      if (!confirm(`Xóa tài khoản/ví "${name}"?`)) return;
+      try {
+        const res = await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(`🗑️ Đã xóa ${name}!`);
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    // ==================== 3. HŨ TIỀN HÀNG NỢ TỪNG NCC (CRUD) ====================
+    openSupplierModal(sup = null) {
+      if (sup) {
+        this.editingSupplierId = sup._id;
         this.supplierForm = {
-          supplierName: s.supplierName,
-          remainingAmount: s.remainingAmount,
-          phone: s.phone || '',
-          bankInfo: s.bankInfo || '',
-          notes: s.notes || ''
+          supplierName: sup.supplierName,
+          remainingAmount: sup.remainingAmount,
+          phone: sup.phone || '',
+          bankInfo: sup.bankInfo || '',
+          notes: sup.notes || ''
         };
       } else {
         this.editingSupplierId = null;
@@ -305,10 +467,6 @@ function cashFlowApp() {
 
     async submitSupplier() {
       try {
-        if (!this.supplierForm.supplierName) {
-          alert('Vui lòng nhập tên nhà cung cấp!');
-          return;
-        }
         const url = this.editingSupplierId ? `/api/supplier-debts/${this.editingSupplierId}` : '/api/supplier-debts';
         const method = this.editingSupplierId ? 'PUT' : 'POST';
 
@@ -319,32 +477,34 @@ function cashFlowApp() {
         });
         const data = await res.json();
         if (data.success) {
-          this.notify(this.editingSupplierId ? '✓ Đã cập nhật công nợ NCC!' : '✓ Đã thêm NCC mới!');
+          this.notify(this.editingSupplierId ? '✓ Đã cập nhật nhà cung cấp!' : '✓ Đã thêm nhà cung cấp mới!');
           this.modals.supplier = false;
           this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
         alert('Lỗi: ' + err.message);
       }
     },
 
-    async paySupplierPrompt(s) {
-      const amountStr = prompt(`Nhập số tiền muốn trả cho NCC "${s.supplierName}" (Nợ hiện tại: ${this.formatVND(s.remainingAmount)}):`, s.remainingAmount);
-      if (amountStr === null) return;
-      const payAmount = parseFloat(amountStr.replace(/[^\d.-]/g, ''));
+    async paySupplierPrompt(sup) {
+      const input = prompt(`Số tiền trả cho NCC "${sup.supplierName}" (Hiện nợ: ${this.formatVND(sup.remainingAmount)}):`, sup.remainingAmount);
+      if (input === null) return;
+      const payAmount = parseFloat(input.replace(/[^\d.-]/g, ''));
       if (isNaN(payAmount) || payAmount <= 0) {
         alert('Vui lòng nhập số tiền hợp lệ!');
         return;
       }
       try {
-        const res = await fetch(`/api/supplier-debts/${s._id}/pay`, {
+        const res = await fetch(`/api/supplier-debts/${sup._id}/pay`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payAmount })
+          body: JSON.stringify({ amount: payAmount })
         });
         const data = await res.json();
         if (data.success) {
-          this.notify(`✓ Đã thanh toán ${this.formatVND(payAmount)} cho ${s.supplierName}!`);
+          this.notify(`✓ Đã thanh toán ${this.formatVND(payAmount)} cho ${sup.supplierName}!`);
           this.fetchDashboard();
         }
       } catch (err) {
@@ -353,12 +513,12 @@ function cashFlowApp() {
     },
 
     async batchPayAllSuppliers() {
-      if (!confirm(`Xác nhận thanh toán TOÀN BỘ công nợ cho tất cả NCC (${this.formatVND(this.dashboard.supplierPot.totalAmount)}) để reset Hũ NCC về 0đ?`)) return;
+      if (!confirm(`Xác nhận thanh toán gom toàn bộ tiền hàng cho TẤT CẢ nhà cung cấp?\nTổng tiền: ${this.formatVND(this.dashboard.supplierPot.totalAmount)}\nHũ tiền hàng sẽ được reset về 0đ.`)) return;
       try {
         const res = await fetch('/api/supplier-debts/batch-pay-all', { method: 'POST' });
         const data = await res.json();
         if (data.success) {
-          this.notify('✓ Đã thanh toán gom toàn bộ công nợ cho các NCC!');
+          this.notify('🎉 Đã thanh toán gom toàn bộ NCC! Hũ tiền hàng về 0đ.');
           this.fetchDashboard();
         }
       } catch (err) {
@@ -367,12 +527,12 @@ function cashFlowApp() {
     },
 
     async deleteSupplier(id, name) {
-      if (!confirm(`Xác nhận xóa nhà cung cấp "${name}"?`)) return;
+      if (!confirm(`Xóa NCC "${name}"?`)) return;
       try {
         const res = await fetch(`/api/supplier-debts/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
-          this.notify(`🗑️ Đã xóa nhà cung cấp "${name}"!`);
+          this.notify(`🗑️ Đã xóa NCC ${name}!`);
           this.fetchDashboard();
         }
       } catch (err) {
@@ -380,17 +540,17 @@ function cashFlowApp() {
       }
     },
 
-    // ==================== 3. LỊCH NHẮC DÒNG TIỀN (REMINDERS CRUD) ====================
-    openReminderModal(r = null) {
-      if (r) {
-        this.editingReminderId = r._id;
+    // ==================== 4. LỊCH NHẮC DÒNG TIỀN (TIMELINE CRUD) ====================
+    openReminderModal(rem = null) {
+      if (rem) {
+        this.editingReminderId = rem._id;
         this.reminderForm = {
-          date: r.date,
-          title: r.title,
-          amount: r.amount || '',
-          type: r.type || 'reminder',
-          hubRole: r.hubRole || 'hub1_income',
-          notes: r.notes || ''
+          date: rem.date,
+          title: rem.title,
+          amount: rem.amount,
+          type: rem.type || 'expense',
+          hubRole: rem.hubRole || 'hub1_income',
+          notes: rem.notes || ''
         };
       } else {
         this.editingReminderId = null;
@@ -398,7 +558,7 @@ function cashFlowApp() {
           date: new Date().toISOString().slice(0, 10),
           title: '',
           amount: '',
-          type: 'reminder',
+          type: 'expense',
           hubRole: 'hub1_income',
           notes: ''
         };
@@ -406,12 +566,22 @@ function cashFlowApp() {
       this.modals.reminder = true;
     },
 
+    copyReminder(rem) {
+      this.editingReminderId = null;
+      this.reminderForm = {
+        date: rem.date,
+        title: rem.title + ' (Bản sao)',
+        amount: rem.amount,
+        type: rem.type || 'expense',
+        hubRole: rem.hubRole || 'hub1_income',
+        notes: rem.notes || ''
+      };
+      this.modals.reminder = true;
+      this.notify('📋 Đã sao chép dòng nhắc!');
+    },
+
     async submitReminder() {
       try {
-        if (!this.reminderForm.title) {
-          alert('Vui lòng nhập nội dung nhắc việc!');
-          return;
-        }
         const url = this.editingReminderId ? `/api/reminders/${this.editingReminderId}` : '/api/reminders';
         const method = this.editingReminderId ? 'PUT' : 'POST';
 
@@ -422,9 +592,11 @@ function cashFlowApp() {
         });
         const data = await res.json();
         if (data.success) {
-          this.notify(this.editingReminderId ? '✓ Đã cập nhật dòng nhắc việc!' : '✓ Đã thêm lịch nhắc mới!');
+          this.notify(this.editingReminderId ? '✓ Đã cập nhật dòng nhắc!' : '✓ Đã thêm lịch nhắc mới!');
           this.modals.reminder = false;
           this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
         alert('Lỗi: ' + err.message);
@@ -436,7 +608,7 @@ function cashFlowApp() {
         const res = await fetch(`/api/reminders/${id}/toggle-status`, { method: 'PATCH' });
         const data = await res.json();
         if (data.success) {
-          this.notify('✓ Đã cập nhật trạng thái nhắc việc!');
+          this.notify('✓ Đã cập nhật trạng thái nhắc nhở!');
           this.fetchDashboard();
         }
       } catch (err) {
@@ -445,12 +617,12 @@ function cashFlowApp() {
     },
 
     async deleteReminder(id, title) {
-      if (!confirm(`Xóa lịch nhắc "${title}"?`)) return;
+      if (!confirm(`Xóa dòng nhắc "${title}"?`)) return;
       try {
         const res = await fetch(`/api/reminders/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
-          this.notify('🗑️ Đã xóa dòng nhắc việc!');
+          this.notify('🗑️ Đã xóa dòng nhắc!');
           this.fetchDashboard();
         }
       } catch (err) {
@@ -458,16 +630,16 @@ function cashFlowApp() {
       }
     },
 
-    // ==================== 4. SỔ NỢ 2 CHIỀU (DEBTS CRUD & COPY) ====================
-    openDebtModal(d = null) {
-      if (d) {
-        this.editingDebtId = d._id;
+    // ==================== 5. SỔ NỢ 2 CHIỀU (CRUD) ====================
+    openDebtModal(debt = null) {
+      if (debt) {
+        this.editingDebtId = debt._id;
         this.debtForm = {
-          type: d.type,
-          personName: d.personName,
-          amount: d.amount,
-          dueDate: d.dueDate,
-          note: d.note || ''
+          type: debt.type,
+          personName: debt.personName,
+          amount: debt.amount,
+          dueDate: debt.dueDate || new Date().toISOString().slice(0, 10),
+          note: debt.note || ''
         };
       } else {
         this.editingDebtId = null;
@@ -482,25 +654,21 @@ function cashFlowApp() {
       this.modals.debt = true;
     },
 
-    copyDebt(d) {
+    copyDebt(debt) {
       this.editingDebtId = null;
       this.debtForm = {
-        type: d.type,
-        personName: d.personName + ' (Bản sao)',
-        amount: d.amount,
+        type: debt.type,
+        personName: debt.personName + ' (Bản sao)',
+        amount: debt.amount,
         dueDate: new Date().toISOString().slice(0, 10),
-        note: d.note || ''
+        note: debt.note || ''
       };
       this.modals.debt = true;
-      this.notify('📋 Đã sao chép khoản nợ vào form tạo mới!');
+      this.notify('📋 Đã sao chép khoản nợ!');
     },
 
     async submitDebt() {
       try {
-        if (!this.debtForm.personName || !this.debtForm.amount) {
-          alert('Vui lòng nhập người liên quan và số tiền!');
-          return;
-        }
         const url = this.editingDebtId ? `/api/debts/${this.editingDebtId}` : '/api/debts';
         const method = this.editingDebtId ? 'PUT' : 'POST';
 
@@ -511,9 +679,11 @@ function cashFlowApp() {
         });
         const data = await res.json();
         if (data.success) {
-          this.notify(this.editingDebtId ? '✓ Đã cập nhật khoản nợ!' : '✓ Đã thêm khoản nợ vào sổ!');
+          this.notify(this.editingDebtId ? '✓ Đã cập nhật khoản nợ!' : '✓ Đã thêm khoản nợ mới!');
           this.modals.debt = false;
           this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
         alert('Lỗi: ' + err.message);
@@ -525,7 +695,7 @@ function cashFlowApp() {
         const res = await fetch(`/api/debts/${id}/toggle-status`, { method: 'PATCH' });
         const data = await res.json();
         if (data.success) {
-          this.notify('✓ Đã cập nhật trạng thái nợ!');
+          this.notify('✓ Đã cập nhật trạng thái thanh toán nợ!');
           this.fetchDashboard();
         }
       } catch (err) {
@@ -533,8 +703,8 @@ function cashFlowApp() {
       }
     },
 
-    async deleteDebt(id, personName) {
-      if (!confirm(`Xóa khoản nợ của "${personName}"?`)) return;
+    async deleteDebt(id, name) {
+      if (!confirm(`Xóa khoản nợ của "${name}"?`)) return;
       try {
         const res = await fetch(`/api/debts/${id}`, { method: 'DELETE' });
         const data = await res.json();
@@ -547,173 +717,180 @@ function cashFlowApp() {
       }
     },
 
-    // ==================== SERVICE ORDERS ====================
-    editServiceOrder(order) {
-      this.editingOrderId = order._id;
-      this.serviceForm = {
-        customerName: order.customerName,
-        serviceType: order.serviceType,
-        costPrice: order.costPrice,
-        salePrice: order.salePrice,
-        customerPaid: order.customerPaid,
-        supplierPaid: order.supplierPaid,
-        date: order.date
-      };
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      this.notify(`✏️ Sửa đơn: ${order.customerName}`);
-    },
-
-    copyServiceOrder(order) {
-      this.editingOrderId = null;
-      this.serviceForm = {
-        customerName: order.customerName + ' (Bản sao)',
-        serviceType: order.serviceType,
-        costPrice: order.costPrice,
-        salePrice: order.salePrice,
-        customerPaid: true,
-        supplierPaid: false,
-        date: new Date().toISOString().slice(0, 10)
-      };
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      this.notify('📋 Đã sao chép đơn vào form!');
-    },
-
-    cancelEditServiceOrder() {
-      this.editingOrderId = null;
-      this.serviceForm = {
-        customerName: '',
-        serviceType: 'Reset pass thuế',
-        costPrice: 420000,
-        salePrice: 600000,
-        customerPaid: true,
-        supplierPaid: false,
-        date: new Date().toISOString().slice(0, 10)
-      };
-    },
-
-    async submitServiceOrder() {
-      try {
-        const url = this.editingOrderId ? `/api/service-orders/${this.editingOrderId}` : '/api/service-orders';
-        const method = this.editingOrderId ? 'PUT' : 'POST';
-
-        const res = await fetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(this.serviceForm)
-        });
-        const data = await res.json();
-        if (data.success) {
-          this.notify(this.editingOrderId ? '✓ Đã cập nhật đơn hàng!' : '✓ Đã lưu đơn hàng dịch vụ mới!');
-          this.cancelEditServiceOrder();
-          this.fetchDashboard();
-        }
-      } catch (err) {
-        alert('Lỗi: ' + err.message);
-      }
-    },
-
-    async deleteServiceOrder(id, name) {
-      if (!confirm(`Xóa đơn dịch vụ "${name}"?`)) return;
-      try {
-        const res = await fetch(`/api/service-orders/${id}`, { method: 'DELETE' });
-        const data = await res.json();
-        if (data.success) {
-          this.notify('🗑️ Đã xóa đơn dịch vụ!');
-          this.fetchDashboard();
-        }
-      } catch (err) {
-        alert('Lỗi: ' + err.message);
-      }
-    },
-
-    // ==================== BỮA ĂN NHÓM & SETTLEMENTS ====================
+    // ==================== 6. BỮA ĂN NHÓM & QUỸ GIA ĐÌNH (REQUEST 2 ENGINE) ====================
     openNewDiningBillModal() {
       this.editingDiningId = null;
+      const cat = this.diningCategory === 'family' ? 'family' : 'work';
+      const defaultAcc = (this.dashboard.accounts.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
+
       this.diningBillForm = {
-        mealTitle: 'Cơm trưa nhóm',
-        totalBill: 156000,
+        category: cat,
+        mealTitle: cat === 'family' ? 'Chi tiêu / Ăn uống gia đình' : 'Cơm trưa văn phòng',
         date: new Date().toISOString().slice(0, 10),
-        notes: '',
-        splitsText: 'Tôi: 31200\nYến: 31200\nHải: 31200\nHoài: 31200\nHP: 31200'
+        totalBill: 150000,
+        paidAccount: defaultAcc,
+        deductFromAccount: true,
+        deductWeeklyLimit: cat === 'work',
+        splitMode: 'equal',
+        includeMe: true,
+        myShare: 0,
+        participants: [],
+        notes: ''
       };
+
+      this.populateBillParticipants();
+      this.recalculateBillSplits();
       this.modals.diningBill = true;
+    },
+
+    populateBillParticipants(existingSplits = null) {
+      const cat = this.diningBillForm.category;
+      const allMembers = this.dashboard.card4_dining.allMembers || [];
+      const relevantMembers = allMembers.filter(m => cat === 'family' ? m.group === 'family' : m.group !== 'family');
+
+      this.diningBillForm.participants = relevantMembers.map(m => {
+        let selected = true;
+        let customAmount = 0;
+
+        if (existingSplits && existingSplits.length > 0) {
+          const match = existingSplits.find(sp => sp.personKey === m.personKey || sp.personName.toLowerCase() === m.name.toLowerCase());
+          if (match) {
+            selected = true;
+            customAmount = match.amount || 0;
+          } else {
+            selected = false;
+          }
+        }
+
+        return {
+          personKey: m.personKey,
+          name: m.name,
+          selected,
+          customAmount
+        };
+      });
+    },
+
+    onBillCategoryChange() {
+      this.diningBillForm.deductWeeklyLimit = this.diningBillForm.category === 'work';
+      this.populateBillParticipants();
+      this.recalculateBillSplits();
+    },
+
+    selectAllParticipants(state) {
+      this.diningBillForm.participants.forEach(p => p.selected = state);
+      this.recalculateBillSplits();
+    },
+
+    recalculateBillSplits() {
+      const total = Number(this.diningBillForm.totalBill) || 0;
+      const selected = this.diningBillForm.participants.filter(p => p.selected);
+      const totalCount = selected.length + (this.diningBillForm.includeMe ? 1 : 0);
+
+      if (this.diningBillForm.splitMode === 'equal') {
+        if (totalCount > 0) {
+          const share = Math.round(total / totalCount);
+          selected.forEach(p => p.customAmount = share);
+          this.diningBillForm.myShare = this.diningBillForm.includeMe ? (total - share * selected.length) : 0;
+        } else {
+          this.diningBillForm.myShare = 0;
+        }
+      } else {
+        // Custom split: My share is remainder of total - sum(selected participants)
+        const othersSum = selected.reduce((sum, p) => sum + (Number(p.customAmount) || 0), 0);
+        this.diningBillForm.myShare = Math.max(0, total - othersSum);
+      }
     },
 
     editDiningBill(bill) {
       this.editingDiningId = bill._id;
-      const splitsText = (bill.splits || [])
-        .map(sp => `${sp.personName}: ${sp.amount}`)
-        .join('\n');
+      const cat = bill.category || 'work';
+
       this.diningBillForm = {
+        category: cat,
         mealTitle: bill.mealTitle,
-        totalBill: bill.totalBill,
         date: bill.date,
-        notes: bill.notes || '',
-        splitsText: splitsText || `Tôi: ${bill.myShare || 0}`
+        totalBill: bill.totalBill,
+        paidAccount: bill.paidAccount || 'Vietcombank',
+        deductFromAccount: bill.deductFromAccount !== false,
+        deductWeeklyLimit: bill.deductWeeklyLimit !== false,
+        splitMode: bill.splitMode || 'equal',
+        includeMe: (bill.splits || []).some(sp => sp.isMe),
+        myShare: bill.myShare || 0,
+        participants: [],
+        notes: bill.notes || ''
       };
+
+      this.populateBillParticipants(bill.splits);
+      this.recalculateBillSplits();
       this.modals.diningBill = true;
     },
 
     copyDiningBill(bill) {
       this.editingDiningId = null;
-      const splitsText = (bill.splits || [])
-        .map(sp => `${sp.personName}: ${sp.amount}`)
-        .join('\n');
-      this.diningBillForm = {
-        mealTitle: bill.mealTitle + ' (Mới)',
-        totalBill: bill.totalBill,
-        date: new Date().toISOString().slice(0, 10),
-        notes: bill.notes || '',
-        splitsText: splitsText
-      };
-      this.modals.diningBill = true;
-      this.notify('📋 Đã sao chép danh sách chia tiền!');
-    },
+      const cat = bill.category || 'work';
 
-    async deleteDiningBill(id, title) {
-      if (!confirm(`Xóa bữa ăn "${title}"?`)) return;
-      try {
-        const res = await fetch(`/api/dining/bill/${id}`, { method: 'DELETE' });
-        const data = await res.json();
-        if (data.success) {
-          this.notify('🗑️ Đã xóa bữa ăn!');
-          this.fetchDashboard();
-        }
-      } catch (err) {
-        alert('Lỗi: ' + err.message);
-      }
+      this.diningBillForm = {
+        category: cat,
+        mealTitle: bill.mealTitle + ' (Mới)',
+        date: new Date().toISOString().slice(0, 10),
+        totalBill: bill.totalBill,
+        paidAccount: bill.paidAccount || 'Vietcombank',
+        deductFromAccount: true,
+        deductWeeklyLimit: bill.deductWeeklyLimit !== false,
+        splitMode: bill.splitMode || 'equal',
+        includeMe: (bill.splits || []).some(sp => sp.isMe),
+        myShare: bill.myShare || 0,
+        participants: [],
+        notes: bill.notes || ''
+      };
+
+      this.populateBillParticipants(bill.splits);
+      this.recalculateBillSplits();
+      this.modals.diningBill = true;
+      this.notify('📋 Đã sao chép cấu hình chia tiền bữa ăn!');
     },
 
     async submitDiningBill() {
       try {
         const splits = [];
-        let myShare = 0;
-        const lines = this.diningBillForm.splitsText.split('\n');
+        const cat = this.diningBillForm.category;
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          const colonIdx = trimmed.indexOf(':');
-          if (colonIdx === -1) continue;
-          const pName = trimmed.slice(0, colonIdx).trim();
-          const amount = parseFloat(trimmed.slice(colonIdx + 1).replace(/[^\d.-]/g, '')) || 0;
-          const isMe = pName.toLowerCase() === 'tôi' || pName.toLowerCase() === 'toi';
-          if (isMe) myShare = amount;
+        if (this.diningBillForm.includeMe) {
           splits.push({
-            personKey: pName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(),
-            personName: pName,
-            amount,
-            paid: isMe,
-            isMe
+            personKey: 'toi',
+            personName: 'Tôi',
+            amount: Number(this.diningBillForm.myShare) || 0,
+            paid: true,
+            isMe: true,
+            group: cat
           });
         }
+
+        this.diningBillForm.participants
+          .filter(p => p.selected)
+          .forEach(p => {
+            splits.push({
+              personKey: p.personKey,
+              personName: p.name,
+              amount: Number(p.customAmount) || 0,
+              paid: false,
+              isMe: false,
+              group: cat
+            });
+          });
 
         const payload = {
           date: this.diningBillForm.date,
           mealTitle: this.diningBillForm.mealTitle,
-          totalBill: Number(this.diningBillForm.totalBill),
-          myShare,
+          category: cat,
+          totalBill: Number(this.diningBillForm.totalBill) || 0,
+          myShare: Number(this.diningBillForm.myShare) || 0,
+          splitMode: this.diningBillForm.splitMode,
           splits,
+          paidAccount: this.diningBillForm.paidAccount,
+          deductFromAccount: this.diningBillForm.deductFromAccount,
+          deductWeeklyLimit: this.diningBillForm.deductWeeklyLimit,
           notes: this.diningBillForm.notes
         };
 
@@ -727,62 +904,85 @@ function cashFlowApp() {
         });
         const data = await res.json();
         if (data.success) {
-          this.notify(this.editingDiningId ? '✓ Đã cập nhật bữa ăn!' : '✓ Đã ghi nhận bữa ăn mới!');
+          this.notify(this.editingDiningId ? '✓ Đã cập nhật hóa đơn & tự động cân đối tài khoản!' : '✓ Đã ghi nhận bữa ăn & trừ số tiền ngân hàng thành công!');
           this.modals.diningBill = false;
           this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
-        alert('Lỗi: ' + err.message);
+        alert('Lỗi hệ thống: ' + err.message);
       }
     },
 
-    openSettlementModal(personName = '', direction = 'in') {
+    async deleteDiningBill(id, title) {
+      if (!confirm(`Xóa hóa đơn "${title}"?\nSố tiền đã trừ trong ngân hàng sẽ được tự động hoàn lại.`)) return;
+      try {
+        const res = await fetch(`/api/dining/bill/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('🗑️ Đã xóa bữa ăn & hoàn trả số dư ngân hàng!');
+          this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi hệ thống: ' + err.message);
+      }
+    },
+
+    // ==================== 7. NẠP / TRẢ TIỀN ĂN (SETTLEMENTS) ====================
+    openSettlementModal(s = null) {
+      const defaultAcc = (this.dashboard.accounts.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
+      if (s) {
+        this.editingSettlementId = s._id;
+        this.settlementForm = {
+          category: s.category || 'work',
+          personName: s.personName,
+          amount: s.amount,
+          direction: s.direction || 'in',
+          topupKind: s.topupKind || 'prepaid',
+          accountName: s.accountName || defaultAcc,
+          addToAccount: s.addToAccount !== false,
+          note: s.note || '',
+          date: s.date || new Date().toISOString().slice(0, 10)
+        };
+      } else {
+        this.editingSettlementId = null;
+        this.settlementForm = {
+          category: this.diningCategory === 'family' ? 'family' : 'work',
+          personName: '',
+          amount: '',
+          direction: 'in',
+          topupKind: 'prepaid',
+          accountName: defaultAcc,
+          addToAccount: true,
+          note: '',
+          date: new Date().toISOString().slice(0, 10)
+        };
+      }
+      this.modals.settlement = true;
+    },
+
+    copySettlement(s) {
       this.editingSettlementId = null;
       this.settlementForm = {
-        personName,
-        amount: '',
-        direction,
-        topupKind: direction === 'in' ? 'prepaid' : 'borrow',
-        note: direction === 'in' ? 'CK nạp quỹ' : 'Mượn tiền quỹ',
+        category: s.category || 'work',
+        personName: s.personName,
+        amount: s.amount,
+        direction: s.direction || 'in',
+        topupKind: s.topupKind || 'prepaid',
+        accountName: s.accountName || 'Vietcombank',
+        addToAccount: true,
+        note: s.note ? s.note + ' (Bản sao)' : '',
         date: new Date().toISOString().slice(0, 10)
       };
       this.modals.settlement = true;
-    },
-
-    editSettlement(s) {
-      this.editingSettlementId = s._id;
-      this.settlementForm = {
-        personName: s.personName,
-        amount: s.amount,
-        direction: s.direction,
-        topupKind: s.topupKind || (s.direction === 'in' ? 'prepaid' : 'borrow'),
-        note: s.note || '',
-        date: s.date
-      };
-      this.modals.settlement = true;
-    },
-
-    async deleteSettlement(id, personName) {
-      if (!confirm(`Xóa giao dịch này của ${personName}?`)) return;
-      try {
-        const res = await fetch(`/api/dining/settlement/${id}`, { method: 'DELETE' });
-        const data = await res.json();
-        if (data.success) {
-          this.notify('🗑️ Đã xóa giao dịch nạp / mượn!');
-          this.fetchDashboard();
-        }
-      } catch (err) {
-        alert('Lỗi: ' + err.message);
-      }
+      this.notify('📋 Đã sao chép giao dịch nạp / mượn!');
     },
 
     async submitSettlement() {
       try {
-        if (!this.settlementForm.personName || !this.settlementForm.amount) {
-          alert('Vui lòng nhập tên người và số tiền!');
-          return;
-        }
-
         const url = this.editingSettlementId ? `/api/dining/settlement/${this.editingSettlementId}` : '/api/dining/settlement';
         const method = this.editingSettlementId ? 'PUT' : 'POST';
 
@@ -793,44 +993,74 @@ function cashFlowApp() {
         });
         const data = await res.json();
         if (data.success) {
-          this.notify(this.editingSettlementId ? '✓ Đã cập nhật giao dịch!' : (this.settlementForm.direction === 'in' ? '✓ Đã nạp tiền quỹ!' : '✓ Đã ghi mượn tiền quỹ!'));
+          this.notify(this.editingSettlementId ? '✓ Đã cập nhật giao dịch & số dư ngân hàng!' : '✓ Đã lưu thu/nạp tiền & cộng vào tài khoản ngân hàng!');
           this.modals.settlement = false;
           this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
-        alert('Lỗi: ' + err.message);
+        alert('Lỗi hệ thống: ' + err.message);
       }
     },
 
-    openMemberModal(member = null) {
-      if (member) {
-        this.editingMemberId = member.id || member._id;
-        this.memberForm.name = member.name;
-        this.memberForm.openingBalance = member.openingBalance;
+    async deleteSettlement(id, name) {
+      if (!confirm(`Xóa giao dịch của "${name}"?\nSố tiền tác động vào tài khoản ngân hàng sẽ được tự động hoàn tác.`)) return;
+      try {
+        const res = await fetch(`/api/dining/settlement/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('🗑️ Đã xóa giao dịch & hoàn tác số dư ngân hàng!');
+          this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi hệ thống: ' + err.message);
+      }
+    },
+
+    // ==================== 8. THÀNH VIÊN SỔ ĂN & GIA ĐÌNH ====================
+    openMemberModal(m = null) {
+      if (m) {
+        this.editingMemberId = m._id || m.id;
+        this.memberForm = {
+          name: m.name,
+          group: m.group || 'work',
+          openingBalance: m.openingBalance || 0,
+          phone: m.phone || '',
+          note: m.note || ''
+        };
       } else {
         this.editingMemberId = null;
-        this.memberForm.name = '';
-        this.memberForm.openingBalance = 0;
+        this.memberForm = {
+          name: '',
+          group: this.diningCategory === 'family' ? 'family' : 'work',
+          openingBalance: 0,
+          phone: '',
+          note: ''
+        };
       }
       this.modals.member = true;
     },
 
     async submitMember() {
       try {
-        if (!this.memberForm.name) {
-          alert('Vui lòng nhập tên thành viên!');
-          return;
-        }
-        const res = await fetch('/api/dining/member', {
-          method: 'POST',
+        const url = this.editingMemberId ? `/api/dining/member/${this.editingMemberId}` : '/api/dining/member';
+        const method = this.editingMemberId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+          method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.memberForm)
         });
         const data = await res.json();
         if (data.success) {
-          this.notify('✓ Đã cập nhật số đầu kỳ cho ' + this.memberForm.name);
+          this.notify(this.editingMemberId ? '✓ Đã cập nhật thành viên!' : '✓ Đã thêm thành viên mới!');
           this.modals.member = false;
           this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
         alert('Lỗi: ' + err.message);
@@ -838,20 +1068,30 @@ function cashFlowApp() {
     },
 
     async deleteMember(id, name) {
-      if (!confirm(`Bạn có chắc muốn xóa thành viên "${name}" khỏi sổ nhóm?`)) return;
+      if (!confirm(`Xóa thành viên "${name}" khỏi sổ?`)) return;
       try {
         const res = await fetch(`/api/dining/member/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
-          this.notify(`🗑️ Đã xóa thành viên "${name}"!`);
+          this.notify(`🗑️ Đã xóa ${name}!`);
           this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
         alert('Lỗi: ' + err.message);
       }
     },
 
-    // ==================== CONFIG ====================
+    // ==================== 9. CẤU HÌNH HỆ THỐNG ====================
+    openConfigModal() {
+      this.configForm = {
+        initialCash: this.dashboard.config?.initialCash || 3741742,
+        weeklyLimit: this.dashboard.config?.weeklyLimit || 1500000
+      };
+      this.modals.config = true;
+    },
+
     async submitConfig() {
       try {
         const res = await fetch('/api/config', {
@@ -861,7 +1101,7 @@ function cashFlowApp() {
         });
         const data = await res.json();
         if (data.success) {
-          this.notify('✓ Đã cập nhật cấu hình hệ thống!');
+          this.notify('✓ Đã cập nhật hạn mức và số dư đầu kỳ!');
           this.modals.config = false;
           this.fetchDashboard();
         }

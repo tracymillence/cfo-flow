@@ -14,6 +14,7 @@ const Debt = require('./models/Debt');
 const Account = require('./models/Account');
 const SupplierDebt = require('./models/SupplierDebt');
 const CashflowReminder = require('./models/CashflowReminder');
+const Transaction = require('./models/Transaction');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -57,6 +58,19 @@ app.use('/api', async (req, res, next) => {
   }
   next();
 });
+
+// Helper to adjust account balance safely in real-time
+async function adjustAccountBalance(accountName, delta) {
+  if (!accountName || !delta) return null;
+  const trimmed = accountName.trim();
+  const acc = await Account.findOne({ name: { $regex: new RegExp(`^${trimmed}$`, 'i') } });
+  if (acc) {
+    acc.balance = (acc.balance || 0) + delta;
+    await acc.save();
+    return acc;
+  }
+  return null;
+}
 
 // ==================== SEED DATA HELPER (PRESERVES EXISTING DATA) ====================
 async function seedDefaultData(force = false) {
@@ -107,25 +121,40 @@ async function seedDefaultData(force = false) {
       ]);
     }
 
-    // 5. Dining Members (14 người giữ nguyên)
+    // 5. Dining Members (14 người nhóm làm việc giữ nguyên + 6 người gia đình)
     const membersCount = await DiningMember.countDocuments();
     if (membersCount === 0 || force) {
       if (force) await DiningMember.deleteMany({});
       await DiningMember.insertMany([
-        { personKey: 'yến', name: 'Yến', openingBalance: 1276411 },
-        { personKey: 'thịnh', name: 'Thịnh', openingBalance: 20004 },
-        { personKey: 'long', name: 'Long', openingBalance: -8004088 },
-        { personKey: 'hải', name: 'Hải', openingBalance: -933475 },
-        { personKey: 'tuyết ngân', name: 'Tuyết Ngân', openingBalance: -473517 },
-        { personKey: 'như ý', name: 'Như Ý', openingBalance: 943499 },
-        { personKey: 'dương', name: 'Dương', openingBalance: 301750 },
-        { personKey: 'thu ngân', name: 'Thu Ngân', openingBalance: -34913 },
-        { personKey: 'hoài', name: 'Hoài', openingBalance: -59597 },
-        { personKey: 'ngọc tuyền', name: 'Ngọc Tuyền', openingBalance: 2790663 },
-        { personKey: 'quỳnh', name: 'Quỳnh', openingBalance: 0 },
-        { personKey: 'phụng', name: 'Phụng', openingBalance: 0 },
-        { personKey: 'nguyên', name: 'Nguyên', openingBalance: 0 },
-        { personKey: 'hp', name: 'HP', openingBalance: 368507 }
+        { personKey: 'yến', name: 'Yến', group: 'work', openingBalance: 1276411 },
+        { personKey: 'thịnh', name: 'Thịnh', group: 'work', openingBalance: 20004 },
+        { personKey: 'long', name: 'Long', group: 'work', openingBalance: -8004088 },
+        { personKey: 'hải', name: 'Hải', group: 'work', openingBalance: -933475 },
+        { personKey: 'tuyết ngân', name: 'Tuyết Ngân', group: 'work', openingBalance: -473517 },
+        { personKey: 'như ý', name: 'Như Ý', group: 'work', openingBalance: 943499 },
+        { personKey: 'dương', name: 'Dương', group: 'work', openingBalance: 301750 },
+        { personKey: 'thu ngân', name: 'Thu Ngân', group: 'work', openingBalance: -34913 },
+        { personKey: 'hoài', name: 'Hoài', group: 'work', openingBalance: -59597 },
+        { personKey: 'ngọc tuyền', name: 'Ngọc Tuyền', group: 'work', openingBalance: 2790663 },
+        { personKey: 'quỳnh', name: 'Quỳnh', group: 'work', openingBalance: 0 },
+        { personKey: 'phụng', name: 'Phụng', group: 'work', openingBalance: 0 },
+        { personKey: 'nguyên', name: 'Nguyên', group: 'work', openingBalance: 0 },
+        { personKey: 'hp', name: 'HP', group: 'work', openingBalance: 368507 }
+      ]);
+    } else {
+      await DiningMember.updateMany({ group: { $exists: false } }, { $set: { group: 'work' } });
+    }
+
+    // Seed 6 thành viên Quỹ Gia Đình nếu chưa có
+    const familyMembersCount = await DiningMember.countDocuments({ group: 'family' });
+    if (familyMembersCount === 0) {
+      await DiningMember.insertMany([
+        { personKey: 'bo', name: 'Bố', group: 'family', openingBalance: 0 },
+        { personKey: 'me', name: 'Mẹ', group: 'family', openingBalance: 0 },
+        { personKey: 'em_1', name: 'Em 1', group: 'family', openingBalance: 0 },
+        { personKey: 'em_2', name: 'Em 2', group: 'family', openingBalance: 0 },
+        { personKey: 'em_3', name: 'Em 3', group: 'family', openingBalance: 0 },
+        { personKey: 'nguoi_yeu', name: 'Người yêu / Vợ', group: 'family', openingBalance: 0 }
       ]);
     }
 
@@ -134,10 +163,10 @@ async function seedDefaultData(force = false) {
     if (settlementsCount === 0 || force) {
       if (force) await DiningSettlement.deleteMany({});
       await DiningSettlement.insertMany([
-        { monthKey: '2026-11', personKey: 'yến', personName: 'Yến', amount: 300000, direction: 'out', topupKind: 'borrow', accountName: 'Vietcombank', note: 'Yến mượn tiền quỹ', date: '2026-11-02' },
-        { monthKey: '2026-11', personKey: 'quỳnh', personName: 'Quỳnh', amount: 16000, direction: 'in', topupKind: 'prepaid', accountName: 'MoMo', note: 'CK MoMo', date: '2026-11-02' },
-        { monthKey: '2026-11', personKey: 'phụng', personName: 'Phụng', amount: 29000, direction: 'in', topupKind: 'prepaid', accountName: 'MoMo', note: 'CK MoMo', date: '2026-11-02' },
-        { monthKey: '2026-11', personKey: 'nguyên', personName: 'Nguyên', amount: 16000, direction: 'in', topupKind: 'prepaid', accountName: 'MoMo', note: 'CK MoMo', date: '2026-11-02' }
+        { monthKey: '2026-11', personKey: 'yến', personName: 'Yến', category: 'work', amount: 300000, direction: 'out', topupKind: 'borrow', accountName: 'Vietcombank', addToAccount: false, note: 'Yến mượn tiền quỹ', date: '2026-11-02' },
+        { monthKey: '2026-11', personKey: 'quỳnh', personName: 'Quỳnh', category: 'work', amount: 16000, direction: 'in', topupKind: 'prepaid', accountName: 'MoMo', addToAccount: false, note: 'CK MoMo', date: '2026-11-02' },
+        { monthKey: '2026-11', personKey: 'phụng', personName: 'Phụng', category: 'work', amount: 29000, direction: 'in', topupKind: 'prepaid', accountName: 'MoMo', addToAccount: false, note: 'CK MoMo', date: '2026-11-02' },
+        { monthKey: '2026-11', personKey: 'nguyên', personName: 'Nguyên', category: 'work', amount: 16000, direction: 'in', topupKind: 'prepaid', accountName: 'MoMo', addToAccount: false, note: 'CK MoMo', date: '2026-11-02' }
       ]);
     }
 
@@ -150,9 +179,13 @@ async function seedDefaultData(force = false) {
           date: '2026-11-02',
           monthKey: '2026-11',
           mealTitle: 'Cơm trưa (5 người: Tôi, Hoài, Hải, Yến, HP)',
+          category: 'work',
           totalBill: 156000,
           myShare: 31200,
+          splitMode: 'equal',
           paidAccount: 'Vietcombank',
+          deductFromAccount: false,
+          deductWeeklyLimit: true,
           splits: [
             { personKey: 'tôi', personName: 'Tôi', amount: 31200, paid: true, isMe: true },
             { personKey: 'yến', personName: 'Yến', amount: 31200, paid: false, isMe: false },
@@ -166,9 +199,13 @@ async function seedDefaultData(force = false) {
           date: '2026-11-02',
           monthKey: '2026-11',
           mealTitle: 'Ăn tối (Tôi & Thịnh)',
+          category: 'work',
           totalBill: 182000,
           myShare: 122000,
+          splitMode: 'custom',
           paidAccount: 'Vietcombank',
+          deductFromAccount: false,
+          deductWeeklyLimit: true,
           splits: [
             { personKey: 'tôi', personName: 'Tôi', amount: 122000, paid: true, isMe: true },
             { personKey: 'thịnh', personName: 'Thịnh', amount: 60000, paid: false, isMe: false }
@@ -178,41 +215,176 @@ async function seedDefaultData(force = false) {
       ]);
     }
 
-    // 8. Debts (Sổ nợ 2 chiều)
+    // 8. Transactions (Sổ giao dịch thu/chi ban đầu)
+    const txCount = await Transaction.countDocuments();
+    if (txCount === 0 || force) {
+      if (force) await Transaction.deleteMany({});
+      await Transaction.create([
+        {
+          date: '2026-11-02',
+          title: 'Chi tiền cơm trưa văn phòng (5 người)',
+          amount: 156000,
+          type: 'expense',
+          accountName: 'Vietcombank',
+          category: 'Ăn uống nhóm',
+          hubRole: 'hub2_dining',
+          impactsWeeklyLimit: false,
+          notes: 'Thanh toán quét mã QR Vietcombank'
+        },
+        {
+          date: '2026-11-02',
+          title: 'Ăn tối (Tôi & Thịnh)',
+          amount: 182000,
+          type: 'expense',
+          accountName: 'Vietcombank',
+          category: 'Ăn uống cá nhân',
+          hubRole: 'hub4_personal',
+          impactsWeeklyLimit: true,
+          notes: 'Thịnh 60k, Tôi 122k (trừ hạn mức tuần)'
+        },
+        {
+          date: '2026-11-02',
+          title: 'Khách thanh toán cọc dịch vụ thuế',
+          amount: 500000,
+          type: 'income',
+          accountName: 'Vietcombank',
+          category: 'Kinh doanh',
+          hubRole: 'hub1_income',
+          impactsWeeklyLimit: false,
+          notes: 'Thu dịch vụ cấp lại pass thuế'
+        }
+      ]);
+    }
+
+    // 9. Debts (2 khoản nợ 2 chiều giữ nguyên)
     const debtsCount = await Debt.countDocuments();
     if (debtsCount === 0 || force) {
       if (force) await Debt.deleteMany({});
       await Debt.create([
-        { type: 'receivable', personName: 'Yến', amount: 300000, dueDate: '2026-11-05', status: 'pending', note: 'Yến mượn tiền quỹ lúc 19h53' },
-        { type: 'payable', personName: 'Tiền ăn tối cho Bảo', amount: 45000, dueDate: '2026-11-02', status: 'paid', note: 'Mua đồ ăn tối cho Bảo' }
+        { personName: 'Chị Lan', amount: 500000, type: 'receivable', dueDate: '2026-11-05', note: 'Chị Lan vay tiền mặt', status: 'pending' },
+        { personName: 'Bạn Tuấn', amount: 200000, type: 'payable', dueDate: '2026-11-07', note: 'Nợ tiền mua hộ đồ Shopee', status: 'pending' }
       ]);
     }
 
-    console.log('✓ Hoàn tất đồng bộ dữ liệu chuẩn xác cho CFO Flow!');
+    // 10. Service Orders
+    const ordersCount = await ServiceOrder.countDocuments();
+    if (ordersCount === 0 || force) {
+      if (force) await ServiceOrder.deleteMany({});
+      await ServiceOrder.create([
+        { customerName: 'Cty Nam An', serviceName: 'Reset Pass Thuế', costPrice: 300000, salePrice: 650000, supplierKey: 'ncc pass thue', supplierName: 'NCC Pass Thuế', customerPaid: true, supplierPaid: false, note: 'Khách chuyển VCB, chưa trả NCC' },
+        { customerName: 'Bác Sĩ Cường', serviceName: 'Khắc Dấu Chức Danh', costPrice: 90000, salePrice: 220000, supplierKey: 'xuong khac dau', supplierName: 'Xưởng Khắc Dấu Tuấn Hương', customerPaid: true, supplierPaid: false, note: 'Đã thu tiền mặt' }
+      ]);
+    }
+
+    console.log('✓ Dữ liệu mặc định đã sẵn sàng trong MongoDB Atlas');
   } catch (err) {
-    console.warn('⚠️ Lỗi khi nạp seed:', err.message);
+    console.error('Lỗi khi seedDefaultData:', err.message);
   }
 }
 
-// ==================== RESTFUL API ROUTES ====================
+// Helper calculation engine for Dining Groups (Work vs Family)
+function calculateDiningGroup(bills, settlements, members) {
+  const billPaidTotal = bills.reduce((sum, b) => sum + (b.totalBill || 0), 0);
+  const totalTopups = settlements
+    .filter(s => s.direction === 'in')
+    .reduce((sum, s) => sum + (s.amount || 0), 0);
+  const totalBorrowed = settlements
+    .filter(s => s.direction === 'out')
+    .reduce((sum, s) => sum + (s.amount || 0), 0);
+  const myShareTotal = bills.reduce((sum, b) => sum + (b.myShare || 0), 0);
 
-// 0. GET /api/health (Diagnostics & Mongo Status)
+  let colleaguesEatenTotal = 0;
+  bills.forEach(b => {
+    b.splits.forEach(sp => {
+      if (!sp.isMe && normalizeKey(sp.personName) !== 'toi') {
+        colleaguesEatenTotal += (sp.amount || 0);
+      }
+    });
+  });
+
+  const memberMap = {};
+  members.forEach(m => {
+    const key = m.personKey || normalizeKey(m.name);
+    memberMap[key] = {
+      id: m._id,
+      personKey: key,
+      name: m.name,
+      group: m.group || 'work',
+      openingBalance: m.openingBalance || 0,
+      topups: 0,
+      borrowed: 0,
+      eaten: 0,
+      mealCount: 0,
+      currentBalance: m.openingBalance || 0
+    };
+  });
+
+  settlements.forEach(s => {
+    const key = s.personKey || normalizeKey(s.personName);
+    if (memberMap[key]) {
+      if (s.direction === 'in') {
+        memberMap[key].topups += (s.amount || 0);
+        memberMap[key].currentBalance += (s.amount || 0);
+      } else if (s.direction === 'out') {
+        memberMap[key].borrowed += (s.amount || 0);
+        memberMap[key].currentBalance -= (s.amount || 0);
+      }
+    }
+  });
+
+  bills.forEach(b => {
+    b.splits.forEach(sp => {
+      if (sp.isMe || normalizeKey(sp.personName) === 'toi') return;
+      const key = sp.personKey || normalizeKey(sp.personName);
+      if (memberMap[key]) {
+        memberMap[key].eaten += (sp.amount || 0);
+        memberMap[key].mealCount += 1;
+        memberMap[key].currentBalance -= (sp.amount || 0);
+      }
+    });
+  });
+
+  const membersList = Object.values(memberMap);
+  const surplusMembers = membersList.filter(m => m.currentBalance >= 0);
+  const debtMembers = membersList.filter(m => m.currentBalance < 0);
+  const totalSurplusFund = surplusMembers.reduce((sum, m) => sum + m.currentBalance, 0);
+  const totalDebtReceivable = Math.abs(debtMembers.reduce((sum, m) => sum + m.currentBalance, 0));
+
+  return {
+    billPaidTotal,
+    billCount: bills.length,
+    totalTopups,
+    topupCount: settlements.length,
+    totalBorrowed,
+    colleaguesEatenTotal,
+    myShareTotal,
+    totalSurplusFund,
+    surplusCount: surplusMembers.length,
+    totalDebtReceivable,
+    debtCount: debtMembers.length,
+    members: membersList,
+    bills,
+    settlements
+  };
+}
+
+// ==================== HEALTH CHECK ENDPOINT ====================
 app.get('/api/health', (req, res) => {
-  const uri = process.env.MONGODB_URI || '';
-  const maskedUri = uri ? uri.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:***@') : 'CHƯA_CÓ_BIẾN_MÔI_TRƯỜNG';
+  const readyState = mongoose.connection.readyState;
+  const states = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
   res.json({
-    status: 'ok',
+    status: readyState === 1 ? 'ok' : 'degraded',
     mongodb: {
-      status: mongoose.connection.readyState === 1 ? 'connected' : (mongoose.connection.readyState === 2 ? 'connecting' : 'disconnected'),
-      readyState: mongoose.connection.readyState,
-      hasEnvUri: !!process.env.MONGODB_URI,
-      maskedUri,
+      status: states[readyState] || 'unknown',
+      readyState,
+      hasEnvUri: Boolean(process.env.MONGODB_URI),
+      maskedUri: process.env.MONGODB_URI ? process.env.MONGODB_URI.replace(/:\/\/[^:]+:[^@]+@/, '://***:***@') : null,
       lastError: lastMongoError ? lastMongoError.message : null
     }
   });
 });
 
-// 1. GET /api/dashboard (CFO Logic Aggregator)
+// ==================== DASHBOARD FULL REAL-TIME API ====================
 app.get('/api/dashboard', async (req, res) => {
   try {
     let config = await Config.findOne();
@@ -229,6 +401,7 @@ app.get('/api/dashboard', async (req, res) => {
       diningMembers,
       diningSettlements,
       debts,
+      transactions,
       incomes
     ] = await Promise.all([
       Account.find().sort({ type: 1, name: 1 }),
@@ -239,6 +412,7 @@ app.get('/api/dashboard', async (req, res) => {
       DiningMember.find().sort({ name: 1 }),
       DiningSettlement.find().sort({ createdAt: -1 }),
       Debt.find().sort({ dueDate: 1 }),
+      Transaction.find().sort({ date: -1, createdAt: -1 }),
       Income.find().sort({ date: 1 })
     ]);
 
@@ -263,82 +437,39 @@ app.get('/api/dashboard', async (req, res) => {
     const totalSupplierDebt = supplierDebts.reduce((sum, s) => sum + (s.remainingAmount || 0), 0);
 
     // --- 3. TIỀN THỰC SỰ KHẢ DỤNG ---
-    // Tiền khả dụng = Tổng tiền thực tế - Hũ tiền hàng phải trả NCC
     const spendableCash = totalPhysicalCash - totalSupplierDebt;
 
     // --- 4. HẠN MỨC TIÊU TUẦN ---
-    const myDiningShareTotal = diningBills.reduce((sum, b) => sum + (b.myShare || 0), 0);
-    const weeklyPaidExpenses = debts
+    // Phần ăn cá nhân của tôi có deductWeeklyLimit !== false
+    const myDiningShareWeekly = diningBills
+      .filter(b => b.deductWeeklyLimit !== false)
+      .reduce((sum, b) => sum + (b.myShare || 0), 0);
+
+    // Giao dịch chi tiêu cá nhân được đánh dấu trừ vào hạn mức tuần
+    const transactionsWeeklySpent = transactions
+      .filter(t => t.type === 'expense' && t.impactsWeeklyLimit)
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    const weeklyPaidDebts = debts
       .filter(d => d.type === 'payable' && d.status === 'paid')
       .reduce((sum, d) => sum + (d.amount || 0), 0);
-    const currentWeekSpent = myDiningShareTotal + weeklyPaidExpenses;
+
+    const currentWeekSpent = myDiningShareWeekly + transactionsWeeklySpent + weeklyPaidDebts;
     const weeklyPercent = config.weeklyLimit > 0 ? Math.round((currentWeekSpent / config.weeklyLimit) * 100) : 0;
 
-    // --- 5. SỔ ĂN NHÓM THEO TỪNG NGƯỜI & CƠM TRƯA CÁ NHÂN ---
-    const billPaidTotal = diningBills.reduce((sum, b) => sum + (b.totalBill || 0), 0);
-    const totalTopups = diningSettlements
-      .filter(s => s.direction === 'in')
-      .reduce((sum, s) => sum + (s.amount || 0), 0);
-    const totalBorrowed = diningSettlements
-      .filter(s => s.direction === 'out')
-      .reduce((sum, s) => sum + (s.amount || 0), 0);
+    // --- 5. SỔ ĂN NHÓM & QUỸ GIA ĐÌNH ---
+    const workBills = diningBills.filter(b => b.category !== 'family');
+    const familyBills = diningBills.filter(b => b.category === 'family');
 
-    let colleaguesEatenTotal = 0;
-    diningBills.forEach(b => {
-      b.splits.forEach(sp => {
-        if (!sp.isMe && normalizeKey(sp.personName) !== 'toi') {
-          colleaguesEatenTotal += (sp.amount || 0);
-        }
-      });
-    });
+    const workSettlements = diningSettlements.filter(s => s.category !== 'family');
+    const familySettlements = diningSettlements.filter(s => s.category === 'family');
 
-    // Tính toán số dư 14 thành viên
-    const memberMap = {};
-    diningMembers.forEach(m => {
-      const key = m.personKey || normalizeKey(m.name);
-      memberMap[key] = {
-        id: m._id,
-        personKey: key,
-        name: m.name,
-        openingBalance: m.openingBalance || 0,
-        topups: 0,
-        borrowed: 0,
-        eaten: 0,
-        mealCount: 0,
-        currentBalance: m.openingBalance || 0
-      };
-    });
+    const workMembers = diningMembers.filter(m => m.group !== 'family');
+    const familyMembers = diningMembers.filter(m => m.group === 'family');
 
-    diningSettlements.forEach(s => {
-      const key = s.personKey || normalizeKey(s.personName);
-      if (memberMap[key]) {
-        if (s.direction === 'in') {
-          memberMap[key].topups += (s.amount || 0);
-          memberMap[key].currentBalance += (s.amount || 0);
-        } else if (s.direction === 'out') {
-          memberMap[key].borrowed += (s.amount || 0);
-          memberMap[key].currentBalance -= (s.amount || 0);
-        }
-      }
-    });
-
-    diningBills.forEach(b => {
-      b.splits.forEach(sp => {
-        if (sp.isMe || normalizeKey(sp.personName) === 'toi') return;
-        const key = sp.personKey || normalizeKey(sp.personName);
-        if (memberMap[key]) {
-          memberMap[key].eaten += (sp.amount || 0);
-          memberMap[key].mealCount += 1;
-          memberMap[key].currentBalance -= (sp.amount || 0);
-        }
-      });
-    });
-
-    const membersList = Object.values(memberMap);
-    const surplusMembers = membersList.filter(m => m.currentBalance >= 0);
-    const debtMembers = membersList.filter(m => m.currentBalance < 0);
-    const totalSurplusFund = surplusMembers.reduce((sum, m) => sum + m.currentBalance, 0);
-    const totalDebtReceivable = Math.abs(debtMembers.reduce((sum, m) => sum + m.currentBalance, 0));
+    const workStats = calculateDiningGroup(workBills, workSettlements, workMembers);
+    const familyStats = calculateDiningGroup(familyBills, familySettlements, familyMembers);
+    const combinedStats = calculateDiningGroup(diningBills, diningSettlements, diningMembers);
 
     // --- 6. SỔ NỢ 2 CHIỀU TỔNG HỢP ---
     const totalReceivableDebt = debts
@@ -370,24 +501,21 @@ app.get('/api/dashboard', async (req, res) => {
         spent: currentWeekSpent,
         percent: weeklyPercent,
         isWarning: weeklyPercent >= 80,
-        isBrake: weeklyPercent >= 100
+        isBrake: weeklyPercent >= 100,
+        breakdown: {
+          diningShare: myDiningShareWeekly,
+          transactions: transactionsWeeklySpent,
+          paidDebts: weeklyPaidDebts
+        }
       },
       card4_dining: {
-        billPaidTotal,
-        billCount: diningBills.length,
-        totalTopups,
-        topupCount: diningSettlements.length,
-        totalBorrowed,
-        colleaguesEatenTotal,
-        myShareTotal: myDiningShareTotal,
-        totalSurplusFund,
-        surplusCount: surplusMembers.length,
-        totalDebtReceivable,
-        debtCount: debtMembers.length,
-        members: membersList,
-        bills: diningBills,
-        settlements: diningSettlements
+        ...workStats, // default fallback to workStats
+        work: workStats,
+        family: familyStats,
+        combined: combinedStats,
+        allMembers: diningMembers
       },
+      transactions: transactions.slice(0, 100),
       reminders,
       allDebts: debts,
       debtSummary: {
@@ -399,6 +527,164 @@ app.get('/api/dashboard', async (req, res) => {
   } catch (err) {
     console.error('Lỗi API dashboard:', err);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==================== 0. SỔ GIAO DỊCH THU / CHI / CHUYỂN KHOẢN (CRUD) ====================
+app.get('/api/transactions', async (req, res) => {
+  try {
+    const { type, accountName, hubRole, limit } = req.query;
+    const query = {};
+    if (type && type !== 'all') query.type = type;
+    if (accountName && accountName !== 'all') query.accountName = accountName;
+    if (hubRole && hubRole !== 'all') query.hubRole = hubRole;
+
+    const list = await Transaction.find(query)
+      .sort({ date: -1, createdAt: -1 })
+      .limit(Number(limit) || 100);
+    res.json({ success: true, transactions: list });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/transactions', async (req, res) => {
+  try {
+    const {
+      date,
+      title,
+      amount,
+      type,
+      accountName,
+      toAccountName,
+      category,
+      hubRole,
+      impactsWeeklyLimit,
+      notes
+    } = req.body;
+
+    const numAmount = Math.abs(Number(amount)) || 0;
+    if (!title || !title.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập tên giao dịch' });
+    }
+    if (numAmount <= 0) {
+      return res.status(400).json({ success: false, message: 'Số tiền phải lớn hơn 0' });
+    }
+
+    const tx = await Transaction.create({
+      date: date || new Date().toISOString().slice(0, 10),
+      title: title.trim(),
+      amount: numAmount,
+      type: type || 'expense',
+      accountName: accountName || 'Vietcombank',
+      toAccountName: toAccountName || '',
+      category: category || 'Chi tiêu',
+      hubRole: hubRole || 'hub4_personal',
+      impactsWeeklyLimit: Boolean(impactsWeeklyLimit),
+      notes: notes || ''
+    });
+
+    // Cập nhật số dư ngân hàng thời gian thực
+    if (tx.type === 'expense') {
+      await adjustAccountBalance(tx.accountName, -tx.amount);
+    } else if (tx.type === 'income') {
+      await adjustAccountBalance(tx.accountName, tx.amount);
+    } else if (tx.type === 'transfer') {
+      await adjustAccountBalance(tx.accountName, -tx.amount);
+      if (tx.toAccountName) {
+        await adjustAccountBalance(tx.toAccountName, tx.amount);
+      }
+    }
+
+    res.json({ success: true, transaction: tx });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/transactions/:id', async (req, res) => {
+  try {
+    const oldTx = await Transaction.findById(req.params.id);
+    if (!oldTx) return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
+
+    // Hoàn tác số dư cũ
+    if (oldTx.type === 'expense') {
+      await adjustAccountBalance(oldTx.accountName, oldTx.amount);
+    } else if (oldTx.type === 'income') {
+      await adjustAccountBalance(oldTx.accountName, -oldTx.amount);
+    } else if (oldTx.type === 'transfer') {
+      await adjustAccountBalance(oldTx.accountName, oldTx.amount);
+      if (oldTx.toAccountName) {
+        await adjustAccountBalance(oldTx.toAccountName, -oldTx.amount);
+      }
+    }
+
+    const {
+      date,
+      title,
+      amount,
+      type,
+      accountName,
+      toAccountName,
+      category,
+      hubRole,
+      impactsWeeklyLimit,
+      notes
+    } = req.body;
+
+    const numAmount = Math.abs(Number(amount)) || 0;
+    oldTx.date = date || oldTx.date;
+    oldTx.title = title ? title.trim() : oldTx.title;
+    oldTx.amount = numAmount > 0 ? numAmount : oldTx.amount;
+    oldTx.type = type || oldTx.type;
+    oldTx.accountName = accountName || oldTx.accountName;
+    oldTx.toAccountName = toAccountName !== undefined ? toAccountName : oldTx.toAccountName;
+    oldTx.category = category || oldTx.category;
+    oldTx.hubRole = hubRole || oldTx.hubRole;
+    oldTx.impactsWeeklyLimit = impactsWeeklyLimit !== undefined ? Boolean(impactsWeeklyLimit) : oldTx.impactsWeeklyLimit;
+    oldTx.notes = notes !== undefined ? notes : oldTx.notes;
+
+    await oldTx.save();
+
+    // Áp dụng số dư mới
+    if (oldTx.type === 'expense') {
+      await adjustAccountBalance(oldTx.accountName, -oldTx.amount);
+    } else if (oldTx.type === 'income') {
+      await adjustAccountBalance(oldTx.accountName, oldTx.amount);
+    } else if (oldTx.type === 'transfer') {
+      await adjustAccountBalance(oldTx.accountName, -oldTx.amount);
+      if (oldTx.toAccountName) {
+        await adjustAccountBalance(oldTx.toAccountName, oldTx.amount);
+      }
+    }
+
+    res.json({ success: true, transaction: oldTx });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/transactions/:id', async (req, res) => {
+  try {
+    const tx = await Transaction.findById(req.params.id);
+    if (!tx) return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
+
+    // Hoàn tác số dư
+    if (tx.type === 'expense') {
+      await adjustAccountBalance(tx.accountName, tx.amount);
+    } else if (tx.type === 'income') {
+      await adjustAccountBalance(tx.accountName, -tx.amount);
+    } else if (tx.type === 'transfer') {
+      await adjustAccountBalance(tx.accountName, tx.amount);
+      if (tx.toAccountName) {
+        await adjustAccountBalance(tx.toAccountName, -tx.amount);
+      }
+    }
+
+    await tx.deleteOne();
+    res.json({ success: true, message: 'Đã xóa giao dịch và hoàn tất cập nhật số dư' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
   }
 });
 
@@ -415,15 +701,18 @@ app.get('/api/accounts', async (req, res) => {
 app.post('/api/accounts', async (req, res) => {
   try {
     const { name, type, balance, accountNumber, hubRole, note } = req.body;
-    const account = await Account.create({
-      name,
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập tên tài khoản / ngân hàng' });
+    }
+    const acc = await Account.create({
+      name: name.trim(),
       type: type || 'bank',
       balance: Number(balance) || 0,
       accountNumber: accountNumber || '',
       hubRole: hubRole || 'hub1_income',
       note: note || ''
     });
-    res.json({ success: true, account });
+    res.json({ success: true, account: acc });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -432,20 +721,17 @@ app.post('/api/accounts', async (req, res) => {
 app.put('/api/accounts/:id', async (req, res) => {
   try {
     const { name, type, balance, accountNumber, hubRole, note } = req.body;
-    const account = await Account.findByIdAndUpdate(
-      req.params.id,
-      {
-        name,
-        type: type || 'bank',
-        balance: Number(balance) || 0,
-        accountNumber: accountNumber || '',
-        hubRole: hubRole || 'hub1_income',
-        note: note || ''
-      },
-      { new: true }
-    );
-    if (!account) return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
-    res.json({ success: true, account });
+    const updateData = {};
+    if (name) updateData.name = name.trim();
+    if (type) updateData.type = type;
+    if (balance !== undefined) updateData.balance = Number(balance);
+    if (accountNumber !== undefined) updateData.accountNumber = accountNumber;
+    if (hubRole) updateData.hubRole = hubRole;
+    if (note !== undefined) updateData.note = note;
+
+    const acc = await Account.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!acc) return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
+    res.json({ success: true, account: acc });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -453,19 +739,19 @@ app.put('/api/accounts/:id', async (req, res) => {
 
 app.delete('/api/accounts/:id', async (req, res) => {
   try {
-    const account = await Account.findByIdAndDelete(req.params.id);
-    if (!account) return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
+    const acc = await Account.findByIdAndDelete(req.params.id);
+    if (!acc) return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
     res.json({ success: true, message: 'Đã xóa tài khoản' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-// ==================== 2. NỢ TỪNG NHÀ CUNG CẤP (SUPPLIER DEBTS CRUD) ====================
+// ==================== 2. HŨ TIỀN HÀNG NỢ TỪNG NCC (CRUD) ====================
 app.get('/api/supplier-debts', async (req, res) => {
   try {
-    const suppliers = await SupplierDebt.find().sort({ remainingAmount: -1 });
-    res.json({ success: true, suppliers });
+    const list = await SupplierDebt.find().sort({ remainingAmount: -1, createdAt: -1 });
+    res.json({ success: true, suppliers: list });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -474,15 +760,18 @@ app.get('/api/supplier-debts', async (req, res) => {
 app.post('/api/supplier-debts', async (req, res) => {
   try {
     const { supplierName, remainingAmount, phone, bankInfo, notes } = req.body;
-    const supplier = await SupplierDebt.create({
+    if (!supplierName || !supplierName.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập tên nhà cung cấp' });
+    }
+    const sup = await SupplierDebt.create({
+      supplierName: supplierName.trim(),
       supplierKey: normalizeKey(supplierName),
-      supplierName,
       remainingAmount: Number(remainingAmount) || 0,
       phone: phone || '',
       bankInfo: bankInfo || '',
       notes: notes || ''
     });
-    res.json({ success: true, supplier });
+    res.json({ success: true, supplier: sup });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -491,64 +780,70 @@ app.post('/api/supplier-debts', async (req, res) => {
 app.put('/api/supplier-debts/:id', async (req, res) => {
   try {
     const { supplierName, remainingAmount, phone, bankInfo, notes } = req.body;
-    const supplier = await SupplierDebt.findByIdAndUpdate(
-      req.params.id,
-      {
-        supplierKey: normalizeKey(supplierName),
-        supplierName,
-        remainingAmount: Number(remainingAmount) || 0,
-        phone: phone || '',
-        bankInfo: bankInfo || '',
-        notes: notes || ''
-      },
-      { new: true }
-    );
-    if (!supplier) return res.status(404).json({ success: false, message: 'Không tìm thấy NCC' });
-    res.json({ success: true, supplier });
+    const updateData = {};
+    if (supplierName) {
+      updateData.supplierName = supplierName.trim();
+      updateData.supplierKey = normalizeKey(supplierName);
+    }
+    if (remainingAmount !== undefined) updateData.remainingAmount = Math.max(0, Number(remainingAmount));
+    if (phone !== undefined) updateData.phone = phone;
+    if (bankInfo !== undefined) updateData.bankInfo = bankInfo;
+    if (notes !== undefined) updateData.notes = notes;
+
+    const sup = await SupplierDebt.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!sup) return res.status(404).json({ success: false, message: 'Không tìm thấy NCC' });
+    res.json({ success: true, supplier: sup });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-// Thanh toán một phần hoặc toàn bộ cho 1 NCC cụ thể
 app.post('/api/supplier-debts/:id/pay', async (req, res) => {
   try {
-    const { payAmount } = req.body;
-    const supplier = await SupplierDebt.findById(req.params.id);
-    if (!supplier) return res.status(404).json({ success: false, message: 'Không tìm thấy NCC' });
-    
-    const amount = Number(payAmount) || supplier.remainingAmount;
-    supplier.remainingAmount = Math.max(0, supplier.remainingAmount - amount);
-    await supplier.save();
-    
-    res.json({ success: true, supplier });
+    const { amount } = req.body;
+    const payAmt = Number(amount);
+    const sup = await SupplierDebt.findById(req.params.id);
+    if (!sup) return res.status(404).json({ success: false, message: 'Không tìm thấy NCC' });
+
+    if (!payAmt || payAmt >= sup.remainingAmount) {
+      sup.remainingAmount = 0;
+    } else {
+      sup.remainingAmount = Math.max(0, sup.remainingAmount - payAmt);
+    }
+    await sup.save();
+
+    await ServiceOrder.updateMany(
+      { supplierKey: sup.supplierKey, supplierPaid: false },
+      { $set: { supplierPaid: true } }
+    );
+
+    res.json({ success: true, supplier: sup, message: 'Đã thanh toán cho NCC' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-// Thanh toán gom toàn bộ tất cả NCC -> Hũ NCC = 0đ
 app.post('/api/supplier-debts/batch-pay-all', async (req, res) => {
   try {
     await SupplierDebt.updateMany({}, { $set: { remainingAmount: 0 } });
-    await ServiceOrder.updateMany({ customerPaid: true, supplierPaid: false }, { $set: { supplierPaid: true } });
-    res.json({ success: true, message: 'Đã thanh toán toàn bộ công nợ các NCC về 0đ!' });
+    await ServiceOrder.updateMany({}, { $set: { supplierPaid: true } });
+    res.json({ success: true, message: 'Đã thanh toán toàn bộ công nợ cho các nhà cung cấp (Reset hũ về 0đ)' });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
 app.delete('/api/supplier-debts/:id', async (req, res) => {
   try {
-    const supplier = await SupplierDebt.findByIdAndDelete(req.params.id);
-    if (!supplier) return res.status(404).json({ success: false, message: 'Không tìm thấy NCC' });
+    const sup = await SupplierDebt.findByIdAndDelete(req.params.id);
+    if (!sup) return res.status(404).json({ success: false, message: 'Không tìm thấy NCC' });
     res.json({ success: true, message: 'Đã xóa NCC' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-// ==================== 3. LỊCH NHẮC DÒNG TIỀN (CASHFLOW REMINDERS CRUD) ====================
+// ==================== 3. LỊCH NHẮC DÒNG TIỀN (CRUD) ====================
 app.get('/api/reminders', async (req, res) => {
   try {
     const reminders = await CashflowReminder.find().sort({ date: 1, createdAt: 1 });
@@ -560,17 +855,19 @@ app.get('/api/reminders', async (req, res) => {
 
 app.post('/api/reminders', async (req, res) => {
   try {
-    const { date, title, amount, type, hubRole, status, notes } = req.body;
-    const reminder = await CashflowReminder.create({
+    const { date, title, amount, type, hubRole, notes } = req.body;
+    if (!title || !title.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập tiêu đề nhắc nhở' });
+    }
+    const rem = await CashflowReminder.create({
       date: date || new Date().toISOString().slice(0, 10),
-      title,
+      title: title.trim(),
       amount: Number(amount) || 0,
-      type: type || 'reminder',
+      type: type || 'expense',
       hubRole: hubRole || 'hub1_income',
-      status: status || 'pending',
       notes: notes || ''
     });
-    res.json({ success: true, reminder });
+    res.json({ success: true, reminder: rem });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -579,21 +876,18 @@ app.post('/api/reminders', async (req, res) => {
 app.put('/api/reminders/:id', async (req, res) => {
   try {
     const { date, title, amount, type, hubRole, status, notes } = req.body;
-    const reminder = await CashflowReminder.findByIdAndUpdate(
-      req.params.id,
-      {
-        date,
-        title,
-        amount: Number(amount) || 0,
-        type: type || 'reminder',
-        hubRole: hubRole || 'hub1_income',
-        status: status || 'pending',
-        notes: notes || ''
-      },
-      { new: true }
-    );
-    if (!reminder) return res.status(404).json({ success: false, message: 'Không tìm thấy lịch nhắc' });
-    res.json({ success: true, reminder });
+    const updateData = {};
+    if (date) updateData.date = date;
+    if (title) updateData.title = title.trim();
+    if (amount !== undefined) updateData.amount = Number(amount);
+    if (type) updateData.type = type;
+    if (hubRole) updateData.hubRole = hubRole;
+    if (status) updateData.status = status;
+    if (notes !== undefined) updateData.notes = notes;
+
+    const rem = await CashflowReminder.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!rem) return res.status(404).json({ success: false, message: 'Không tìm thấy dòng nhắc' });
+    res.json({ success: true, reminder: rem });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -601,11 +895,11 @@ app.put('/api/reminders/:id', async (req, res) => {
 
 app.patch('/api/reminders/:id/toggle-status', async (req, res) => {
   try {
-    const reminder = await CashflowReminder.findById(req.params.id);
-    if (!reminder) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
-    reminder.status = reminder.status === 'completed' ? 'pending' : 'completed';
-    await reminder.save();
-    res.json({ success: true, reminder });
+    const rem = await CashflowReminder.findById(req.params.id);
+    if (!rem) return res.status(404).json({ success: false, message: 'Không tìm thấy dòng nhắc' });
+    rem.status = rem.status === 'completed' ? 'pending' : 'completed';
+    await rem.save();
+    res.json({ success: true, reminder: rem });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -613,15 +907,15 @@ app.patch('/api/reminders/:id/toggle-status', async (req, res) => {
 
 app.delete('/api/reminders/:id', async (req, res) => {
   try {
-    const reminder = await CashflowReminder.findByIdAndDelete(req.params.id);
-    if (!reminder) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
-    res.json({ success: true, message: 'Đã xóa lịch nhắc' });
+    const rem = await CashflowReminder.findByIdAndDelete(req.params.id);
+    if (!rem) return res.status(404).json({ success: false, message: 'Không tìm thấy dòng nhắc' });
+    res.json({ success: true, message: 'Đã xóa dòng nhắc dòng tiền' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-// ==================== 4. SỔ NỢ 2 CHIỀU (DEBTS CRUD) ====================
+// ==================== 4. SỔ NỢ 2 CHIỀU (CRUD) ====================
 app.get('/api/debts', async (req, res) => {
   try {
     const debts = await Debt.find().sort({ dueDate: 1 });
@@ -633,13 +927,15 @@ app.get('/api/debts', async (req, res) => {
 
 app.post('/api/debts', async (req, res) => {
   try {
-    const { type, personName, amount, dueDate, note, status } = req.body;
+    const { personName, amount, type, dueDate, note } = req.body;
+    if (!personName || !personName.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập tên đối tượng nợ' });
+    }
     const debt = await Debt.create({
-      type: type || 'receivable',
-      personName,
+      personName: personName.trim(),
       amount: Number(amount) || 0,
+      type: type || 'receivable',
       dueDate: dueDate || new Date().toISOString().slice(0, 10),
-      status: status || 'pending',
       note: note || ''
     });
     res.json({ success: true, debt });
@@ -650,20 +946,17 @@ app.post('/api/debts', async (req, res) => {
 
 app.put('/api/debts/:id', async (req, res) => {
   try {
-    const { type, personName, amount, dueDate, note, status } = req.body;
-    const debt = await Debt.findByIdAndUpdate(
-      req.params.id,
-      {
-        type,
-        personName,
-        amount: Number(amount) || 0,
-        dueDate: dueDate || new Date().toISOString().slice(0, 10),
-        status: status || 'pending',
-        note: note || ''
-      },
-      { new: true }
-    );
-    if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    const { personName, amount, type, dueDate, note, status } = req.body;
+    const updateData = {};
+    if (personName) updateData.personName = personName.trim();
+    if (amount !== undefined) updateData.amount = Number(amount);
+    if (type) updateData.type = type;
+    if (dueDate) updateData.dueDate = dueDate;
+    if (note !== undefined) updateData.note = note;
+    if (status) updateData.status = status;
+
+    const debt = await Debt.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản nợ' });
     res.json({ success: true, debt });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -673,7 +966,7 @@ app.put('/api/debts/:id', async (req, res) => {
 app.patch('/api/debts/:id/toggle-status', async (req, res) => {
   try {
     const debt = await Debt.findById(req.params.id);
-    if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản nợ' });
     debt.status = debt.status === 'paid' ? 'pending' : 'paid';
     await debt.save();
     res.json({ success: true, debt });
@@ -685,26 +978,41 @@ app.patch('/api/debts/:id/toggle-status', async (req, res) => {
 app.delete('/api/debts/:id', async (req, res) => {
   try {
     const debt = await Debt.findByIdAndDelete(req.params.id);
-    if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản nợ' });
     res.json({ success: true, message: 'Đã xóa khoản nợ' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-// ==================== 5. SERVICE ORDERS (DỊCH VỤ CRUD) ====================
+// ==================== 5. ĐƠN DỊCH VỤ / BÁN DẤU CRUD ====================
 app.post('/api/service-orders', async (req, res) => {
   try {
-    const { customerName, serviceType, costPrice, salePrice, customerPaid, supplierPaid, date } = req.body;
+    const { customerName, serviceName, costPrice, salePrice, supplierKey, supplierName, customerPaid, supplierPaid, note } = req.body;
     const order = await ServiceOrder.create({
-      customerName: customerName || 'Khách lẻ',
-      serviceType: serviceType || 'Dịch vụ',
+      customerName,
+      serviceName,
       costPrice: Number(costPrice) || 0,
       salePrice: Number(salePrice) || 0,
-      customerPaid: customerPaid !== false,
-      supplierPaid: supplierPaid === true,
-      date: date || new Date().toISOString().slice(0, 10)
+      supplierKey: supplierKey || normalizeKey(supplierName),
+      supplierName: supplierName || 'NCC',
+      customerPaid: Boolean(customerPaid),
+      supplierPaid: Boolean(supplierPaid),
+      note: note || ''
     });
+
+    if (!order.supplierPaid && order.costPrice > 0) {
+      const sKey = order.supplierKey || normalizeKey(order.supplierName);
+      await SupplierDebt.findOneAndUpdate(
+        { supplierKey: sKey },
+        { 
+          $inc: { remainingAmount: order.costPrice },
+          $setOnInsert: { supplierName: order.supplierName }
+        },
+        { upsert: true }
+      );
+    }
+
     res.json({ success: true, order });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -713,21 +1021,23 @@ app.post('/api/service-orders', async (req, res) => {
 
 app.put('/api/service-orders/:id', async (req, res) => {
   try {
-    const { customerName, serviceType, costPrice, salePrice, customerPaid, supplierPaid, date } = req.body;
+    const { customerName, serviceName, costPrice, salePrice, supplierName, customerPaid, supplierPaid, note } = req.body;
     const order = await ServiceOrder.findByIdAndUpdate(
       req.params.id,
       {
-        customerName: customerName || 'Khách lẻ',
-        serviceType: serviceType || 'Dịch vụ',
+        customerName,
+        serviceName,
         costPrice: Number(costPrice) || 0,
         salePrice: Number(salePrice) || 0,
-        customerPaid: customerPaid !== false,
-        supplierPaid: supplierPaid === true,
-        date: date || new Date().toISOString().slice(0, 10)
+        supplierName,
+        supplierKey: normalizeKey(supplierName),
+        customerPaid: Boolean(customerPaid),
+        supplierPaid: Boolean(supplierPaid),
+        note: note || ''
       },
       { new: true }
     );
-    if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
     res.json({ success: true, order });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -744,18 +1054,45 @@ app.delete('/api/service-orders/:id', async (req, res) => {
   }
 });
 
-// ==================== 6. BỮA ĂN NHÓM & SETTLEMENTS CRUD ====================
+// ==================== 6. BỮA ĂN NHÓM & QUỸ GIA ĐÌNH CRUD ====================
 app.post('/api/dining/bill', async (req, res) => {
   try {
-    const { date, mealTitle, totalBill, myShare, splits, notes } = req.body;
+    const {
+      date,
+      mealTitle,
+      category,
+      totalBill,
+      myShare,
+      splitMode,
+      splits,
+      paidAccount,
+      deductFromAccount,
+      deductWeeklyLimit,
+      notes
+    } = req.body;
+
+    const numTotal = Number(totalBill) || 0;
+    const shouldDeduct = deductFromAccount !== false;
+
     const bill = await DiningLedger.create({
       date: date || new Date().toISOString().slice(0, 10),
       mealTitle: mealTitle || 'Bữa ăn nhóm',
-      totalBill: Number(totalBill) || 0,
+      category: category === 'family' ? 'family' : 'work',
+      totalBill: numTotal,
       myShare: Number(myShare) || 0,
+      splitMode: splitMode || 'equal',
       splits: splits || [],
+      paidAccount: paidAccount || 'Vietcombank',
+      deductFromAccount: shouldDeduct,
+      deductWeeklyLimit: deductWeeklyLimit !== false,
       notes: notes || ''
     });
+
+    // Trừ số tiền vào ngân hàng thời gian thực nếu được bật
+    if (shouldDeduct && bill.paidAccount && numTotal > 0) {
+      await adjustAccountBalance(bill.paidAccount, -numTotal);
+    }
+
     res.json({ success: true, bill });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -764,21 +1101,51 @@ app.post('/api/dining/bill', async (req, res) => {
 
 app.put('/api/dining/bill/:id', async (req, res) => {
   try {
-    const { date, mealTitle, totalBill, myShare, splits, notes } = req.body;
-    const bill = await DiningLedger.findByIdAndUpdate(
-      req.params.id,
-      {
-        date: date || new Date().toISOString().slice(0, 10),
-        mealTitle: mealTitle || 'Bữa ăn nhóm',
-        totalBill: Number(totalBill) || 0,
-        myShare: Number(myShare) || 0,
-        splits: splits || [],
-        notes: notes || ''
-      },
-      { new: true }
-    );
-    if (!bill) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
-    res.json({ success: true, bill });
+    const oldBill = await DiningLedger.findById(req.params.id);
+    if (!oldBill) return res.status(404).json({ success: false, message: 'Không tìm thấy hóa đơn' });
+
+    // Hoàn tác số tiền cũ
+    if (oldBill.deductFromAccount && oldBill.paidAccount && oldBill.totalBill > 0) {
+      await adjustAccountBalance(oldBill.paidAccount, oldBill.totalBill);
+    }
+
+    const {
+      date,
+      mealTitle,
+      category,
+      totalBill,
+      myShare,
+      splitMode,
+      splits,
+      paidAccount,
+      deductFromAccount,
+      deductWeeklyLimit,
+      notes
+    } = req.body;
+
+    const numTotal = Number(totalBill) || 0;
+    const shouldDeduct = deductFromAccount !== false;
+
+    oldBill.date = date || oldBill.date;
+    oldBill.mealTitle = mealTitle || oldBill.mealTitle;
+    oldBill.category = category === 'family' ? 'family' : 'work';
+    oldBill.totalBill = numTotal;
+    oldBill.myShare = Number(myShare) || 0;
+    oldBill.splitMode = splitMode || oldBill.splitMode;
+    oldBill.splits = splits || oldBill.splits;
+    oldBill.paidAccount = paidAccount || oldBill.paidAccount;
+    oldBill.deductFromAccount = shouldDeduct;
+    oldBill.deductWeeklyLimit = deductWeeklyLimit !== false;
+    oldBill.notes = notes !== undefined ? notes : oldBill.notes;
+
+    await oldBill.save();
+
+    // Áp dụng số tiền mới
+    if (shouldDeduct && oldBill.paidAccount && numTotal > 0) {
+      await adjustAccountBalance(oldBill.paidAccount, -numTotal);
+    }
+
+    res.json({ success: true, bill: oldBill });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -786,27 +1153,48 @@ app.put('/api/dining/bill/:id', async (req, res) => {
 
 app.delete('/api/dining/bill/:id', async (req, res) => {
   try {
-    const bill = await DiningLedger.findByIdAndDelete(req.params.id);
-    if (!bill) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
-    res.json({ success: true, message: 'Đã xóa bữa ăn' });
+    const bill = await DiningLedger.findById(req.params.id);
+    if (!bill) return res.status(404).json({ success: false, message: 'Không tìm thấy bữa ăn' });
+
+    // Hoàn lại tiền ngân hàng nếu đã trừ
+    if (bill.deductFromAccount && bill.paidAccount && bill.totalBill > 0) {
+      await adjustAccountBalance(bill.paidAccount, bill.totalBill);
+    }
+
+    await bill.deleteOne();
+    res.json({ success: true, message: 'Đã xóa bữa ăn và hoàn lại tiền ngân hàng' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
+// ==================== 7. NẠP / TRẢ TIỀN ĂN (SETTLEMENTS CRUD) ====================
 app.post('/api/dining/settlement', async (req, res) => {
   try {
-    const { personName, amount, direction, note, date, topupKind } = req.body;
+    const { personName, amount, direction, category, note, date, topupKind, accountName, addToAccount } = req.body;
     const pKey = normalizeKey(personName);
+    const numAmount = Number(amount) || 0;
+    const shouldAdd = addToAccount !== false;
+
     const settlement = await DiningSettlement.create({
       personKey: pKey,
       personName,
-      amount: Number(amount) || 0,
+      category: category === 'family' ? 'family' : 'work',
+      amount: numAmount,
       direction: direction === 'out' ? 'out' : 'in',
       topupKind: topupKind || (direction === 'out' ? 'borrow' : 'prepaid'),
+      accountName: accountName || 'Vietcombank',
+      addToAccount: shouldAdd,
       note: note || '',
       date: date || new Date().toISOString().slice(0, 10)
     });
+
+    // Cộng hoặc trừ tiền vào ngân hàng thời gian thực
+    if (shouldAdd && settlement.accountName && numAmount > 0) {
+      const delta = settlement.direction === 'in' ? numAmount : -numAmount;
+      await adjustAccountBalance(settlement.accountName, delta);
+    }
+
     res.json({ success: true, settlement });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -815,23 +1203,40 @@ app.post('/api/dining/settlement', async (req, res) => {
 
 app.put('/api/dining/settlement/:id', async (req, res) => {
   try {
-    const { personName, amount, direction, note, date, topupKind } = req.body;
+    const oldS = await DiningSettlement.findById(req.params.id);
+    if (!oldS) return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
+
+    // Hoàn tác tiền cũ
+    if (oldS.addToAccount && oldS.accountName && oldS.amount > 0) {
+      const revertDelta = oldS.direction === 'in' ? -oldS.amount : oldS.amount;
+      await adjustAccountBalance(oldS.accountName, revertDelta);
+    }
+
+    const { personName, amount, direction, category, note, date, topupKind, accountName, addToAccount } = req.body;
     const pKey = normalizeKey(personName);
-    const settlement = await DiningSettlement.findByIdAndUpdate(
-      req.params.id,
-      {
-        personKey: pKey,
-        personName,
-        amount: Number(amount) || 0,
-        direction: direction === 'out' ? 'out' : 'in',
-        topupKind: topupKind || (direction === 'out' ? 'borrow' : 'prepaid'),
-        note: note || '',
-        date: date || new Date().toISOString().slice(0, 10)
-      },
-      { new: true }
-    );
-    if (!settlement) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
-    res.json({ success: true, settlement });
+    const numAmount = Number(amount) || 0;
+    const shouldAdd = addToAccount !== false;
+
+    oldS.personKey = pKey || oldS.personKey;
+    oldS.personName = personName || oldS.personName;
+    oldS.category = category === 'family' ? 'family' : 'work';
+    oldS.amount = numAmount;
+    oldS.direction = direction === 'out' ? 'out' : 'in';
+    oldS.topupKind = topupKind || oldS.topupKind;
+    oldS.accountName = accountName || oldS.accountName;
+    oldS.addToAccount = shouldAdd;
+    oldS.note = note !== undefined ? note : oldS.note;
+    oldS.date = date || oldS.date;
+
+    await oldS.save();
+
+    // Áp dụng tiền mới
+    if (shouldAdd && oldS.accountName && numAmount > 0) {
+      const delta = oldS.direction === 'in' ? numAmount : -numAmount;
+      await adjustAccountBalance(oldS.accountName, delta);
+    }
+
+    res.json({ success: true, settlement: oldS });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -839,23 +1244,62 @@ app.put('/api/dining/settlement/:id', async (req, res) => {
 
 app.delete('/api/dining/settlement/:id', async (req, res) => {
   try {
-    const settlement = await DiningSettlement.findByIdAndDelete(req.params.id);
-    if (!settlement) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
-    res.json({ success: true, message: 'Đã xóa giao dịch nạp / mượn' });
+    const s = await DiningSettlement.findById(req.params.id);
+    if (!s) return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
+
+    // Hoàn tác tiền ngân hàng
+    if (s.addToAccount && s.accountName && s.amount > 0) {
+      const revertDelta = s.direction === 'in' ? -s.amount : s.amount;
+      await adjustAccountBalance(s.accountName, revertDelta);
+    }
+
+    await s.deleteOne();
+    res.json({ success: true, message: 'Đã xóa giao dịch nạp / mượn và cập nhật lại số dư' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
+// ==================== 8. THÀNH VIÊN SỔ ĂN & GIA ĐÌNH ====================
 app.post('/api/dining/member', async (req, res) => {
   try {
-    const { name, openingBalance } = req.body;
+    const { name, openingBalance, group, phone, note } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'Thiếu tên người' });
     const pKey = normalizeKey(name);
-    const member = await DiningMember.findOneAndUpdate(
-      { personKey: pKey },
-      { name, openingBalance: Number(openingBalance) || 0 },
-      { upsert: true, new: true }
-    );
+    const existing = await DiningMember.findOne({ personKey: pKey });
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'Người này đã có trong danh sách' });
+    }
+    const member = await DiningMember.create({
+      personKey: pKey,
+      name: name.trim(),
+      group: group === 'family' ? 'family' : 'work',
+      openingBalance: Number(openingBalance) || 0,
+      phone: phone || '',
+      note: note || ''
+    });
+    res.json({ success: true, member });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/dining/member/:id', async (req, res) => {
+  try {
+    const { name, openingBalance, group, phone, note } = req.body;
+    const member = await DiningMember.findById(req.params.id);
+    if (!member) return res.status(404).json({ success: false, message: 'Không tìm thấy người này' });
+
+    if (name && name.trim()) {
+      member.name = name.trim();
+      member.personKey = normalizeKey(name);
+    }
+    if (openingBalance !== undefined) member.openingBalance = Number(openingBalance) || 0;
+    if (group !== undefined) member.group = group === 'family' ? 'family' : 'work';
+    if (phone !== undefined) member.phone = phone;
+    if (note !== undefined) member.note = note;
+
+    await member.save();
     res.json({ success: true, member });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -865,48 +1309,40 @@ app.post('/api/dining/member', async (req, res) => {
 app.delete('/api/dining/member/:id', async (req, res) => {
   try {
     const member = await DiningMember.findByIdAndDelete(req.params.id);
-    if (!member) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
+    if (!member) return res.status(404).json({ success: false, message: 'Không tìm thấy thành viên' });
     res.json({ success: true, message: 'Đã xóa thành viên' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-// ==================== CONFIG ====================
+// ==================== 9. CẤU HÌNH HỆ THỐNG & RESET ====================
 app.post('/api/config', async (req, res) => {
   try {
-    const { initialCash, weeklyLimit } = req.body;
-    let config = await Config.findOne();
-    if (!config) config = new Config();
-    if (initialCash !== undefined) config.initialCash = Number(initialCash);
-    if (weeklyLimit !== undefined) config.weeklyLimit = Number(weeklyLimit);
-    await config.save();
+    const { weeklyLimit, initialCash } = req.body;
+    const config = await Config.findOneAndUpdate(
+      {},
+      {
+        ...(weeklyLimit !== undefined && { weeklyLimit: Number(weeklyLimit) }),
+        ...(initialCash !== undefined && { initialCash: Number(initialCash) })
+      },
+      { new: true, upsert: true }
+    );
     res.json({ success: true, config });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-// SPA Fallback: Trả về /public/index.html cho mọi route không phải API
+// Fallback: mọi route khác đều phục vụ SPA index.html
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Start Express Server immediately, connect MongoDB asynchronously
-app.listen(PORT, () => {
-  console.log(`🚀 CFO Flow Server đang chạy tại: http://localhost:${PORT}`);
-  console.log(`📡 Đang kết nối tới MongoDB Atlas...`);
-
-  mongoose.connect(MONGODB_URI, {
-    serverSelectionTimeoutMS: 8000
-  })
-  .then(async () => {
-    console.log('✓ Kết nối MongoDB Atlas thành công!');
-    lastMongoError = null;
-    await seedDefaultData(false);
-  })
-  .catch(err => {
-    lastMongoError = err;
-    console.error('❌ Lỗi kết nối MongoDB:', err.message);
-  });
+// Start Server
+app.listen(PORT, async () => {
+  console.log(`===============================================`);
+  console.log(`🚀 CFO Flow Server running on http://localhost:${PORT}`);
+  console.log(`===============================================`);
+  await ensureMongoConnected();
 });
