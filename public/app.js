@@ -200,6 +200,16 @@ function cashFlowApp() {
       note: ''
     },
 
+    // Cấn trừ / chuyển số dư giữa 2 sổ (Ăn nhóm & Gia đình)
+    diningTransferForm: {
+      memberName: '',
+      fromCategory: 'work',
+      toCategory: 'family',
+      amount: '',
+      date: new Date().toISOString().slice(0, 10),
+      note: ''
+    },
+
     configForm: {
       initialCash: 3741742,
       weeklyLimit: 1500000
@@ -216,7 +226,8 @@ function cashFlowApp() {
       settlement: false,
       member: false,
       transaction: false,
-      config: false
+      config: false,
+      transfer: false
     },
 
     // Toast
@@ -280,6 +291,53 @@ function cashFlowApp() {
     },
     get diningTotalCurrentBalance() {
       return (this.filteredMembers || []).reduce((sum, m) => sum + (m.currentBalance || 0), 0);
+    },
+
+    // Danh sách thành viên xuất hiện ở cả 2 sổ (Ăn nhóm & Gia đình)
+    get dualGroupMembers() {
+      const workMembers = this.dashboard.card4_dining?.work?.members || [];
+      const familyMembers = this.dashboard.card4_dining?.family?.members || [];
+      const result = [];
+      workMembers.forEach(wm => {
+        const norm = normalizeMemberName(wm.name);
+        const fm = familyMembers.find(f => normalizeMemberName(f.name) === norm);
+        if (fm) {
+          result.push({
+            name: wm.name,
+            personKey: wm.personKey,
+            workBalance: wm.currentBalance || 0,
+            familyBalance: fm.currentBalance || 0,
+            workMemberId: wm.id,
+            familyMemberId: fm.id
+          });
+        }
+      });
+      return result;
+    },
+
+    isDualMember(name) {
+      if (!name) return false;
+      const norm = normalizeMemberName(name);
+      return (this.dualGroupMembers || []).some(m => normalizeMemberName(m.name) === norm);
+    },
+
+    get selectedTransferMember() {
+      const name = this.diningTransferForm.memberName;
+      if (!name) return null;
+      const norm = normalizeMemberName(name);
+      return (this.dualGroupMembers || []).find(m => normalizeMemberName(m.name) === norm) || null;
+    },
+
+    get transferSourceBalance() {
+      const m = this.selectedTransferMember;
+      if (!m) return 0;
+      return this.diningTransferForm.fromCategory === 'family' ? m.familyBalance : m.workBalance;
+    },
+
+    get transferTargetBalance() {
+      const m = this.selectedTransferMember;
+      if (!m) return 0;
+      return this.diningTransferForm.toCategory === 'family' ? m.familyBalance : m.workBalance;
     },
 
     get filteredDebts() {
@@ -1081,18 +1139,120 @@ function cashFlowApp() {
     },
 
     async deleteSettlement(id, name) {
-      if (!confirm(`Xóa giao dịch của "${name}"?\nSố tiền tác động vào tài khoản ngân hàng sẽ được tự động hoàn tác.`)) return;
+      if (!confirm(`Xóa giao dịch của "${name}"?\nNếu là giao dịch liên quan đến ngân hàng hoặc cấn trừ 2 sổ, hệ thống sẽ tự động hoàn tác số liệu.`)) return;
       try {
         const res = await fetch(`/api/dining/settlement/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
-          this.notify('🗑️ Đã xóa giao dịch & hoàn tác số dư ngân hàng!');
+          this.notify('🗑️ ' + (data.message || 'Đã xóa giao dịch nạp / mượn!'));
           this.fetchDashboard();
         } else {
           alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
         alert('Lỗi hệ thống: ' + err.message);
+      }
+    },
+
+    // ==================== CẤN TRỪ SỐ DƯ LIÊN QUỸ (KHÔNG CHUYỂN KHOẢN) ====================
+    openTransferModal(memberName = null, currentGroup = null) {
+      const duals = this.dualGroupMembers;
+      if (!duals || duals.length === 0) {
+        alert('Chưa có thành viên nào xuất hiện ở cả 2 sổ (Ăn nhóm & Gia đình).');
+        return;
+      }
+
+      let selected = duals[0];
+      if (memberName) {
+        const norm = normalizeMemberName(memberName);
+        const found = duals.find(d => normalizeMemberName(d.name) === norm);
+        if (found) selected = found;
+      }
+
+      // Quyết định hướng chuyển: mặc định lấy bên đang có số dư dương làm nguồn
+      let fromCat = currentGroup === 'family' ? 'family' : 'work';
+      let toCat = fromCat === 'work' ? 'family' : 'work';
+
+      if (fromCat === 'work' && selected.workBalance <= 0 && selected.familyBalance > 0) {
+        fromCat = 'family';
+        toCat = 'work';
+      } else if (fromCat === 'family' && selected.familyBalance <= 0 && selected.workBalance > 0) {
+        fromCat = 'work';
+        toCat = 'family';
+      }
+
+      const sourceBal = fromCat === 'family' ? selected.familyBalance : selected.workBalance;
+      const defaultAmount = sourceBal > 0 ? sourceBal : '';
+
+      this.diningTransferForm = {
+        memberName: selected.name,
+        fromCategory: fromCat,
+        toCategory: toCat,
+        amount: defaultAmount,
+        date: new Date().toISOString().slice(0, 10),
+        note: ''
+      };
+
+      this.modals.transfer = true;
+    },
+
+    onTransferMemberChange() {
+      const m = this.selectedTransferMember;
+      if (!m) return;
+      const sourceBal = this.diningTransferForm.fromCategory === 'family' ? m.familyBalance : m.workBalance;
+      if (sourceBal > 0) {
+        this.diningTransferForm.amount = sourceBal;
+      }
+    },
+
+    swapTransferDirection() {
+      const oldFrom = this.diningTransferForm.fromCategory;
+      this.diningTransferForm.fromCategory = this.diningTransferForm.toCategory;
+      this.diningTransferForm.toCategory = oldFrom;
+      const m = this.selectedTransferMember;
+      if (m) {
+        const newSourceBal = this.diningTransferForm.fromCategory === 'family' ? m.familyBalance : m.workBalance;
+        if (newSourceBal > 0) {
+          this.diningTransferForm.amount = newSourceBal;
+        }
+      }
+    },
+
+    async submitDiningTransfer() {
+      try {
+        if (!this.diningTransferForm.memberName) {
+          alert('Vui lòng chọn thành viên cần cấn trừ số dư.');
+          return;
+        }
+        const amt = Number(this.diningTransferForm.amount);
+        if (!amt || amt <= 0) {
+          alert('Vui lòng nhập số tiền cấn trừ lớn hơn 0đ.');
+          return;
+        }
+
+        const payload = {
+          personName: this.diningTransferForm.memberName,
+          fromCategory: this.diningTransferForm.fromCategory,
+          toCategory: this.diningTransferForm.toCategory,
+          amount: amt,
+          date: this.diningTransferForm.date,
+          note: this.diningTransferForm.note
+        };
+
+        const res = await fetch('/api/dining/transfer-balance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || data.error);
+
+        this.notify('⚡ ' + (data.message || 'Cấn trừ số dư 2 sổ thành công!'));
+        this.modals.transfer = false;
+        await this.fetchDashboard();
+      } catch (err) {
+        console.error('Lỗi cấn trừ liên quỹ:', err);
+        alert('Lỗi: ' + err.message);
       }
     },
 

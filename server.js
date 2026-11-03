@@ -1322,8 +1322,85 @@ app.delete('/api/dining/settlement/:id', async (req, res) => {
       await adjustAccountBalance(s.accountName, revertDelta);
     }
 
+    if (s.transferRef) {
+      // Tự động xóa cả 2 vế cấn trừ để cân đối sổ
+      await DiningSettlement.deleteMany({ transferRef: s.transferRef });
+      return res.json({ success: true, message: 'Đã hoàn tác và xóa cả 2 vế giao dịch cấn trừ liên quỹ' });
+    }
+
     await s.deleteOne();
     res.json({ success: true, message: 'Đã xóa giao dịch nạp / mượn và cập nhật lại số dư' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// ==================== CẤN TRỪ SỐ DƯ LIÊN QUỸ (KHÔNG CẦN CHUYỂN KHOẢN) ====================
+app.post('/api/dining/transfer-balance', async (req, res) => {
+  try {
+    const { personName, fromCategory, toCategory, amount, date, note } = req.body;
+    if (!personName || !personName.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng chọn thành viên cần cấn trừ số dư' });
+    }
+    const numAmount = Number(amount);
+    if (!numAmount || numAmount <= 0) {
+      return res.status(400).json({ success: false, message: 'Số tiền chuyển phải lớn hơn 0đ' });
+    }
+    if (!['work', 'family'].includes(fromCategory) || !['work', 'family'].includes(toCategory)) {
+      return res.status(400).json({ success: false, message: 'Danh mục quỹ không hợp lệ' });
+    }
+    if (fromCategory === toCategory) {
+      return res.status(400).json({ success: false, message: 'Quỹ nguồn và quỹ đích phải khác nhau' });
+    }
+
+    const pKey = normalizeKey(personName);
+    const sourceName = fromCategory === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm';
+    const targetName = toCategory === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm';
+    const transferDate = date || new Date().toISOString().slice(0, 10);
+    const transferRef = `transfer_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+
+    // 1. Tạo vế xuất từ quỹ nguồn (direction: 'out')
+    const debit = await DiningSettlement.create({
+      monthKey: transferDate.slice(0, 7),
+      personKey: pKey,
+      personName: personName.trim(),
+      category: fromCategory,
+      amount: numAmount,
+      direction: 'out',
+      topupKind: 'transfer_out',
+      accountName: 'Nội bộ (Cấn trừ 2 sổ)',
+      addToAccount: false,
+      transferRef,
+      note: note && note.trim()
+        ? `${note.trim()} (Chuyển sang ${targetName})`
+        : `Cấn trừ chuyển ${numAmount.toLocaleString('vi-VN')}đ sang ${targetName}`,
+      date: transferDate
+    });
+
+    // 2. Tạo vế nhập vào quỹ đích (direction: 'in')
+    const credit = await DiningSettlement.create({
+      monthKey: transferDate.slice(0, 7),
+      personKey: pKey,
+      personName: personName.trim(),
+      category: toCategory,
+      amount: numAmount,
+      direction: 'in',
+      topupKind: 'transfer_in',
+      accountName: 'Nội bộ (Cấn trừ 2 sổ)',
+      addToAccount: false,
+      transferRef,
+      note: note && note.trim()
+        ? `${note.trim()} (Nhận từ ${sourceName})`
+        : `Nhận cấn trừ ${numAmount.toLocaleString('vi-VN')}đ từ ${sourceName}`,
+      date: transferDate
+    });
+
+    res.json({
+      success: true,
+      message: `Đã cấn trừ chuyển thành công ${numAmount.toLocaleString('vi-VN')}đ từ ${sourceName} sang ${targetName} cho ${personName.trim()}`,
+      debit,
+      credit
+    });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
