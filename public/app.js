@@ -74,6 +74,25 @@ function cashFlowApp() {
         combined: null,
         allMembers: []
       },
+      card4_personal_hub: {
+        monthlyBudget: 6000000,
+        savingsRate: 15,
+        targetSavings: 900000,
+        actualSavings: 0,
+        savingsList: [],
+        totalFixedBills: 0,
+        paidFixedBills: 0,
+        pendingFixedBills: 0,
+        fixedBillsList: [],
+        spendableFlexibleMonthly: 0,
+        currentMonthFlexibleSpent: 0,
+        remainingFlexibleMonthly: 0,
+        weeklyLimit: 1500000,
+        weeklySpent: 0,
+        weeklyRemaining: 0,
+        weeklyPercent: 0,
+        allExpenses: []
+      },
       transactions: [],
       reminders: [],
       allDebts: [],
@@ -87,6 +106,7 @@ function cashFlowApp() {
     diningTab: 'members',   // 'members' | 'bills' | 'settlements'
     diningMemberView: 'excel', // 'excel' (Bảng Excel) | 'cards' (Dạng Thẻ)
     memberFilter: 'all',    // 'all' | 'surplus' | 'debt'
+    personalTab: 'fixed',   // 'fixed' (Hóa đơn cố định) | 'savings' (Sổ tiết kiệm) | 'spending' (Ăn ngoài & Mua sắm)
     debtFilter: 'all',      // 'all' | 'receivable' | 'payable' | 'pending' | 'paid'
     txFilter: {
       type: 'all',
@@ -104,6 +124,7 @@ function cashFlowApp() {
     editingSettlementId: null,
     editingMemberId: null,
     editingTransactionId: null,
+    editingPersonalId: null,
 
     // ==================== FORMS ====================
     accountForm: {
@@ -210,6 +231,26 @@ function cashFlowApp() {
       note: ''
     },
 
+    // Chi phí cá nhân & Hóa đơn cố định (Hub 4)
+    personalExpenseForm: {
+      title: '',
+      category: 'streaming_tech', // health_fitness | streaming_tech | living_utility | savings | flexible_spending
+      type: 'fixed_bill', // fixed_bill | savings_deposit | flexible
+      amount: '',
+      cycle: 'monthly',
+      dueDay: 5,
+      status: 'pending',
+      paidAccount: 'Vietcombank',
+      deductFromAccount: false,
+      notes: ''
+    },
+
+    personalConfigForm: {
+      hub4MonthlyBudget: 6000000,
+      savingsRate: 15,
+      weeklyLimit: 1500000
+    },
+
     configForm: {
       initialCash: 3741742,
       weeklyLimit: 1500000
@@ -227,7 +268,9 @@ function cashFlowApp() {
       member: false,
       transaction: false,
       config: false,
-      transfer: false
+      transfer: false,
+      personalExpense: false,
+      personalConfig: false
     },
 
     // Toast
@@ -371,6 +414,40 @@ function cashFlowApp() {
         .reduce((sum, t) => sum + (t.amount || 0), 0);
     },
 
+    get personalHub() {
+      return this.dashboard.card4_personal_hub || {
+        monthlyBudget: 6000000,
+        savingsRate: 15,
+        targetSavings: 900000,
+        actualSavings: 0,
+        savingsList: [],
+        totalFixedBills: 0,
+        paidFixedBills: 0,
+        pendingFixedBills: 0,
+        fixedBillsList: [],
+        spendableFlexibleMonthly: 0,
+        currentMonthFlexibleSpent: 0,
+        remainingFlexibleMonthly: 0,
+        weeklyLimit: 1500000,
+        weeklySpent: 0,
+        weeklyRemaining: 0,
+        weeklyPercent: 0,
+        allExpenses: []
+      };
+    },
+
+    get fixedBills() {
+      return this.personalHub.fixedBillsList || [];
+    },
+
+    get savingsList() {
+      return this.personalHub.savingsList || [];
+    },
+
+    get personalFlexibleExpenses() {
+      return (this.dashboard.transactions || []).filter(t => t.hubRole === 'hub4_personal' && t.type === 'expense');
+    },
+
     async fetchDashboard() {
       try {
         const res = await fetch('/api/dashboard');
@@ -379,6 +456,11 @@ function cashFlowApp() {
           this.error = null;
           this.dashboard = data;
           this.configForm.weeklyLimit = data.config.weeklyLimit;
+          if (data.card4_personal_hub) {
+            this.personalConfigForm.hub4MonthlyBudget = data.card4_personal_hub.monthlyBudget || 6000000;
+            this.personalConfigForm.savingsRate = data.card4_personal_hub.savingsRate || 15;
+            this.personalConfigForm.weeklyLimit = data.card4_personal_hub.weeklyLimit || 1500000;
+          }
         } else {
           this.error = data.error || 'Chưa thể kết nối tới cơ sở dữ liệu MongoDB Atlas.';
         }
@@ -1341,6 +1423,129 @@ function cashFlowApp() {
           this.modals.config = false;
           this.fetchDashboard();
         }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+    // ==================== 10. SỔ CHI TIÊU CÁ NHÂN & TIẾT KIỆM (HUB 4) ====================
+    openPersonalExpenseModal(item = null, defaultType = 'fixed_bill') {
+      if (item) {
+        this.editingPersonalId = item._id || item.id;
+        this.personalExpenseForm = {
+          title: item.title,
+          category: item.category || 'streaming_tech',
+          type: item.type || defaultType,
+          amount: item.amount,
+          cycle: item.cycle || 'monthly',
+          dueDay: item.dueDay || 5,
+          status: item.status || 'pending',
+          paidAccount: item.paidAccount || 'Vietcombank',
+          deductFromAccount: item.deductFromAccount === true,
+          notes: item.notes || ''
+        };
+      } else {
+        this.editingPersonalId = null;
+        this.personalExpenseForm = {
+          title: defaultType === 'savings_deposit' ? 'Trích Tiết Kiệm Tháng mới' : '',
+          category: defaultType === 'savings_deposit' ? 'savings' : 'health_fitness',
+          type: defaultType,
+          amount: defaultType === 'savings_deposit' ? (this.personalHub.targetSavings || 900000) : '',
+          cycle: 'monthly',
+          dueDay: 5,
+          status: defaultType === 'savings_deposit' ? 'paid' : 'pending',
+          paidAccount: 'Vietcombank',
+          deductFromAccount: false,
+          notes: ''
+        };
+      }
+      this.modals.personalExpense = true;
+    },
+
+    async submitPersonalExpense() {
+      try {
+        if (!this.personalExpenseForm.title || !this.personalExpenseForm.title.trim()) {
+          alert('Vui lòng nhập tên khoản chi / hóa đơn.');
+          return;
+        }
+        const amt = Number(this.personalExpenseForm.amount);
+        if (!amt || amt <= 0) {
+          alert('Vui lòng nhập số tiền lớn hơn 0đ.');
+          return;
+        }
+
+        const url = this.editingPersonalId ? `/api/personal/expense/${this.editingPersonalId}` : '/api/personal/expense';
+        const method = this.editingPersonalId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.personalExpenseForm)
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || data.error);
+
+        this.notify('✓ ' + (this.editingPersonalId ? 'Đã cập nhật khoản chi!' : 'Đã thêm khoản chi cá nhân mới!'));
+        this.modals.personalExpense = false;
+        await this.fetchDashboard();
+      } catch (err) {
+        console.error('Lỗi lưu chi phí cá nhân:', err);
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async togglePersonalExpenseStatus(item) {
+      try {
+        const res = await fetch(`/api/personal/expense/${item._id || item.id}/toggle`, {
+          method: 'PUT'
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || data.error);
+
+        this.notify(`✓ Đã đổi trạng thái "${item.title}" sang: ${data.item.status === 'paid' ? 'Đã Thanh Toán' : 'Chờ Thanh Toán'}`);
+        await this.fetchDashboard();
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async deletePersonalExpense(id, title) {
+      if (!confirm(`Xóa khoản chi "${title}" khỏi Sổ Cá Nhân?`)) return;
+      try {
+        const res = await fetch(`/api/personal/expense/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('🗑️ ' + (data.message || 'Đã xóa khoản chi cá nhân!'));
+          await this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi hệ thống: ' + err.message);
+      }
+    },
+
+    openPersonalConfigModal() {
+      this.personalConfigForm = {
+        hub4MonthlyBudget: this.personalHub.monthlyBudget || 6000000,
+        savingsRate: this.personalHub.savingsRate || 15,
+        weeklyLimit: this.personalHub.weeklyLimit || 1500000
+      };
+      this.modals.personalConfig = true;
+    },
+
+    async submitPersonalConfig() {
+      try {
+        const res = await fetch('/api/personal/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.personalConfigForm)
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || data.error);
+
+        this.notify('⚙️ Đã cập nhật hạn mức phân bổ Hub 4 thành công!');
+        this.modals.personalConfig = false;
+        await this.fetchDashboard();
       } catch (err) {
         alert('Lỗi: ' + err.message);
       }

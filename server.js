@@ -15,6 +15,7 @@ const Account = require('./models/Account');
 const SupplierDebt = require('./models/SupplierDebt');
 const CashflowReminder = require('./models/CashflowReminder');
 const Transaction = require('./models/Transaction');
+const PersonalExpense = require('./models/PersonalExpense');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -294,6 +295,72 @@ async function seedDefaultData(force = false) {
       ]);
     }
 
+    // 11. Personal Expenses & Subscriptions (Hub 4 - Sức khỏe, Giải trí & Tiện ích cá nhân)
+    const personalCount = await PersonalExpense.countDocuments();
+    if (personalCount === 0 || force) {
+      if (force) await PersonalExpense.deleteMany({});
+      await PersonalExpense.insertMany([
+        {
+          title: 'Thẻ tập Gym & Fitness (2 người)',
+          category: 'health_fitness',
+          type: 'fixed_bill',
+          amount: 600000,
+          cycle: 'monthly',
+          dueDay: 5,
+          status: 'pending',
+          paidAccount: 'Vietcombank',
+          notes: 'Chi phí tập luyện sức khỏe cố định hàng tháng'
+        },
+        {
+          title: 'Gói Netflix 4K Premium',
+          category: 'streaming_tech',
+          type: 'fixed_bill',
+          amount: 260000,
+          cycle: 'monthly',
+          dueDay: 15,
+          status: 'paid',
+          paidDate: '2026-11-01',
+          paidAccount: 'MoMo',
+          notes: 'Dịch vụ xem phim giải trí cuối tuần của 2 người'
+        },
+        {
+          title: 'YouTube Premium Family',
+          category: 'streaming_tech',
+          type: 'fixed_bill',
+          amount: 89000,
+          cycle: 'monthly',
+          dueDay: 20,
+          status: 'pending',
+          paidAccount: 'Vietcombank',
+          notes: 'Nghe nhạc & xem video không quảng cáo'
+        },
+        {
+          title: 'Gói lưu trữ iCloud 2TB',
+          category: 'living_utility',
+          type: 'fixed_bill',
+          amount: 59000,
+          cycle: 'monthly',
+          dueDay: 25,
+          status: 'paid',
+          paidDate: '2026-11-02',
+          paidAccount: 'Vietcombank',
+          notes: 'Lưu trữ hình ảnh, dữ liệu kỷ niệm 2 người'
+        },
+        {
+          title: 'Trích Tiết Kiệm Tháng 11 (15% Hub 4)',
+          category: 'savings',
+          type: 'savings_deposit',
+          amount: 900000,
+          cycle: 'monthly',
+          dueDay: 1,
+          status: 'paid',
+          paidDate: '2026-11-01',
+          paidAccount: 'Vietcombank',
+          notes: 'Quy tắc Hub 4: Tiết kiệm trước 10-15% khi nhận tiền từ Hub 1'
+        }
+      ]);
+    }
+
     console.log('✓ Dữ liệu mặc định đã sẵn sàng trong MongoDB Atlas');
   } catch (err) {
     console.error('Lỗi khi seedDefaultData:', err.message);
@@ -471,7 +538,8 @@ app.get('/api/dashboard', async (req, res) => {
       diningSettlements,
       debts,
       transactions,
-      incomes
+      incomes,
+      personalExpenses
     ] = await Promise.all([
       Account.find().sort({ type: 1, name: 1 }),
       SupplierDebt.find().sort({ remainingAmount: -1, createdAt: -1 }),
@@ -482,7 +550,8 @@ app.get('/api/dashboard', async (req, res) => {
       DiningSettlement.find().sort({ createdAt: -1 }),
       Debt.find().sort({ dueDate: 1 }),
       Transaction.find().sort({ date: -1, createdAt: -1 }),
-      Income.find().sort({ date: 1 })
+      Income.find().sort({ date: 1 }),
+      PersonalExpense.find().sort({ dueDay: 1, createdAt: 1 })
     ]);
 
     // --- 1. SỐ DƯ THỰC TẾ TỪNG NGÂN HÀNG & TIỀN MẶT RIÊNG ---
@@ -548,6 +617,46 @@ app.get('/api/dashboard', async (req, res) => {
       .filter(d => d.type === 'payable' && d.status === 'pending')
       .reduce((sum, d) => sum + (d.amount || 0), 0);
 
+    // --- 7. HUB 4: SỔ CHI TIÊU CÁ NHÂN & TIẾT KIỆM (QUY TRÌNH THÁC NƯỚC 3 BƯỚC) ---
+    const hub4Budget = config.hub4MonthlyBudget || 6000000;
+    const savingsRate = config.savingsRate || 15;
+    const targetSavings = Math.round(hub4Budget * (savingsRate / 100));
+
+    // 1. Tiết kiệm đã trích thực tế
+    const savingsList = personalExpenses.filter(e => e.type === 'savings_deposit' || e.category === 'savings');
+    const actualSavings = savingsList.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+    // 2. Hóa đơn cá nhân cố định (Gym, Streaming, Tiện ích sống)
+    const fixedBillsList = personalExpenses.filter(e => e.type === 'fixed_bill');
+    const totalFixedBills = fixedBillsList.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const paidFixedBills = fixedBillsList.filter(e => e.status === 'paid').reduce((sum, e) => sum + (e.amount || 0), 0);
+    const pendingFixedBills = fixedBillsList.filter(e => e.status === 'pending').reduce((sum, e) => sum + (e.amount || 0), 0);
+
+    // 3. Hạn mức tiêu xài khả dụng thực tế của 2 người (Ăn ngoài, Cà phê, Mua sắm)
+    // = Tổng Ngân Sách - Tiết Kiệm - Hóa Đơn Cố Định
+    const spendableFlexibleMonthly = Math.max(0, hub4Budget - targetSavings - totalFixedBills);
+    const personalSpentMonthly = myDiningShareWeekly + transactionsWeeklySpent;
+
+    const card4_personal_hub = {
+      monthlyBudget: hub4Budget,
+      savingsRate,
+      targetSavings,
+      actualSavings,
+      savingsList,
+      totalFixedBills,
+      paidFixedBills,
+      pendingFixedBills,
+      fixedBillsList,
+      spendableFlexibleMonthly,
+      currentMonthFlexibleSpent: personalSpentMonthly,
+      remainingFlexibleMonthly: Math.max(0, spendableFlexibleMonthly - personalSpentMonthly),
+      weeklyLimit: config.weeklyLimit,
+      weeklySpent: currentWeekSpent,
+      weeklyRemaining: Math.max(0, config.weeklyLimit - currentWeekSpent),
+      weeklyPercent,
+      allExpenses: personalExpenses
+    };
+
     res.json({
       success: true,
       config,
@@ -584,6 +693,7 @@ app.get('/api/dashboard', async (req, res) => {
         combined: combinedStats,
         allMembers: diningMembers
       },
+      card4_personal_hub,
       transactions: transactions.slice(0, 100),
       reminders,
       allDebts: debts,
@@ -1470,6 +1580,129 @@ app.delete('/api/dining/member/:id', async (req, res) => {
     const member = await DiningMember.findByIdAndDelete(req.params.id);
     if (!member) return res.status(404).json({ success: false, message: 'Không tìm thấy thành viên' });
     res.json({ success: true, message: 'Đã xóa thành viên' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// ==================== 8.5. SỔ CHI TIÊU CÁ NHÂN & TIẾT KIỆM (HUB 4 CRUD) ====================
+app.post('/api/personal/expense', async (req, res) => {
+  try {
+    const { title, category, type, amount, cycle, dueDay, status, paidAccount, deductFromAccount, notes, paidDate } = req.body;
+    if (!title || !title.trim()) return res.status(400).json({ success: false, message: 'Thiếu tên khoản chi / hóa đơn' });
+    const numAmount = Number(amount);
+    if (!numAmount || numAmount <= 0) return res.status(400).json({ success: false, message: 'Số tiền phải lớn hơn 0đ' });
+
+    const item = await PersonalExpense.create({
+      title: title.trim(),
+      category: category || 'streaming_tech',
+      type: type || 'fixed_bill',
+      amount: numAmount,
+      cycle: cycle || 'monthly',
+      dueDay: Number(dueDay) || 5,
+      status: status || 'pending',
+      paidAccount: paidAccount || 'Vietcombank',
+      deductFromAccount: deductFromAccount === true,
+      paidDate: status === 'paid' ? (paidDate || new Date().toISOString().slice(0, 10)) : '',
+      notes: notes || ''
+    });
+
+    if (status === 'paid' && deductFromAccount === true && item.paidAccount) {
+      await adjustAccountBalance(item.paidAccount, -numAmount);
+    }
+
+    res.json({ success: true, item });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/personal/expense/:id', async (req, res) => {
+  try {
+    const item = await PersonalExpense.findById(req.params.id);
+    if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản chi cá nhân' });
+
+    const { title, category, type, amount, cycle, dueDay, status, paidAccount, deductFromAccount, notes, paidDate } = req.body;
+    if (title !== undefined) item.title = title.trim();
+    if (category !== undefined) item.category = category;
+    if (type !== undefined) item.type = type;
+    if (amount !== undefined) item.amount = Number(amount) || item.amount;
+    if (cycle !== undefined) item.cycle = cycle;
+    if (dueDay !== undefined) item.dueDay = Number(dueDay) || item.dueDay;
+    if (paidAccount !== undefined) item.paidAccount = paidAccount;
+    if (notes !== undefined) item.notes = notes;
+    if (deductFromAccount !== undefined) item.deductFromAccount = deductFromAccount;
+
+    if (status !== undefined) {
+      item.status = status;
+      if (status === 'paid' && !item.paidDate) {
+        item.paidDate = paidDate || new Date().toISOString().slice(0, 10);
+      } else if (status === 'pending') {
+        item.paidDate = '';
+      }
+    }
+
+    await item.save();
+    res.json({ success: true, item });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/personal/expense/:id/toggle', async (req, res) => {
+  try {
+    const item = await PersonalExpense.findById(req.params.id);
+    if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản chi' });
+
+    const newStatus = item.status === 'paid' ? 'pending' : 'paid';
+    item.status = newStatus;
+    if (newStatus === 'paid') {
+      item.paidDate = new Date().toISOString().slice(0, 10);
+      if (item.deductFromAccount && item.paidAccount) {
+        await adjustAccountBalance(item.paidAccount, -item.amount);
+      }
+    } else {
+      if (item.deductFromAccount && item.paidAccount) {
+        await adjustAccountBalance(item.paidAccount, item.amount);
+      }
+      item.paidDate = '';
+    }
+
+    await item.save();
+    res.json({ success: true, item });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/personal/expense/:id', async (req, res) => {
+  try {
+    const item = await PersonalExpense.findById(req.params.id);
+    if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản chi' });
+
+    if (item.status === 'paid' && item.deductFromAccount && item.paidAccount) {
+      await adjustAccountBalance(item.paidAccount, item.amount);
+    }
+    await item.deleteOne();
+    res.json({ success: true, message: 'Đã xóa khoản chi cá nhân' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/personal/config', async (req, res) => {
+  try {
+    const { hub4MonthlyBudget, savingsRate, weeklyLimit } = req.body;
+    const config = await Config.findOneAndUpdate(
+      {},
+      {
+        ...(hub4MonthlyBudget !== undefined && { hub4MonthlyBudget: Number(hub4MonthlyBudget) }),
+        ...(savingsRate !== undefined && { savingsRate: Number(savingsRate) }),
+        ...(weeklyLimit !== undefined && { weeklyLimit: Number(weeklyLimit) })
+      },
+      { new: true, upsert: true }
+    );
+    res.json({ success: true, config });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }

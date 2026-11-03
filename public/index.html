@@ -116,6 +116,13 @@
           <span>Quỹ Ăn &amp; Gia Đình</span>
         </button>
 
+        <button type="button" @click="activeTab = 'personal'"
+                class="px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                :class="activeTab === 'personal' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
+          <i class="fa-solid fa-heart-pulse text-[11px] text-purple-600" :class="activeTab === 'personal' ? 'text-purple-600' : 'text-slate-400'"></i>
+          <span>Sổ Cá Nhân (Hub 4)</span>
+        </button>
+
         <button type="button" @click="activeTab = 'debts'"
                 class="px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
                 :class="activeTab === 'debts' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
@@ -374,6 +381,11 @@
                 <strong class="font-mono text-sm font-bold text-slate-900"
                         x-text="formatVND(dashboard.accounts.hubs?.hub4_personal?.balance || 0)"></strong>
               </div>
+              <button type="button" @click="activeTab = 'personal'"
+                      class="w-full mt-1.5 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-bold transition flex items-center justify-center gap-1.5 border border-purple-200">
+                <i class="fa-solid fa-heart-pulse text-[10px]"></i>
+                <span>Vào Sổ Cá Nhân &amp; Tiết Kiệm →</span>
+              </button>
             </div>
           </div>
         </div>
@@ -1357,9 +1369,348 @@
 
       </div>
 
-    </div>
+      <!-- ==================================================================== -->
+      <!-- TAB 5: SỔ CHI TIÊU CÁ NHÂN & TIẾT KIỆM (HUB 4 WORKSPACE)            -->
+      <!-- ==================================================================== -->
+      <div x-show="activeTab === 'personal'" class="space-y-6">
+        
+        <div class="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/80 shadow-card space-y-6">
+          
+          <!-- Header Banner -->
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center text-sm font-bold shadow-xs">
+                  <i class="fa-solid fa-heart-pulse"></i>
+                </span>
+                <div>
+                  <h2 class="text-base sm:text-lg font-bold text-slate-900">Sổ Chi Tiêu Cá Nhân &amp; Tiết Kiệm (Hub 4)</h2>
+                  <p class="text-xs text-slate-500">Phục vụ tiện ích sống, sức khỏe (Gym) &amp; giải trí số của riêng Bạn &amp; Người Yêu • Độc lập với Quỹ Gia Đình (Hub 3) &amp; Quỹ KD (Hub 1)</p>
+                </div>
+              </div>
+            </div>
 
-  </main>
+            <!-- Action Buttons -->
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" @click="openPersonalExpenseModal(null, 'fixed_bill')"
+                      class="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+                <i class="fa-solid fa-plus text-[10px]"></i>
+                <span>+ Thêm Hóa Đơn Cố Định</span>
+              </button>
+              <button type="button" @click="openPersonalExpenseModal(null, 'savings_deposit')"
+                      class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center gap-1.5 border border-indigo-200">
+                <i class="fa-solid fa-piggy-bank text-[11px]"></i>
+                <span>+ Nạp Tiết Kiệm</span>
+              </button>
+              <button type="button" @click="openPersonalConfigModal()"
+                      class="px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium transition"
+                      title="Cài đặt ngân sách Hub 4">
+                <i class="fa-solid fa-gear"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- THÁC NƯỚC PHÂN BỔ TÀI CHÍNH 3 BƯỚC HUB 4 (WATERFALL CARDS) -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+                <i class="fa-solid fa-water text-purple-600"></i>
+                <span>Quy Trình Phân Bổ Thác Nước 3 Bước (Từ Hub 1 → Hub 4)</span>
+              </div>
+              <div class="text-xs text-slate-500">
+                Tổng ngân sách phân bổ: <strong class="text-slate-900 font-mono text-sm" x-text="formatVND(personalHub.monthlyBudget)"></strong>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <!-- BƯỚC 1: TIẾT KIỆM TRƯỚC (10% - 15%) -->
+              <div class="p-4 rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/60 to-white shadow-xs space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-bold uppercase">
+                    1. Tiết Kiệm Trước (<span x-text="personalHub.savingsRate"></span>%)
+                  </span>
+                  <i class="fa-solid fa-piggy-bank text-indigo-500 text-sm"></i>
+                </div>
+                <div>
+                  <span class="text-[10px] text-slate-400 block">Đã tích lũy / Mục tiêu tháng:</span>
+                  <div class="flex items-baseline gap-1 mt-0.5">
+                    <strong class="text-lg font-mono font-bold text-indigo-700" x-text="formatVND(personalHub.actualSavings)"></strong>
+                    <span class="text-xs font-mono text-slate-400">/ <span x-text="formatVND(personalHub.targetSavings)"></span></span>
+                  </div>
+                </div>
+                <div class="space-y-1">
+                  <div class="w-full bg-indigo-100/70 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-indigo-600 h-full rounded-full transition-all"
+                         :style="'width: ' + Math.min(100, Math.round((personalHub.actualSavings / (personalHub.targetSavings || 1)) * 100)) + '%'"></div>
+                  </div>
+                  <p class="text-[10px] text-slate-400 leading-tight">Pay Yourself First: Trích ngay 10-15% vào Sổ tiết kiệm trước khi chi tiêu.</p>
+                </div>
+              </div>
+
+              <!-- BƯỚC 2: HÓA ĐƠN CỐ ĐỊNH (GYM & STREAMING) -->
+              <div class="p-4 rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50/60 to-white shadow-xs space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold uppercase">
+                    2. Cất Riêng Cố Định
+                  </span>
+                  <i class="fa-solid fa-tv text-amber-500 text-sm"></i>
+                </div>
+                <div>
+                  <span class="text-[10px] text-slate-400 block">Gym, Netflix, YouTube, iCloud:</span>
+                  <div class="flex items-baseline gap-1 mt-0.5">
+                    <strong class="text-lg font-mono font-bold text-amber-700" x-text="formatVND(personalHub.totalFixedBills)"></strong>
+                    <span class="text-[11px] text-slate-400">/ tháng</span>
+                  </div>
+                </div>
+                <div class="space-y-1">
+                  <div class="flex items-center justify-between text-[11px] font-mono">
+                    <span class="text-emerald-700">Đã trả: <strong x-text="formatVND(personalHub.paidFixedBills)"></strong></span>
+                    <span class="text-amber-700">Chờ trả: <strong x-text="formatVND(personalHub.pendingFixedBills)"></strong></span>
+                  </div>
+                  <p class="text-[10px] text-slate-400 leading-tight">Chi phí tiện ích sống không co giãn. Cất riêng ngay để không bị tiêu lẹm.</p>
+                </div>
+              </div>
+
+              <!-- BƯỚC 3: HẠN MỨC TIÊU XÀI CỦA 2 BẠN -->
+              <div class="p-4 rounded-xl border border-purple-100 bg-gradient-to-br from-purple-50/60 to-white shadow-xs space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 text-[10px] font-bold uppercase">
+                    3. Tiêu Xài Ăn Ngoài &amp; Mua Sắm
+                  </span>
+                  <i class="fa-solid fa-bag-shopping text-purple-500 text-sm"></i>
+                </div>
+                <div>
+                  <span class="text-[10px] text-slate-400 block">Hạn mức tháng còn lại:</span>
+                  <div class="flex items-baseline gap-1 mt-0.5">
+                    <strong class="text-lg font-mono font-bold text-purple-700" x-text="formatVND(personalHub.remainingFlexibleMonthly)"></strong>
+                    <span class="text-xs font-mono text-slate-400">/ <span x-text="formatVND(personalHub.spendableFlexibleMonthly)"></span></span>
+                  </div>
+                </div>
+                <div class="space-y-1">
+                  <div class="flex items-center justify-between text-[11px]">
+                    <span class="text-slate-500">Hạn mức tuần:</span>
+                    <strong class="font-mono" :class="personalHub.weeklyPercent >= 100 ? 'text-rose-600' : 'text-purple-700'"
+                            x-text="formatVND(personalHub.weeklySpent) + ' / ' + formatVND(personalHub.weeklyLimit)"></strong>
+                  </div>
+                  <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full transition-all"
+                         :class="personalHub.weeklyPercent >= 100 ? 'bg-rose-500' : (personalHub.weeklyPercent >= 80 ? 'bg-amber-500' : 'bg-purple-600')"
+                         :style="'width: ' + Math.min(100, personalHub.weeklyPercent) + '%'"></div>
+                  </div>
+                  <p class="text-[10px] text-slate-400 leading-tight">Khi ví tuần về 0đ: Kích hoạt phanh tài chính (dừng ăn ngoài &amp; mua sắm).</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SUB-TABS NAVIGATION -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3 pt-2">
+            <div class="flex items-center gap-1.5 text-xs font-semibold">
+              <button type="button" @click="personalTab = 'fixed'"
+                      class="px-3.5 py-1.5 rounded-lg transition"
+                      :class="personalTab === 'fixed' ? 'bg-slate-900 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
+                🏋️ Hóa Đơn Cố Định (Gym, Streaming) (<span x-text="fixedBills.length"></span>)
+              </button>
+              <button type="button" @click="personalTab = 'savings'"
+                      class="px-3.5 py-1.5 rounded-lg transition"
+                      :class="personalTab === 'savings' ? 'bg-slate-900 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
+                🏦 Sổ Tiết Kiệm Tích Lũy (<span x-text="savingsList.length"></span>)
+              </button>
+              <button type="button" @click="personalTab = 'spending'"
+                      class="px-3.5 py-1.5 rounded-lg transition"
+                      :class="personalTab === 'spending' ? 'bg-slate-900 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
+                🛍️ Ăn Ngoài &amp; Mua Sắm 2 Bạn (<span x-text="personalFlexibleExpenses.length"></span>)
+              </button>
+            </div>
+          </div>
+
+          <!-- SUB-TAB 1: HÓA ĐƠN CỐ ĐỊNH (GYM, STREAMING, UTILITIES) -->
+          <div x-show="personalTab === 'fixed'" class="space-y-3 pt-1">
+            <div class="overflow-x-auto rounded-xl border border-slate-300 bg-white shadow-sm">
+              <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr class="bg-gradient-to-b from-slate-100 to-slate-200/90 text-slate-700 border-b border-slate-300 font-bold uppercase text-[11px] tracking-wider select-none">
+                    <th class="py-2.5 px-3 w-12 text-center border-r border-slate-300 bg-slate-100">STT</th>
+                    <th class="py-2.5 px-3 min-w-[200px] border-r border-slate-300">Tên Dịch Vụ / Tiện Ích</th>
+                    <th class="py-2.5 px-3 min-w-[130px] border-r border-slate-300">Phân Loại</th>
+                    <th class="py-2.5 px-3 text-right min-w-[120px] border-r border-slate-300">Số Tiền / Tháng</th>
+                    <th class="py-2.5 px-3 text-center min-w-[100px] border-r border-slate-300">Hạn Đóng</th>
+                    <th class="py-2.5 px-3 text-center min-w-[130px] border-r border-slate-300">Trạng Thái (Bấm Đổi)</th>
+                    <th class="py-2.5 px-3 min-w-[120px] border-r border-slate-300">TK Thanh Toán</th>
+                    <th class="py-2.5 px-3 text-center min-w-[120px]">Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200 text-slate-800">
+                  <template x-for="(bill, idx) in fixedBills" :key="bill._id || bill.title">
+                    <tr class="hover:bg-purple-50/40 transition-colors"
+                        :class="idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'">
+                      <td class="py-2.5 px-3 text-center font-mono text-slate-500 font-bold border-r border-slate-200 bg-slate-50/40" x-text="idx + 1"></td>
+                      
+                      <!-- Tên dịch vụ -->
+                      <td class="py-2.5 px-3 border-r border-slate-200">
+                        <strong class="font-bold text-slate-900 text-[13px] block" x-text="bill.title"></strong>
+                        <p class="text-[10px] text-slate-400 mt-0.5" x-text="bill.notes || 'Hóa đơn tiện ích cá nhân định kỳ'"></p>
+                      </td>
+
+                      <!-- Danh mục -->
+                      <td class="py-2.5 px-3 border-r border-slate-200 whitespace-nowrap">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold"
+                              :class="{
+                                'bg-rose-50 text-rose-700': bill.category === 'health_fitness',
+                                'bg-purple-50 text-purple-700': bill.category === 'streaming_tech',
+                                'bg-sky-50 text-sky-700': bill.category === 'living_utility'
+                              }"
+                              x-text="bill.category === 'health_fitness' ? '🏋️ Sức khỏe (Gym)' : (bill.category === 'streaming_tech' ? '📺 Streaming / Giải trí' : '🏡 Tiện ích sống')"></span>
+                      </td>
+
+                      <!-- Số tiền -->
+                      <td class="py-2.5 px-3 text-right font-mono font-bold border-r border-slate-200 text-slate-900 text-sm"
+                          x-text="formatVND(bill.amount)"></td>
+
+                      <!-- Hạn đóng -->
+                      <td class="py-2.5 px-3 text-center font-mono text-slate-600 border-r border-slate-200"
+                          x-text="'Ngày ' + (bill.dueDay || 5)"></td>
+
+                      <!-- Trạng thái 1-click toggle -->
+                      <td class="py-2 px-3 text-center border-r border-slate-200 whitespace-nowrap">
+                        <button type="button" @click="togglePersonalExpenseStatus(bill)"
+                                title="Bấm để đổi trạng thái Đã trả / Chờ trả"
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition shadow-xs cursor-pointer"
+                                :class="bill.status === 'paid' ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800' : 'bg-amber-100 hover:bg-amber-200 text-amber-800'">
+                          <span class="w-1.5 h-1.5 rounded-full"
+                                :class="bill.status === 'paid' ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+                          <span x-text="bill.status === 'paid' ? '✓ Đã Thanh Toán' : '⏳ Chờ Thanh Toán'"></span>
+                        </button>
+                      </td>
+
+                      <!-- TK Thanh toán -->
+                      <td class="py-2.5 px-3 border-r border-slate-200 whitespace-nowrap font-mono text-[11px] text-slate-600"
+                          x-text="bill.paidAccount || 'Vietcombank'"></td>
+
+                      <!-- Thao tác -->
+                      <td class="py-2 px-3 text-center whitespace-nowrap">
+                        <div class="inline-flex items-center gap-1">
+                          <button type="button" @click="openPersonalExpenseModal(bill, 'fixed_bill')"
+                                  title="Chỉnh sửa hóa đơn"
+                                  class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs hover:bg-slate-100 transition">
+                            <i class="fa-solid fa-pen"></i>
+                          </button>
+                          <button type="button" @click="deletePersonalExpense(bill._id || bill.id, bill.title)"
+                                  title="Xóa hóa đơn"
+                                  class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs hover:bg-rose-50 transition">
+                            <i class="fa-solid fa-trash-can"></i>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+                <tfoot class="bg-gradient-to-b from-slate-100 to-slate-200/90 text-slate-800 font-bold text-xs border-t-2 border-slate-300">
+                  <tr>
+                    <td colspan="3" class="py-3 px-3 text-left border-r border-slate-300 tracking-wider">
+                      <span>∑ TỔNG CỘNG HÓA ĐƠN CỐ ĐỊNH THÁNG (<span x-text="fixedBills.length"></span> khoản)</span>
+                    </td>
+                    <td class="py-3 px-3 text-right font-mono border-r border-slate-300 text-amber-800 text-sm"
+                        x-text="formatVND(personalHub.totalFixedBills)"></td>
+                    <td colspan="2" class="py-3 px-3 text-center border-r border-slate-300 text-[11px]">
+                      <span class="text-emerald-700 font-mono">Đã thanh toán: <strong x-text="formatVND(personalHub.paidFixedBills)"></strong></span>
+                      <span class="text-slate-300 mx-1">•</span>
+                      <span class="text-amber-700 font-mono">Còn chờ: <strong x-text="formatVND(personalHub.pendingFixedBills)"></strong></span>
+                    </td>
+                    <td colspan="2" class="py-3 px-3 text-center text-[11px] text-slate-500 font-medium">
+                      Đã giữ chỗ sẵn tiền
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- SUB-TAB 2: SỔ TIẾT KIỆM TÍCH LŨY (10% - 15%) -->
+          <div x-show="personalTab === 'savings'" class="space-y-4 pt-1">
+            <div class="p-4 rounded-xl border border-indigo-100 bg-indigo-50/40 flex items-center justify-between">
+              <div>
+                <strong class="text-sm font-bold text-indigo-900">Quy Tắc Tiết Kiệm Trước: Trích 10% - 15% Thu Nhập Mỗi Tháng</strong>
+                <p class="text-xs text-indigo-700 mt-0.5">Tiền chuyển từ Hub 1 sang Hub 4 được trích ngay vào Sổ tiết kiệm trước khi tiêu dùng bất kỳ khoản nào.</p>
+              </div>
+              <button type="button" @click="openPersonalExpenseModal(null, 'savings_deposit')"
+                      class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                <i class="fa-solid fa-plus text-[10px]"></i>
+                <span>+ Nạp Tiết Kiệm Mới</span>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <template x-for="s in savingsList" :key="s._id || s.title">
+                <div class="p-4 rounded-xl border border-slate-200/80 bg-white hover:border-indigo-300 transition shadow-card space-y-2.5">
+                  <div class="flex items-start justify-between">
+                    <div>
+                      <strong class="text-sm font-bold text-slate-900 block" x-text="s.title"></strong>
+                      <span class="text-[10px] text-slate-400 font-mono" x-text="formatDate(s.paidDate || s.createdAt)"></span>
+                    </div>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      ✓ Đã tích lũy
+                    </span>
+                  </div>
+                  <div class="text-xl font-extrabold font-mono text-indigo-700" x-text="formatVND(s.amount)"></div>
+                  <p class="text-[11px] text-slate-500 pt-2 border-t border-slate-100" x-text="s.notes || 'Tiết kiệm tích lũy cá nhân'"></p>
+                  <div class="flex items-center justify-end gap-1 pt-1">
+                    <button type="button" @click="openPersonalExpenseModal(s, 'savings_deposit')" class="p-1 text-slate-400 hover:text-slate-700 text-xs">
+                      <i class="fa-solid fa-pen"></i>
+                    </button>
+                    <button type="button" @click="deletePersonalExpense(s._id || s.id, s.title)" class="p-1 text-slate-400 hover:text-rose-600 text-xs">
+                      <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- SUB-TAB 3: ĂN NGOÀI & MUA SẮM 2 BẠN (HẠN MỨC TUẦN) -->
+          <div x-show="personalTab === 'spending'" class="space-y-4 pt-1">
+            <div class="p-4 rounded-xl border border-purple-100 bg-purple-50/40 flex items-center justify-between">
+              <div>
+                <strong class="text-sm font-bold text-purple-900">Chi Tiêu Co Giãn (Ăn Ngoài, Cà Phê, Mua Sắm Của 2 Người)</strong>
+                <p class="text-xs text-purple-700 mt-0.5">Tiêu đúng trong hạn mức tuần (<span x-text="formatVND(personalHub.weeklyLimit)"></span>/tuần). Hết hạn mức là dừng ăn ngoài.</p>
+              </div>
+              <button type="button" @click="openTransactionModal('expense', 'Ăn uống cá nhân', 'hub4_personal')"
+                      class="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                <i class="fa-solid fa-plus text-[10px]"></i>
+                <span>+ Ghi Khoản Chi Mới</span>
+              </button>
+            </div>
+
+            <div class="space-y-2">
+              <template x-for="t in personalFlexibleExpenses" :key="t._id">
+                <div class="p-3.5 rounded-xl border border-slate-200/80 bg-white hover:border-slate-300 transition shadow-card flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-xs font-bold">
+                      <i class="fa-solid fa-utensils"></i>
+                    </div>
+                    <div>
+                      <div class="flex items-center gap-2">
+                        <strong class="text-xs font-bold text-slate-900" x-text="t.title"></strong>
+                        <span class="px-1.5 py-0.2 rounded text-[10px] font-mono bg-slate-100 text-slate-600" x-text="t.accountName"></span>
+                        <span x-show="t.impactsWeeklyLimit" class="px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 text-[10px] font-bold">Trừ hạn mức tuần</span>
+                      </div>
+                      <p class="text-[11px] text-slate-400 mt-0.5" x-text="formatDate(t.date) + (t.notes ? ' • ' + t.notes : '')"></p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <strong class="text-xs font-mono font-bold text-rose-600" x-text="'-' + formatVND(t.amount)"></strong>
+                    <button type="button" @click="openTransactionModal(t)" class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs">
+                      <i class="fa-solid fa-pen"></i>
+                    </button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
 
   <!-- ==================== MOBILE BOTTOM NAVIGATION BAR ==================== -->
   <nav class="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-around h-16 px-2 shadow-lg">
@@ -1388,11 +1739,11 @@
       <i class="fa-solid fa-bowl-rice text-base mb-0.5"></i>
       <span>Quỹ Ăn</span>
     </button>
-    <button type="button" @click="activeTab = 'debts'"
+    <button type="button" @click="activeTab = 'personal'"
             class="flex flex-col items-center justify-center w-full h-full text-[10px] font-bold"
-            :class="activeTab === 'debts' ? 'text-slate-900' : 'text-slate-400'">
-      <i class="fa-solid fa-hand-holding-dollar text-base mb-0.5"></i>
-      <span>Công Nợ</span>
+            :class="activeTab === 'personal' ? 'text-purple-700' : 'text-slate-400'">
+      <i class="fa-solid fa-heart-pulse text-base mb-0.5"></i>
+      <span>Cá Nhân</span>
     </button>
   </nav>
 
@@ -2262,6 +2613,182 @@
                   class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
           <button type="submit"
                   class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition">Lưu Cấu Hình</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: THÊM / SỬA CHI PHÍ CÁ NHÂN & HÓA ĐƠN CỐ ĐỊNH (HUB 4) -->
+  <div x-show="modals.personalExpense" x-cloak
+       class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-md w-full shadow-modal space-y-4 max-h-[90vh] overflow-y-auto"
+         @click.away="modals.personalExpense = false">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="text-sm font-bold text-slate-900"
+              x-text="editingPersonalId ? 'Chỉnh Sửa Khoản Chi Cá Nhân' : (personalExpenseForm.type === 'savings_deposit' ? 'Trích Nạp Sổ Tiết Kiệm (Hub 4)' : 'Thêm Hóa Đơn Cố Định (Gym / Streaming)')"></h3>
+          <p class="text-[11px] text-slate-400 mt-0.5">Tiện ích sống, sức khỏe và giải trí của Bạn &amp; Người Yêu</p>
+        </div>
+        <button type="button" @click="modals.personalExpense = false" class="text-slate-400 hover:text-slate-700">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="submitPersonalExpense()" class="space-y-3.5">
+        <!-- 1. Loại hình -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Loại khoản chi</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" @click="personalExpenseForm.type = 'fixed_bill'; if(personalExpenseForm.category === 'savings') personalExpenseForm.category = 'health_fitness'"
+                    class="py-2 px-3 rounded-xl text-xs font-bold border transition text-center"
+                    :class="personalExpenseForm.type === 'fixed_bill' ? 'bg-amber-50 border-amber-500 text-amber-800' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              🏋️ Hóa Đơn Cố Định (Gym/Sub)
+            </button>
+            <button type="button" @click="personalExpenseForm.type = 'savings_deposit'; personalExpenseForm.category = 'savings'; personalExpenseForm.status = 'paid'"
+                    class="py-2 px-3 rounded-xl text-xs font-bold border transition text-center"
+                    :class="personalExpenseForm.type === 'savings_deposit' ? 'bg-indigo-50 border-indigo-500 text-indigo-800' : 'bg-slate-50 border-slate-200 text-slate-600'">
+              🏦 Nạp Sổ Tiết Kiệm (15%)
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Tên khoản chi -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tên dịch vụ / Khoản chi</label>
+          <input type="text" x-model="personalExpenseForm.title" required
+                 placeholder="VD: Thẻ tập Gym Cali, Netflix 4K, YouTube Premium, Tiết kiệm T11..."
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-purple-600 focus:outline-none">
+        </div>
+
+        <!-- 3. Phân loại -->
+        <div class="grid grid-cols-2 gap-3" x-show="personalExpenseForm.type === 'fixed_bill'">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Danh mục</label>
+            <select x-model="personalExpenseForm.category"
+                    class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-purple-600 focus:outline-none bg-white">
+              <option value="health_fitness">🏋️ Sức khỏe &amp; Gym</option>
+              <option value="streaming_tech">📺 Streaming &amp; Giải trí</option>
+              <option value="living_utility">🏡 Tiện ích sống cá nhân</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Hạn đóng hàng tháng</label>
+            <select x-model.number="personalExpenseForm.dueDay"
+                    class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-purple-600 focus:outline-none bg-white">
+              <template x-for="d in 31" :key="d">
+                <option :value="d" x-text="'Ngày ' + d + ' hàng tháng'"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+
+        <!-- 4. Số tiền -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền (đ)</label>
+          <div class="relative">
+            <input type="number" x-model.number="personalExpenseForm.amount" required min="1000" step="1000"
+                   placeholder="VD: 600000"
+                   class="w-full px-3 py-2 pr-12 rounded-xl border border-slate-200 text-sm font-mono font-bold focus:ring-2 focus:ring-purple-600 focus:outline-none">
+            <span class="absolute right-3 top-2 text-xs text-slate-400 font-bold">VNĐ</span>
+          </div>
+        </div>
+
+        <!-- 5. Trạng thái & Tài khoản thanh toán -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Trạng thái thanh toán</label>
+            <select x-model="personalExpenseForm.status"
+                    class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-purple-600 focus:outline-none bg-white">
+              <option value="pending">⏳ Chờ thanh toán</option>
+              <option value="paid">✓ Đã thanh toán</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tài khoản trả</label>
+            <select x-model="personalExpenseForm.paidAccount"
+                    class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-purple-600 focus:outline-none bg-white font-mono">
+              <template x-for="a in dashboard.accounts.list" :key="a._id">
+                <option :value="a.name" x-text="a.name + ' (' + formatVND(a.balance) + ')'"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 pt-1" x-show="personalExpenseForm.status === 'paid'">
+          <input type="checkbox" id="deductFromAccountPersonal" x-model="personalExpenseForm.deductFromAccount"
+                 class="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300">
+          <label for="deductFromAccountPersonal" class="text-xs text-slate-600 cursor-pointer">
+            Trừ số tiền vào tài khoản ngân hàng ngay khi lưu
+          </label>
+        </div>
+
+        <!-- 6. Ghi chú -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ghi chú</label>
+          <input type="text" x-model="personalExpenseForm.notes" placeholder="VD: Đóng định kỳ hàng tháng..."
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-purple-600 focus:outline-none">
+        </div>
+
+        <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
+          <button type="button" @click="modals.personalExpense = false"
+                  class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
+          <button type="submit"
+                  class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+            <span x-text="editingPersonalId ? 'Cập Nhật' : 'Lưu Khoản Chi'"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CÀI ĐẶT NGÂN SÁCH HUB 4 & TIẾT KIỆM -->
+  <div x-show="modals.personalConfig" x-cloak
+       class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 max-w-sm w-full shadow-modal space-y-4"
+         @click.away="modals.personalConfig = false">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="text-sm font-bold text-slate-900">Cài Đặt Ngân Sách Hub 4</h3>
+          <p class="text-[11px] text-slate-400 mt-0.5">Quy tắc phân bổ dòng tiền cá nhân &amp; người yêu</p>
+        </div>
+        <button type="button" @click="modals.personalConfig = false" class="text-slate-400 hover:text-slate-700">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="submitPersonalConfig()" class="space-y-4">
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tổng ngân sách tháng chuyển sang Hub 4 (đ)</label>
+          <input type="number" x-model.number="personalConfigForm.hub4MonthlyBudget" required step="100000"
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-bold focus:ring-2 focus:ring-purple-600 focus:outline-none">
+          <p class="text-[10px] text-slate-400 mt-1">Mặc định 6.000.000đ/tháng</p>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-[11px] font-semibold text-slate-500">Tỷ lệ trích tiết kiệm trước (%):</label>
+            <strong class="text-xs font-mono text-indigo-700" x-text="personalConfigForm.savingsRate + '%'"></strong>
+          </div>
+          <input type="range" min="5" max="30" step="1" x-model.number="personalConfigForm.savingsRate"
+                 class="w-full accent-indigo-600">
+          <div class="flex justify-between text-[10px] text-slate-400 mt-1">
+            <span>Khuyên dùng: 10% - 15%</span>
+            <span class="font-mono" x-text="'= ' + formatVND(Math.round(personalConfigForm.hub4MonthlyBudget * (personalConfigForm.savingsRate / 100)))"></span>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">Hạn mức chi tiêu tuần (Ăn ngoài &amp; Mua sắm)</label>
+          <input type="number" x-model.number="personalConfigForm.weeklyLimit" required step="100000"
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-bold focus:ring-2 focus:ring-purple-600 focus:outline-none">
+          <p class="text-[10px] text-slate-400 mt-1">Mặc định 1.500.000đ/tuần (tiêu hết là dừng)</p>
+        </div>
+
+        <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
+          <button type="button" @click="modals.personalConfig = false"
+                  class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Hủy</button>
+          <button type="submit"
+                  class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition">Lưu Cài Đặt</button>
         </div>
       </form>
     </div>
