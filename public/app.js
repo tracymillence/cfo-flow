@@ -3,9 +3,10 @@ function cashFlowApp() {
     loading: true,
     error: null,
     dashboard: {
+      accounts: { totalCash: 0, list: [], hubs: {} },
+      supplierPot: { totalAmount: 0, suppliers: [] },
       card1_cash: { totalCash: 0, spendableCash: 0, supplierPot: 0 },
       card2_weekly: { limit: 1500000, spent: 0, percent: 0, isWarning: false, isBrake: false },
-      card3_supplierPot: { totalAmount: 0, pendingCount: 0, orders: [] },
       card4_dining: {
         billPaidTotal: 0,
         billCount: 0,
@@ -22,23 +23,63 @@ function cashFlowApp() {
         bills: [],
         settlements: []
       },
-      card5_timeline: [],
-      allOrders: [],
-      allDebts: []
+      reminders: [],
+      allDebts: [],
+      debtSummary: { totalReceivable: 0, totalPayable: 0 },
+      allOrders: []
     },
 
-    // Tabs & Filters
-    diningTab: 'members', // 'members' | 'bills' | 'settlements'
-    memberFilter: 'all',  // 'all' | 'surplus' | 'debt'
+    // View tabs
+    activeTab: 'overview', // 'overview' | 'accounts' | 'suppliers' | 'timeline' | 'debts'
+    diningTab: 'members',  // 'members' | 'bills' | 'settlements'
+    memberFilter: 'all',   // 'all' | 'surplus' | 'debt'
+    debtFilter: 'all',     // 'all' | 'receivable' | 'payable' | 'pending' | 'paid'
 
-    // Editing IDs (null = creating new, ID = updating existing)
+    // Editing State Trackers
+    editingAccountId: null,
+    editingSupplierId: null,
+    editingReminderId: null,
+    editingDebtId: null,
     editingOrderId: null,
     editingDiningId: null,
     editingSettlementId: null,
     editingMemberId: null,
-    editingDebtId: null,
 
     // Forms
+    accountForm: {
+      name: '',
+      type: 'bank', // 'bank' | 'ewallet' | 'cash'
+      balance: '',
+      accountNumber: '',
+      hubRole: 'hub1_income',
+      note: ''
+    },
+
+    supplierForm: {
+      supplierName: '',
+      remainingAmount: '',
+      phone: '',
+      bankInfo: '',
+      notes: ''
+    },
+
+    reminderForm: {
+      date: new Date().toISOString().slice(0, 10),
+      title: '',
+      amount: '',
+      type: 'reminder', // 'income' | 'expense' | 'reminder'
+      hubRole: 'hub1_income',
+      notes: ''
+    },
+
+    debtForm: {
+      type: 'receivable', // 'receivable' (Họ nợ tôi) | 'payable' (Tôi nợ họ)
+      personName: '',
+      amount: '',
+      dueDate: new Date().toISOString().slice(0, 10),
+      note: ''
+    },
+
     serviceForm: {
       customerName: '',
       serviceType: 'Reset pass thuế',
@@ -71,26 +112,21 @@ function cashFlowApp() {
       openingBalance: 0
     },
 
-    debtForm: {
-      type: 'receivable',
-      personName: '',
-      amount: '',
-      dueDate: new Date().toISOString().slice(0, 10),
-      note: ''
-    },
-
     configForm: {
-      initialCash: 3341742,
+      initialCash: 3741742,
       weeklyLimit: 1500000
     },
 
     // Modals
     modals: {
+      account: false,
+      supplier: false,
+      reminder: false,
+      debt: false,
       service: false,
       diningBill: false,
       settlement: false,
       member: false,
-      debt: false,
       config: false
     },
 
@@ -119,21 +155,19 @@ function cashFlowApp() {
       return str;
     },
 
-    copyText(text, label = 'thông tin') {
-      if (navigator && navigator.clipboard) {
-        navigator.clipboard.writeText(text);
-        this.notify(`✓ Đã sao chép ${label} vào bộ nhớ tạm!`);
-      }
-    },
-
     get filteredMembers() {
       const list = this.dashboard.card4_dining.members || [];
-      if (this.memberFilter === 'surplus') {
-        return list.filter(m => m.currentBalance >= 0);
-      }
-      if (this.memberFilter === 'debt') {
-        return list.filter(m => m.currentBalance < 0);
-      }
+      if (this.memberFilter === 'surplus') return list.filter(m => m.currentBalance >= 0);
+      if (this.memberFilter === 'debt') return list.filter(m => m.currentBalance < 0);
+      return list;
+    },
+
+    get filteredDebts() {
+      const list = this.dashboard.allDebts || [];
+      if (this.debtFilter === 'receivable') return list.filter(d => d.type === 'receivable');
+      if (this.debtFilter === 'payable') return list.filter(d => d.type === 'payable');
+      if (this.debtFilter === 'pending') return list.filter(d => d.status === 'pending');
+      if (this.debtFilter === 'paid') return list.filter(d => d.status === 'paid');
       return list;
     },
 
@@ -144,7 +178,6 @@ function cashFlowApp() {
         if (data.success) {
           this.error = null;
           this.dashboard = data;
-          this.configForm.initialCash = data.config.initialCash;
           this.configForm.weeklyLimit = data.config.weeklyLimit;
         } else {
           this.error = data.error || 'Chưa thể kết nối tới cơ sở dữ liệu MongoDB Atlas.';
@@ -157,7 +190,364 @@ function cashFlowApp() {
       }
     },
 
-    // ==================== SERVICE ORDERS (CRUD & COPY) ====================
+    // ==================== 1. TÀI KHOẢN NGÂN HÀNG & TIỀN MẶT (CRUD) ====================
+    openAccountModal(acc = null) {
+      if (acc) {
+        this.editingAccountId = acc._id;
+        this.accountForm = {
+          name: acc.name,
+          type: acc.type || 'bank',
+          balance: acc.balance,
+          accountNumber: acc.accountNumber || '',
+          hubRole: acc.hubRole || 'hub1_income',
+          note: acc.note || ''
+        };
+      } else {
+        this.editingAccountId = null;
+        this.accountForm = {
+          name: '',
+          type: 'bank',
+          balance: '',
+          accountNumber: '',
+          hubRole: 'hub1_income',
+          note: ''
+        };
+      }
+      this.modals.account = true;
+    },
+
+    async quickUpdateBalance(acc) {
+      const newBalanceStr = prompt(`Cập nhật số tiền thực tế đang có tại "${acc.name}":`, acc.balance);
+      if (newBalanceStr === null) return;
+      const newBalance = parseFloat(newBalanceStr.replace(/[^\d.-]/g, ''));
+      if (isNaN(newBalance)) {
+        alert('Vui lòng nhập số tiền hợp lệ!');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/accounts/${acc._id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...acc, balance: newBalance })
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(`✓ Đã cập nhật số dư ${acc.name}: ${this.formatVND(newBalance)}`);
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async submitAccount() {
+      try {
+        if (!this.accountForm.name) {
+          alert('Vui lòng nhập tên ngân hàng / ví / tiền mặt!');
+          return;
+        }
+        const url = this.editingAccountId ? `/api/accounts/${this.editingAccountId}` : '/api/accounts';
+        const method = this.editingAccountId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.accountForm)
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(this.editingAccountId ? '✓ Đã cập nhật tài khoản!' : '✓ Đã thêm tài khoản mới!');
+          this.modals.account = false;
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async deleteAccount(id, name) {
+      if (!confirm(`Xác nhận xóa tài khoản "${name}"?`)) return;
+      try {
+        const res = await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(`🗑️ Đã xóa tài khoản "${name}"!`);
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    // ==================== 2. NỢ TỪNG NHÀ CUNG CẤP (SUPPLIER DEBTS CRUD) ====================
+    openSupplierModal(s = null) {
+      if (s) {
+        this.editingSupplierId = s._id;
+        this.supplierForm = {
+          supplierName: s.supplierName,
+          remainingAmount: s.remainingAmount,
+          phone: s.phone || '',
+          bankInfo: s.bankInfo || '',
+          notes: s.notes || ''
+        };
+      } else {
+        this.editingSupplierId = null;
+        this.supplierForm = {
+          supplierName: '',
+          remainingAmount: '',
+          phone: '',
+          bankInfo: '',
+          notes: ''
+        };
+      }
+      this.modals.supplier = true;
+    },
+
+    async submitSupplier() {
+      try {
+        if (!this.supplierForm.supplierName) {
+          alert('Vui lòng nhập tên nhà cung cấp!');
+          return;
+        }
+        const url = this.editingSupplierId ? `/api/supplier-debts/${this.editingSupplierId}` : '/api/supplier-debts';
+        const method = this.editingSupplierId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.supplierForm)
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(this.editingSupplierId ? '✓ Đã cập nhật công nợ NCC!' : '✓ Đã thêm NCC mới!');
+          this.modals.supplier = false;
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async paySupplierPrompt(s) {
+      const amountStr = prompt(`Nhập số tiền muốn trả cho NCC "${s.supplierName}" (Nợ hiện tại: ${this.formatVND(s.remainingAmount)}):`, s.remainingAmount);
+      if (amountStr === null) return;
+      const payAmount = parseFloat(amountStr.replace(/[^\d.-]/g, ''));
+      if (isNaN(payAmount) || payAmount <= 0) {
+        alert('Vui lòng nhập số tiền hợp lệ!');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/supplier-debts/${s._id}/pay`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payAmount })
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(`✓ Đã thanh toán ${this.formatVND(payAmount)} cho ${s.supplierName}!`);
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async batchPayAllSuppliers() {
+      if (!confirm(`Xác nhận thanh toán TOÀN BỘ công nợ cho tất cả NCC (${this.formatVND(this.dashboard.supplierPot.totalAmount)}) để reset Hũ NCC về 0đ?`)) return;
+      try {
+        const res = await fetch('/api/supplier-debts/batch-pay-all', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('✓ Đã thanh toán gom toàn bộ công nợ cho các NCC!');
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async deleteSupplier(id, name) {
+      if (!confirm(`Xác nhận xóa nhà cung cấp "${name}"?`)) return;
+      try {
+        const res = await fetch(`/api/supplier-debts/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(`🗑️ Đã xóa nhà cung cấp "${name}"!`);
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    // ==================== 3. LỊCH NHẮC DÒNG TIỀN (REMINDERS CRUD) ====================
+    openReminderModal(r = null) {
+      if (r) {
+        this.editingReminderId = r._id;
+        this.reminderForm = {
+          date: r.date,
+          title: r.title,
+          amount: r.amount || '',
+          type: r.type || 'reminder',
+          hubRole: r.hubRole || 'hub1_income',
+          notes: r.notes || ''
+        };
+      } else {
+        this.editingReminderId = null;
+        this.reminderForm = {
+          date: new Date().toISOString().slice(0, 10),
+          title: '',
+          amount: '',
+          type: 'reminder',
+          hubRole: 'hub1_income',
+          notes: ''
+        };
+      }
+      this.modals.reminder = true;
+    },
+
+    async submitReminder() {
+      try {
+        if (!this.reminderForm.title) {
+          alert('Vui lòng nhập nội dung nhắc việc!');
+          return;
+        }
+        const url = this.editingReminderId ? `/api/reminders/${this.editingReminderId}` : '/api/reminders';
+        const method = this.editingReminderId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.reminderForm)
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(this.editingReminderId ? '✓ Đã cập nhật dòng nhắc việc!' : '✓ Đã thêm lịch nhắc mới!');
+          this.modals.reminder = false;
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async toggleReminderStatus(id) {
+      try {
+        const res = await fetch(`/api/reminders/${id}/toggle-status`, { method: 'PATCH' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('✓ Đã cập nhật trạng thái nhắc việc!');
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async deleteReminder(id, title) {
+      if (!confirm(`Xóa lịch nhắc "${title}"?`)) return;
+      try {
+        const res = await fetch(`/api/reminders/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('🗑️ Đã xóa dòng nhắc việc!');
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    // ==================== 4. SỔ NỢ 2 CHIỀU (DEBTS CRUD & COPY) ====================
+    openDebtModal(d = null) {
+      if (d) {
+        this.editingDebtId = d._id;
+        this.debtForm = {
+          type: d.type,
+          personName: d.personName,
+          amount: d.amount,
+          dueDate: d.dueDate,
+          note: d.note || ''
+        };
+      } else {
+        this.editingDebtId = null;
+        this.debtForm = {
+          type: 'receivable',
+          personName: '',
+          amount: '',
+          dueDate: new Date().toISOString().slice(0, 10),
+          note: ''
+        };
+      }
+      this.modals.debt = true;
+    },
+
+    copyDebt(d) {
+      this.editingDebtId = null;
+      this.debtForm = {
+        type: d.type,
+        personName: d.personName + ' (Bản sao)',
+        amount: d.amount,
+        dueDate: new Date().toISOString().slice(0, 10),
+        note: d.note || ''
+      };
+      this.modals.debt = true;
+      this.notify('📋 Đã sao chép khoản nợ vào form tạo mới!');
+    },
+
+    async submitDebt() {
+      try {
+        if (!this.debtForm.personName || !this.debtForm.amount) {
+          alert('Vui lòng nhập người liên quan và số tiền!');
+          return;
+        }
+        const url = this.editingDebtId ? `/api/debts/${this.editingDebtId}` : '/api/debts';
+        const method = this.editingDebtId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.debtForm)
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(this.editingDebtId ? '✓ Đã cập nhật khoản nợ!' : '✓ Đã thêm khoản nợ vào sổ!');
+          this.modals.debt = false;
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async toggleDebtStatus(id) {
+      try {
+        const res = await fetch(`/api/debts/${id}/toggle-status`, { method: 'PATCH' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('✓ Đã cập nhật trạng thái nợ!');
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async deleteDebt(id, personName) {
+      if (!confirm(`Xóa khoản nợ của "${personName}"?`)) return;
+      try {
+        const res = await fetch(`/api/debts/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('🗑️ Đã xóa khoản nợ!');
+          this.fetchDashboard();
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    // ==================== SERVICE ORDERS ====================
     editServiceOrder(order) {
       this.editingOrderId = order._id;
       this.serviceForm = {
@@ -170,7 +560,7 @@ function cashFlowApp() {
         date: order.date
       };
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      this.notify(`✏️ Đang chỉnh sửa đơn: ${order.customerName}`);
+      this.notify(`✏️ Sửa đơn: ${order.customerName}`);
     },
 
     copyServiceOrder(order) {
@@ -185,7 +575,7 @@ function cashFlowApp() {
         date: new Date().toISOString().slice(0, 10)
       };
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      this.notify('📋 Đã sao chép đơn dịch vụ vào form tạo mới!');
+      this.notify('📋 Đã sao chép đơn vào form!');
     },
 
     cancelEditServiceOrder() {
@@ -213,7 +603,7 @@ function cashFlowApp() {
         });
         const data = await res.json();
         if (data.success) {
-          this.notify(this.editingOrderId ? '✓ Đã cập nhật đơn hàng thành công!' : '✓ Đã lưu đơn hàng dịch vụ mới!');
+          this.notify(this.editingOrderId ? '✓ Đã cập nhật đơn hàng!' : '✓ Đã lưu đơn hàng dịch vụ mới!');
           this.cancelEditServiceOrder();
           this.fetchDashboard();
         }
@@ -223,13 +613,12 @@ function cashFlowApp() {
     },
 
     async deleteServiceOrder(id, name) {
-      if (!confirm(`Bạn có chắc chắn muốn xóa đơn dịch vụ "${name || 'này'}"?`)) return;
+      if (!confirm(`Xóa đơn dịch vụ "${name}"?`)) return;
       try {
         const res = await fetch(`/api/service-orders/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           this.notify('🗑️ Đã xóa đơn dịch vụ!');
-          if (this.editingOrderId === id) this.cancelEditServiceOrder();
           this.fetchDashboard();
         }
       } catch (err) {
@@ -237,21 +626,7 @@ function cashFlowApp() {
       }
     },
 
-    async batchPaySupplier() {
-      if (!confirm('Xác nhận thanh toán toàn bộ công nợ cho nhà cung cấp (Reset Hũ NCC về 0đ)?')) return;
-      try {
-        const res = await fetch('/api/service-orders/batch-pay-supplier', { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-          this.notify(`✓ Đã thanh toán gom thành công ${data.updatedCount} đơn hàng cho NCC!`);
-          this.fetchDashboard();
-        }
-      } catch (err) {
-        alert('Lỗi: ' + err.message);
-      }
-    },
-
-    // ==================== DINING BILLS (CRUD & COPY) ====================
+    // ==================== BỮA ĂN NHÓM & SETTLEMENTS ====================
     openNewDiningBillModal() {
       this.editingDiningId = null;
       this.diningBillForm = {
@@ -277,7 +652,6 @@ function cashFlowApp() {
         splitsText: splitsText || `Tôi: ${bill.myShare || 0}`
       };
       this.modals.diningBill = true;
-      this.notify(`✏️ Sửa bữa ăn: ${bill.mealTitle}`);
     },
 
     copyDiningBill(bill) {
@@ -293,11 +667,11 @@ function cashFlowApp() {
         splitsText: splitsText
       };
       this.modals.diningBill = true;
-      this.notify('📋 Đã sao chép danh sách chia tiền! Sẵn sàng lưu bữa mới.');
+      this.notify('📋 Đã sao chép danh sách chia tiền!');
     },
 
     async deleteDiningBill(id, title) {
-      if (!confirm(`Xóa bữa ăn "${title || 'này'}" khỏi sổ?`)) return;
+      if (!confirm(`Xóa bữa ăn "${title}"?`)) return;
       try {
         const res = await fetch(`/api/dining/bill/${id}`, { method: 'DELETE' });
         const data = await res.json();
@@ -353,9 +727,8 @@ function cashFlowApp() {
         });
         const data = await res.json();
         if (data.success) {
-          this.notify(this.editingDiningId ? '✓ Đã cập nhật bữa ăn!' : '✓ Đã ghi nhận bữa ăn mới vào sổ!');
+          this.notify(this.editingDiningId ? '✓ Đã cập nhật bữa ăn!' : '✓ Đã ghi nhận bữa ăn mới!');
           this.modals.diningBill = false;
-          this.editingDiningId = null;
           this.fetchDashboard();
         }
       } catch (err) {
@@ -363,7 +736,6 @@ function cashFlowApp() {
       }
     },
 
-    // ==================== SETTLEMENTS (NẠP / MƯỢN CRUD & COPY) ====================
     openSettlementModal(personName = '', direction = 'in') {
       this.editingSettlementId = null;
       this.settlementForm = {
@@ -388,21 +760,6 @@ function cashFlowApp() {
         date: s.date
       };
       this.modals.settlement = true;
-      this.notify(`✏️ Sửa giao dịch của ${s.personName}`);
-    },
-
-    copySettlement(s) {
-      this.editingSettlementId = null;
-      this.settlementForm = {
-        personName: s.personName,
-        amount: s.amount,
-        direction: s.direction,
-        topupKind: s.topupKind,
-        note: (s.note || '') + ' (Lặp lại)',
-        date: new Date().toISOString().slice(0, 10)
-      };
-      this.modals.settlement = true;
-      this.notify('📋 Đã sao chép thông tin nạp / mượn!');
     },
 
     async deleteSettlement(id, personName) {
@@ -438,7 +795,6 @@ function cashFlowApp() {
         if (data.success) {
           this.notify(this.editingSettlementId ? '✓ Đã cập nhật giao dịch!' : (this.settlementForm.direction === 'in' ? '✓ Đã nạp tiền quỹ!' : '✓ Đã ghi mượn tiền quỹ!'));
           this.modals.settlement = false;
-          this.editingSettlementId = null;
           this.fetchDashboard();
         }
       } catch (err) {
@@ -446,7 +802,6 @@ function cashFlowApp() {
       }
     },
 
-    // ==================== MEMBERS (CRUD & SỐ ĐẦU KỲ) ====================
     openMemberModal(member = null) {
       if (member) {
         this.editingMemberId = member.id || member._id;
@@ -496,104 +851,7 @@ function cashFlowApp() {
       }
     },
 
-    // ==================== DEBTS (CRUD & COPY) ====================
-    openNewDebtModal() {
-      this.editingDebtId = null;
-      this.debtForm = {
-        type: 'receivable',
-        personName: '',
-        amount: '',
-        dueDate: new Date().toISOString().slice(0, 10),
-        note: ''
-      };
-      this.modals.debt = true;
-    },
-
-    editDebt(d) {
-      this.editingDebtId = d._id;
-      this.debtForm = {
-        type: d.type,
-        personName: d.personName,
-        amount: d.amount,
-        dueDate: d.dueDate,
-        note: d.note || ''
-      };
-      this.notify(`✏️ Sửa khoản nợ: ${d.personName}`);
-    },
-
-    copyDebt(d) {
-      this.editingDebtId = null;
-      this.debtForm = {
-        type: d.type,
-        personName: d.personName + ' (Bản sao)',
-        amount: d.amount,
-        dueDate: new Date().toISOString().slice(0, 10),
-        note: d.note || ''
-      };
-      this.notify('📋 Đã sao chép khoản nợ vào form tạo mới!');
-    },
-
-    cancelEditDebt() {
-      this.editingDebtId = null;
-      this.debtForm = {
-        type: 'receivable',
-        personName: '',
-        amount: '',
-        dueDate: new Date().toISOString().slice(0, 10),
-        note: ''
-      };
-    },
-
-    async submitDebt() {
-      try {
-        const url = this.editingDebtId ? `/api/debts/${this.editingDebtId}` : '/api/debts';
-        const method = this.editingDebtId ? 'PUT' : 'POST';
-
-        const res = await fetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(this.debtForm)
-        });
-        const data = await res.json();
-        if (data.success) {
-          this.notify(this.editingDebtId ? '✓ Đã cập nhật khoản nợ!' : '✓ Đã thêm khoản nợ vào sổ!');
-          this.cancelEditDebt();
-          this.fetchDashboard();
-        }
-      } catch (err) {
-        alert('Lỗi: ' + err.message);
-      }
-    },
-
-    async deleteDebt(id, personName) {
-      if (!confirm(`Xóa khoản nợ của "${personName}"?`)) return;
-      try {
-        const res = await fetch(`/api/debts/${id}`, { method: 'DELETE' });
-        const data = await res.json();
-        if (data.success) {
-          this.notify('🗑️ Đã xóa khoản nợ!');
-          if (this.editingDebtId === id) this.cancelEditDebt();
-          this.fetchDashboard();
-        }
-      } catch (err) {
-        alert('Lỗi: ' + err.message);
-      }
-    },
-
-    async toggleDebtStatus(id) {
-      try {
-        const res = await fetch(`/api/debts/${id}/toggle-status`, { method: 'PATCH' });
-        const data = await res.json();
-        if (data.success) {
-          this.notify('✓ Đã cập nhật trạng thái nợ!');
-          this.fetchDashboard();
-        }
-      } catch (err) {
-        alert('Lỗi: ' + err.message);
-      }
-    },
-
-    // ==================== CONFIG & RESEED ====================
+    // ==================== CONFIG ====================
     async submitConfig() {
       try {
         const res = await fetch('/api/config', {
@@ -605,20 +863,6 @@ function cashFlowApp() {
         if (data.success) {
           this.notify('✓ Đã cập nhật cấu hình hệ thống!');
           this.modals.config = false;
-          this.fetchDashboard();
-        }
-      } catch (err) {
-        alert('Lỗi: ' + err.message);
-      }
-    },
-
-    async reseedData() {
-      if (!confirm('Khôi phục toàn bộ dữ liệu mẫu ban đầu (156k trưa, 182k tối, Yến 300k, 14 thành viên)?')) return;
-      try {
-        const res = await fetch('/api/seed', { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-          this.notify('✓ ' + data.message);
           this.fetchDashboard();
         }
       } catch (err) {
