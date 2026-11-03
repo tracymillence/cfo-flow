@@ -139,8 +139,8 @@
   </div>
 
   <!-- ==================== PREMIUM STRIPE/NOTION HEADER ==================== -->
-  <header class="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 w-full overflow-hidden">
-    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3 min-w-0">
+  <header class="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 w-full">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4 min-w-0">
       
       <!-- Brand Logo -->
       <div @click="activeTab = 'overview'" class="flex items-center gap-2 sm:gap-2.5 shrink-0 cursor-pointer select-none">
@@ -202,10 +202,10 @@
       </nav>
 
       <!-- Right Actions & Quick Cash Display -->
-      <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
-        <!-- Live Cash Balance Pill (Hub 1) - Only visible on xl screens to protect laptop viewports -->
+      <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">
+        <!-- Live Cash Balance Pill (Hub 1) - Only visible on 2xl large desktop monitors to protect laptop viewports -->
         <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageAccounts"
-             class="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs shrink-0 whitespace-nowrap">
+             class="hidden 2xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs shrink-0 whitespace-nowrap">
           <span class="text-slate-400 font-medium">Thực tế:</span>
           <strong class="font-mono font-bold text-slate-900" x-text="formatVND(dashboard.accounts?.totalCash)"></strong>
           <span class="text-slate-300">•</span>
@@ -237,7 +237,7 @@
             <div class="w-7 h-7 sm:w-6 sm:h-6 rounded-lg bg-slate-900 text-emerald-400 flex items-center justify-center text-[11px] sm:text-[10px] font-bold shrink-0">
               <span x-text="(currentUser?.fullName || currentUser?.username || 'U').charAt(0).toUpperCase()"></span>
             </div>
-            <span class="hidden sm:inline max-w-[100px] truncate" x-text="currentUser?.fullName || currentUser?.username"></span>
+            <span class="hidden sm:inline max-w-[110px] truncate" x-text="currentUser?.fullName || currentUser?.username"></span>
             <span class="hidden md:inline px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0"
                   :class="currentUser?.isAdmin ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'"
                   x-text="currentUser?.isAdmin ? 'Admin' : (currentUser?.role || 'User')"></span>
