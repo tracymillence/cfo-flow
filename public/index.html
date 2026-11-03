@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi" class="h-full bg-slate-50 font-sans">
+<html lang="vi" class="h-full bg-slate-50 font-sans overflow-x-hidden">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -75,7 +75,7 @@
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
-<body x-data="cashFlowApp()" class="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-800 antialiased selection:bg-brand-100 selection:text-brand-900 pb-20 sm:pb-8">
+<body x-data="cashFlowApp()" class="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-800 antialiased selection:bg-brand-100 selection:text-brand-900 pb-20 sm:pb-8 overflow-x-hidden w-full max-w-full">
 
   <!-- ==================== 0. LOGIN SCREEN OVERLAY ==================== -->
   <div x-show="!isLoggedIn" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
@@ -139,18 +139,18 @@
   </div>
 
   <!-- ==================== PREMIUM STRIPE/NOTION HEADER ==================== -->
-  <header class="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3 min-w-0">
+  <header class="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 w-full overflow-hidden">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3 min-w-0">
       
       <!-- Brand Logo -->
-      <div @click="activeTab = 'overview'" class="flex items-center gap-2.5 shrink-0 cursor-pointer select-none">
-        <div class="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-extrabold text-sm shadow-sm relative overflow-hidden">
+      <div @click="activeTab = 'overview'" class="flex items-center gap-2 sm:gap-2.5 shrink-0 cursor-pointer select-none">
+        <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-extrabold text-sm shadow-sm relative overflow-hidden shrink-0">
           <i class="fa-solid fa-chart-pie text-xs"></i>
           <span class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
         </div>
         <div>
           <h1 class="text-sm font-extrabold text-slate-900 tracking-tight leading-tight">CFO Flow</h1>
-          <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Hệ Thống Dòng Tiền</p>
+          <p class="text-[9px] sm:text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Hệ Thống Dòng Tiền</p>
         </div>
       </div>
 
@@ -202,7 +202,7 @@
       </nav>
 
       <!-- Right Actions & Quick Cash Display -->
-      <div class="flex items-center gap-2 shrink-0">
+      <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
         <!-- Live Cash Balance Pill (Hub 1) - Only visible on xl screens to protect laptop viewports -->
         <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageAccounts"
              class="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs shrink-0 whitespace-nowrap">
@@ -215,33 +215,33 @@
                   x-text="formatVND(dashboard.card1_cash?.spendableCash)"></strong>
         </div>
 
-        <!-- Primary CTA: Ghi Giao Dịch -->
+        <!-- Primary CTA: Ghi Giao Dịch (Hidden on mobile, bottom nav has prominent + button) -->
         <button type="button" @click="openTransactionModal()"
                 x-show="currentUser?.isAdmin || currentUser?.permissions?.manageTransactions"
-                class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 whitespace-nowrap">
+                class="hidden sm:inline-flex px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition items-center gap-1.5 shadow-xs shrink-0 whitespace-nowrap">
           <i class="fa-solid fa-plus text-[10px] text-emerald-400"></i>
-          <span class="hidden sm:inline">Ghi </span><span>Giao Dịch</span>
+          <span>Ghi Giao Dịch</span>
         </button>
 
-        <!-- Quick Settings -->
+        <!-- Quick Settings (Hidden on mobile, accessible via user dropdown) -->
         <button type="button" @click="modals.config = true" title="Cài đặt hạn mức"
                 x-show="currentUser?.isAdmin || currentUser?.permissions?.manageConfig"
-                class="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition shrink-0">
+                class="hidden sm:inline-flex p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition shrink-0">
           <i class="fa-solid fa-gear text-sm"></i>
         </button>
 
         <!-- Current User Profile & RBAC Dropdown -->
         <div class="relative shrink-0" x-data="{ open: false }" x-show="isLoggedIn">
           <button type="button" @click="open = !open" @click.away="open = false"
-                  class="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 transition text-xs font-semibold text-slate-800 shrink-0 whitespace-nowrap">
-            <div class="w-6 h-6 rounded-lg bg-slate-900 text-emerald-400 flex items-center justify-center text-[10px] font-bold shrink-0">
+                  class="flex items-center gap-1.5 sm:gap-2 p-1.5 sm:pl-2 sm:pr-2.5 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 transition text-xs font-semibold text-slate-800 shrink-0">
+            <div class="w-7 h-7 sm:w-6 sm:h-6 rounded-lg bg-slate-900 text-emerald-400 flex items-center justify-center text-[11px] sm:text-[10px] font-bold shrink-0">
               <span x-text="(currentUser?.fullName || currentUser?.username || 'U').charAt(0).toUpperCase()"></span>
             </div>
-            <span class="max-w-[100px] truncate" x-text="currentUser?.fullName || currentUser?.username"></span>
-            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0"
+            <span class="hidden sm:inline max-w-[100px] truncate" x-text="currentUser?.fullName || currentUser?.username"></span>
+            <span class="hidden md:inline px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0"
                   :class="currentUser?.isAdmin ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'"
                   x-text="currentUser?.isAdmin ? 'Admin' : (currentUser?.role || 'User')"></span>
-            <i class="fa-solid fa-chevron-down text-[9px] text-slate-400"></i>
+            <i class="fa-solid fa-chevron-down text-[9px] text-slate-400 mr-1 sm:mr-0"></i>
           </button>
 
           <!-- Dropdown Menu -->
@@ -296,7 +296,7 @@
   </header>
 
   <!-- ==================== MAIN CONTENT WRAPPER ==================== -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6 overflow-x-hidden">
 
     <!-- Loading State -->
     <div x-show="loading" class="text-center py-20 text-slate-400 text-sm">
@@ -546,9 +546,9 @@
               <!-- List of Accounts -->
               <div class="space-y-2">
                 <template x-for="acc in dashboard.accounts.list" :key="acc._id">
-                  <div class="p-3 rounded-xl border border-slate-200/70 hover:border-slate-300 bg-white transition flex items-center justify-between gap-3 group">
-                    <div class="flex items-center gap-3">
-                      <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs shrink-0"
+                  <div class="p-3 rounded-xl border border-slate-200/70 hover:border-slate-300 bg-white transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 group">
+                    <div class="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+                      <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs shrink-0 mt-0.5 sm:mt-0"
                            :class="{
                              'bg-indigo-50 text-indigo-600': acc.type === 'bank',
                              'bg-pink-50 text-pink-600': acc.type === 'ewallet',
@@ -560,10 +560,10 @@
                           'fa-solid fa-money-bill-wave': acc.type === 'cash'
                         }"></i>
                       </div>
-                      <div>
-                        <div class="flex items-center gap-2">
+                      <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-1.5">
                           <strong class="text-xs font-bold text-slate-900" x-text="acc.name"></strong>
-                          <span class="px-1.5 py-0.2 rounded text-[10px] font-medium"
+                          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap"
                                 :class="{
                                   'bg-indigo-50 text-indigo-700': acc.hubRole === 'hub1_income',
                                   'bg-emerald-50 text-emerald-700': acc.hubRole === 'hub2_dining',
@@ -572,13 +572,13 @@
                                 }"
                                 x-text="acc.hubRole === 'hub1_income' ? 'Hub 1' : (acc.hubRole === 'hub2_dining' ? 'Hub 2' : (acc.hubRole === 'hub3_family' ? 'Hub 3' : 'Hub 4'))"></span>
                         </div>
-                        <p class="text-[10px] text-slate-400 font-mono mt-0.5" x-text="acc.accountNumber || acc.note || 'Số dư thực tế'"></p>
+                        <p class="text-[10px] text-slate-400 font-mono mt-0.5 truncate" x-text="acc.accountNumber || acc.note || 'Số dư thực tế'"></p>
                       </div>
                     </div>
 
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center justify-between sm:justify-end gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
                       <button type="button" @click="quickUpdateBalance(acc)" title="Nhấp để sửa số dư"
-                              class="text-right hover:bg-slate-50 px-2 py-1 rounded-lg transition">
+                              class="text-left sm:text-right hover:bg-slate-50 px-2 py-1 rounded-lg transition">
                         <strong class="text-sm font-extrabold font-mono text-slate-900 group-hover:text-indigo-600"
                                 x-text="formatVND(acc.balance)"></strong>
                         <span class="block text-[9px] text-slate-400 font-normal">Chạm để sửa</span>
@@ -586,11 +586,11 @@
 
                       <div class="flex items-center gap-1 border-l border-slate-100 pl-2">
                         <button type="button" @click="openAccountModal(acc)" title="Sửa thông tin"
-                                class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs">
+                                class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 text-xs">
                           <i class="fa-solid fa-pen"></i>
                         </button>
                         <button type="button" @click="deleteAccount(acc._id, acc.name)" title="Xoá tài khoản"
-                                class="p-1 rounded text-slate-400 hover:text-red-600 text-xs">
+                                class="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-rose-50 text-xs">
                           <i class="fa-solid fa-trash-can"></i>
                         </button>
                       </div>
@@ -601,14 +601,14 @@
             </div>
 
             <!-- LỊCH NHẮC DÒNG TIỀN (TIMELINE) -->
-            <div class="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-card space-y-4">
-              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div class="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-card space-y-4">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
                 <div>
                   <h3 class="text-sm font-bold text-slate-900">Lịch Nhắc Dòng Tiền &amp; Mốc Thu Chi</h3>
                   <p class="text-xs text-slate-400 mt-0.5">Timeline các mốc thanh toán tiền hàng, nhận lương và chi tiêu</p>
                 </div>
                 <button type="button" @click="openReminderModal()"
-                        class="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1">
+                        class="self-start sm:self-auto px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1">
                   <i class="fa-solid fa-plus text-[10px] text-indigo-500"></i>
                   <span>Thêm Dòng Nhắc</span>
                 </button>
@@ -616,36 +616,38 @@
 
               <div class="space-y-2">
                 <template x-for="r in dashboard.reminders" :key="r._id">
-                  <div class="p-3 rounded-xl border border-slate-200/70 bg-white hover:border-slate-300 transition flex items-center justify-between gap-3"
+                  <div class="p-3 rounded-xl border border-slate-200/70 bg-white hover:border-slate-300 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
                        :class="r.status === 'completed' ? 'opacity-60 bg-slate-50/60' : ''">
-                    <div class="flex items-center gap-3">
-                      <span class="px-2 py-0.5 rounded font-mono text-[10px] font-bold"
+                    <div class="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
+                      <span class="px-2 py-0.5 rounded font-mono text-[10px] font-bold shrink-0 mt-0.5 sm:mt-0"
                             :class="r.type === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
                             x-text="formatDate(r.date)"></span>
-                      <div>
-                        <strong class="text-xs font-bold text-slate-900" x-text="r.title"></strong>
-                        <p class="text-[10px] text-slate-400 mt-0.5" x-text="r.notes || (r.status === 'completed' ? 'Đã hoàn thành' : 'Đang chờ')"></p>
+                      <div class="min-w-0 flex-1">
+                        <strong class="text-xs font-bold text-slate-900 block truncate" x-text="r.title"></strong>
+                        <p class="text-[10px] text-slate-400 mt-0.5 truncate" x-text="r.notes || (r.status === 'completed' ? 'Đã hoàn thành' : 'Đang chờ')"></p>
                       </div>
                     </div>
 
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center justify-between sm:justify-end gap-2.5 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
                       <span class="font-mono font-bold text-xs"
                             :class="r.type === 'income' ? 'text-emerald-600' : 'text-rose-600'"
                             x-text="(r.type === 'income' ? '+' : '-') + formatVND(r.amount)"></span>
 
-                      <button type="button" @click="toggleReminderStatus(r._id)" title="Đánh dấu đã hoàn thành"
-                              class="w-6 h-6 rounded-md flex items-center justify-center text-xs transition"
-                              :class="r.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400 hover:text-slate-700'">
-                        <i class="fa-solid fa-check"></i>
-                      </button>
-                      <button type="button" @click="openReminderModal(r)" title="Sửa"
-                              class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs">
-                        <i class="fa-solid fa-pen"></i>
-                      </button>
-                      <button type="button" @click="deleteReminder(r._id, r.title)" title="Xóa"
-                              class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs">
-                        <i class="fa-solid fa-trash-can"></i>
-                      </button>
+                      <div class="flex items-center gap-1">
+                        <button type="button" @click="toggleReminderStatus(r._id)" title="Đánh dấu đã hoàn thành"
+                                class="w-7 h-7 rounded-lg flex items-center justify-center text-xs transition"
+                                :class="r.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:text-slate-900'">
+                          <i class="fa-solid fa-check"></i>
+                        </button>
+                        <button type="button" @click="openReminderModal(r)" title="Sửa"
+                                class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 text-xs">
+                          <i class="fa-solid fa-pen"></i>
+                        </button>
+                        <button type="button" @click="deleteReminder(r._id, r.title)" title="Xóa"
+                                class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs">
+                          <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </template>
@@ -1075,19 +1077,19 @@
 
           <!-- Sub-Tabs Navigation -->
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3 pt-2">
-            <div class="flex items-center gap-1.5 text-xs font-semibold">
+            <div class="flex items-center gap-1.5 text-xs font-semibold overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">
               <button type="button" @click="diningTab = 'members'"
-                      class="px-3.5 py-1.5 rounded-lg transition"
+                      class="px-3.5 py-1.5 rounded-lg transition shrink-0 whitespace-nowrap"
                       :class="diningTab === 'members' ? 'bg-slate-900 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
                 Sổ Từng Người (<span x-text="currentDiningData.members?.length || 0"></span>)
               </button>
               <button type="button" @click="diningTab = 'bills'"
-                      class="px-3.5 py-1.5 rounded-lg transition"
+                      class="px-3.5 py-1.5 rounded-lg transition shrink-0 whitespace-nowrap"
                       :class="diningTab === 'bills' ? 'bg-slate-900 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
                 Hóa Đơn Bữa Ăn (<span x-text="currentDiningData.bills?.length || 0"></span>)
               </button>
               <button type="button" @click="diningTab = 'settlements'"
-                      class="px-3.5 py-1.5 rounded-lg transition"
+                      class="px-3.5 py-1.5 rounded-lg transition shrink-0 whitespace-nowrap"
                       :class="diningTab === 'settlements' ? 'bg-slate-900 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
                 Lịch Sử Nạp / Mượn (<span x-text="currentDiningData.settlements?.length || 0"></span>)
               </button>
@@ -1264,24 +1266,24 @@
           <div x-show="diningTab === 'members' && diningMemberView === 'cards'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
             <template x-for="(m, idx) in filteredMembers" :key="(m.group || '') + '_' + (m.personKey || m.name)">
               <div class="p-4 rounded-xl border border-slate-200/80 bg-white hover:border-slate-300 transition shadow-card space-y-3">
-                <div class="flex items-start justify-between">
-                  <div>
-                    <div class="flex items-center gap-1.5">
-                      <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-600 font-mono text-[11px] font-bold flex items-center justify-center" x-text="idx + 1"></span>
+                <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-600 font-mono text-[11px] font-bold flex items-center justify-center shrink-0" x-text="idx + 1"></span>
                       <strong class="text-sm font-bold text-slate-900" x-text="m.name"></strong>
-                      <span class="px-1.5 py-0.2 rounded text-[10px]"
+                      <span class="px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap"
                             :class="m.group === 'family' ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700'"
                             x-text="m.group === 'family' ? 'Gia đình' : 'Đồng nghiệp'"></span>
                     </div>
                     <div class="flex items-center gap-1.5 mt-1">
-                      <span class="w-2 h-2 rounded-full" :class="m.currentBalance >= 0 ? 'bg-emerald-500' : 'bg-rose-500'"></span>
+                      <span class="w-2 h-2 rounded-full shrink-0" :class="m.currentBalance >= 0 ? 'bg-emerald-500' : 'bg-rose-500'"></span>
                       <strong class="text-xs font-bold"
                               :class="m.currentBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'"
                               x-text="(m.currentBalance >= 0 ? 'Còn quỹ: ' : 'Đang nợ: ') + formatVND(Math.abs(m.currentBalance))"></strong>
                     </div>
                   </div>
 
-                  <div class="flex items-center gap-1">
+                  <div class="flex flex-wrap items-center gap-1 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
                     <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'in'; modals.settlement = true" title="Nạp tiền"
                             class="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition">
                       + Nạp
@@ -1298,7 +1300,7 @@
                     </button>
                     <button type="button" @click="openMemberModal(m)" title="Sửa"
                             class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs">
-                            <i class="fa-solid fa-pen"></i>
+                      <i class="fa-solid fa-pen"></i>
                     </button>
                     <button type="button" @click="deleteMember(m.id || m._id, m.name)" title="Xoá"
                             class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs">
@@ -1318,29 +1320,29 @@
           <!-- TAB 2: HÓA ĐƠN BỮA ĂN -->
           <div x-show="diningTab === 'bills'" class="space-y-3 pt-1">
             <template x-for="b in currentDiningData.bills" :key="b._id">
-              <div class="p-4 rounded-xl border border-slate-200/80 bg-white hover:border-slate-300 transition shadow-card space-y-2.5">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <div class="flex items-center gap-2">
+              <div class="p-3.5 sm:p-4 rounded-xl border border-slate-200/80 bg-white hover:border-slate-300 transition shadow-card space-y-2.5">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-1.5">
                       <strong class="text-sm font-bold text-slate-900" x-text="b.mealTitle"></strong>
-                      <span class="px-2 py-0.5 rounded-md text-[10px] font-bold"
+                      <span class="px-2 py-0.5 rounded-md text-[10px] font-bold whitespace-nowrap"
                             :class="b.category === 'family' ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700'"
                             x-text="b.category === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'"></span>
-                      <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold"
+                      <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold whitespace-nowrap"
                             x-text="b.paidAccount || 'Vietcombank'"></span>
-                      <span x-show="b.deductFromAccount" class="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 text-[10px] font-medium">✓ Đã trừ ngân hàng</span>
-                      <span x-show="b.deductWeeklyLimit" class="px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 text-[10px] font-medium">Trừ hạn mức tuần</span>
+                      <span x-show="b.deductFromAccount" class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-medium whitespace-nowrap">✓ Đã trừ ngân hàng</span>
+                      <span x-show="b.deductWeeklyLimit" class="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 text-[10px] font-medium whitespace-nowrap">Trừ hạn mức tuần</span>
                     </div>
-                    <p class="text-[11px] text-slate-400 font-mono mt-0.5" x-text="formatDate(b.date) + (b.notes ? ' • ' + b.notes : '')"></p>
+                    <p class="text-[11px] text-slate-400 font-mono mt-0.5 truncate" x-text="formatDate(b.date) + (b.notes ? ' • ' + b.notes : '')"></p>
                   </div>
 
-                  <div class="flex items-center gap-3">
-                    <div class="text-right">
+                  <div class="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
+                    <div class="text-left sm:text-right">
                       <div class="text-sm font-extrabold font-mono text-slate-900" x-text="formatVND(b.totalBill)"></div>
-                      <p class="text-[11px] text-slate-500">Phần Tôi: <strong class="font-mono text-emerald-600" x-text="formatVND(b.myShare)"></strong></p>
+                      <p class="text-[10px] sm:text-[11px] text-slate-500">Phần Tôi: <strong class="font-mono text-emerald-600" x-text="formatVND(b.myShare)"></strong></p>
                     </div>
 
-                    <div class="flex items-center gap-1 border-l border-slate-200 pl-3">
+                    <div class="flex items-center gap-1 border-l border-slate-100 pl-2 sm:pl-3">
                       <!-- Quản lý (Admin / Staff) -->
                       <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
                            class="flex items-center gap-1">
@@ -1386,33 +1388,35 @@
           <!-- TAB 3: NẠP / MƯỢN QUỸ -->
           <div x-show="diningTab === 'settlements'" class="space-y-2 pt-1">
             <template x-for="s in currentDiningData.settlements" :key="s._id">
-              <div class="p-3.5 rounded-xl border border-slate-200/80 bg-white hover:border-slate-300 transition shadow-card flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
+              <div class="p-3.5 rounded-xl border border-slate-200/80 bg-white hover:border-slate-300 transition shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <!-- Left Details -->
+                <div class="flex items-start gap-3 min-w-0 flex-1">
+                  <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 sm:mt-0"
                        :class="s.transferRef ? 'bg-purple-100 text-purple-700' : (s.direction === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600')">
                     <i :class="s.transferRef ? 'fa-solid fa-arrow-right-arrow-left' : (s.direction === 'in' ? 'fa-solid fa-arrow-down' : 'fa-solid fa-arrow-up')"></i>
                   </div>
-                  <div>
-                    <div class="flex items-center gap-2">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-1.5">
                       <strong class="text-xs font-bold text-slate-900" x-text="s.personName"></strong>
-                      <span x-show="s.transferRef" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800">⇄ Cấn trừ 2 sổ</span>
-                      <span class="px-1.5 py-0.2 rounded text-[10px] font-mono bg-slate-100 text-slate-600"
+                      <span x-show="s.transferRef" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 whitespace-nowrap">⇄ Cấn trừ 2 sổ</span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-700 font-medium whitespace-nowrap"
                             x-text="s.accountName || 'Vietcombank'"></span>
-                      <span x-show="s.addToAccount" class="text-[10px] text-emerald-600">✓ Đã cân đối TK</span>
+                      <span x-show="s.addToAccount" class="text-[10px] text-emerald-600 font-medium whitespace-nowrap">✓ Đã cân đối TK</span>
                     </div>
-                    <p class="text-[11px] text-slate-400 mt-0.5" x-text="s.note || (s.direction === 'in' ? 'Nạp tiền vào quỹ' : 'Mượn tiền từ quỹ')"></p>
+                    <p class="text-[11px] text-slate-400 mt-1 truncate" x-text="s.note || (s.direction === 'in' ? 'Nạp tiền vào quỹ' : 'Mượn tiền từ quỹ')"></p>
                   </div>
                 </div>
 
-                <div class="flex items-center gap-3">
-                  <div class="text-right">
-                    <strong class="text-xs font-mono font-bold"
+                <!-- Right Amount & Actions -->
+                <div class="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
+                  <div class="text-left sm:text-right">
+                    <strong class="text-xs sm:text-sm font-mono font-bold block"
                             :class="s.direction === 'in' ? 'text-emerald-600' : 'text-amber-600'"
                             x-text="(s.direction === 'in' ? '+' : '-') + formatVND(s.amount)"></strong>
-                    <p class="text-[10px] text-slate-400 font-mono" x-text="formatDate(s.date)"></p>
+                    <p class="text-[10px] text-slate-400 font-mono mt-0.5" x-text="formatDate(s.date)"></p>
                   </div>
 
-                  <div class="flex items-center gap-1 border-l border-slate-200 pl-3">
+                  <div class="flex items-center gap-1 border-l border-slate-100 pl-2 sm:pl-3">
                     <!-- Quản lý (Admin, Staff) -->
                     <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
                          class="flex items-center gap-1">
@@ -1487,26 +1491,26 @@
             <!-- Suppliers List -->
             <div class="space-y-2 pt-2 border-t border-slate-100">
               <template x-for="s in dashboard.supplierPot.suppliers" :key="s._id">
-                <div class="p-3.5 rounded-xl border border-slate-200/70 bg-white hover:border-slate-300 transition flex items-center justify-between">
-                  <div>
-                    <strong class="text-xs font-bold text-slate-900" x-text="s.supplierName"></strong>
-                    <p class="text-[10px] text-slate-400 mt-0.5" x-text="s.notes || s.bankInfo || 'Chờ thanh toán vốn'"></p>
+                <div class="p-3.5 rounded-xl border border-slate-200/70 bg-white hover:border-slate-300 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div class="min-w-0 flex-1">
+                    <strong class="text-xs font-bold text-slate-900 block truncate" x-text="s.supplierName"></strong>
+                    <p class="text-[10px] text-slate-400 mt-0.5 truncate" x-text="s.notes || s.bankInfo || 'Chờ thanh toán vốn'"></p>
                   </div>
 
-                  <div class="flex items-center gap-3">
+                  <div class="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
                     <strong class="font-mono text-sm font-bold text-amber-600" x-text="formatVND(s.remainingAmount)"></strong>
 
                     <div class="flex items-center gap-1 border-l border-slate-100 pl-2">
                       <button type="button" @click="paySupplierPrompt(s)" title="Trả nợ"
-                              class="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold">
+                              class="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold">
                         Trả nợ
                       </button>
                       <button type="button" @click="openSupplierModal(s)" title="Sửa"
-                              class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs">
+                              class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 text-xs">
                         <i class="fa-solid fa-pen"></i>
                       </button>
                       <button type="button" @click="deleteSupplier(s._id, s.supplierName)" title="Xoá"
-                              class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs">
+                              class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs">
                         <i class="fa-solid fa-trash-can"></i>
                       </button>
                     </div>
@@ -1547,37 +1551,37 @@
             <!-- Debts List -->
             <div class="space-y-2 pt-2 border-t border-slate-100">
               <template x-for="d in dashboard.allDebts" :key="d._id">
-                <div class="p-3.5 rounded-xl border border-slate-200/70 bg-white hover:border-slate-300 transition flex items-center justify-between"
+                <div class="p-3.5 rounded-xl border border-slate-200/70 bg-white hover:border-slate-300 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
                      :class="d.status === 'paid' ? 'opacity-50 bg-slate-50' : ''">
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <span class="px-1.5 py-0.2 rounded text-[10px] font-bold"
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap"
                             :class="d.type === 'receivable' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
                             x-text="d.type === 'receivable' ? 'Bạn nợ tôi' : 'Tôi nợ bạn'"></span>
                       <strong class="text-xs font-bold text-slate-900" x-text="d.personName"></strong>
                     </div>
-                    <p class="text-[10px] text-slate-400 mt-0.5" x-text="'Hạn: ' + formatDate(d.dueDate) + (d.note ? ' • ' + d.note : '')"></p>
+                    <p class="text-[10px] text-slate-400 mt-0.5 truncate" x-text="'Hạn: ' + formatDate(d.dueDate) + (d.note ? ' • ' + d.note : '')"></p>
                   </div>
 
-                  <div class="flex items-center gap-3">
+                  <div class="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
                     <strong class="font-mono text-xs font-bold" x-text="formatVND(d.amount)"></strong>
 
                     <button type="button" @click="toggleDebtStatus(d._id)"
-                            class="px-2 py-0.5 rounded text-[10px] font-bold transition"
+                            class="px-2.5 py-1 rounded-lg text-[10px] font-bold transition whitespace-nowrap"
                             :class="d.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'"
                             x-text="d.status === 'paid' ? '✓ Đã Xong' : 'Chờ Trả'"></button>
 
                     <div class="flex items-center gap-1 border-l border-slate-100 pl-2">
                       <button type="button" @click="openDebtModal(d)" title="Sửa"
-                              class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs">
+                              class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 text-xs">
                         <i class="fa-solid fa-pen"></i>
                       </button>
                       <button type="button" @click="copyDebt(d)" title="Copy"
-                              class="p-1 rounded text-slate-400 hover:text-indigo-600 text-xs">
+                              class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 text-xs">
                         <i class="fa-solid fa-copy"></i>
                       </button>
                       <button type="button" @click="deleteDebt(d._id, d.personName)" title="Xoá"
-                              class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs">
+                              class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs">
                         <i class="fa-solid fa-trash-can"></i>
                       </button>
                     </div>
@@ -1727,19 +1731,19 @@
 
           <!-- SUB-TABS NAVIGATION -->
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3 pt-2">
-            <div class="flex items-center gap-1.5 text-xs font-semibold">
+            <div class="flex items-center gap-1.5 text-xs font-semibold overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">
               <button type="button" @click="personalTab = 'fixed'"
-                      class="px-3.5 py-1.5 rounded-lg transition"
+                      class="px-3.5 py-1.5 rounded-lg transition shrink-0 whitespace-nowrap"
                       :class="personalTab === 'fixed' ? 'bg-slate-900 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
                 🏋️ Hóa Đơn Cố Định (Gym, Streaming) (<span x-text="fixedBills.length"></span>)
               </button>
               <button type="button" @click="personalTab = 'savings'"
-                      class="px-3.5 py-1.5 rounded-lg transition"
+                      class="px-3.5 py-1.5 rounded-lg transition shrink-0 whitespace-nowrap"
                       :class="personalTab === 'savings' ? 'bg-slate-900 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
                 🏦 Sổ Tiết Kiệm Tích Lũy (<span x-text="savingsList.length"></span>)
               </button>
               <button type="button" @click="personalTab = 'spending'"
-                      class="px-3.5 py-1.5 rounded-lg transition"
+                      class="px-3.5 py-1.5 rounded-lg transition shrink-0 whitespace-nowrap"
                       :class="personalTab === 'spending' ? 'bg-slate-900 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
                 🛍️ Ăn Ngoài &amp; Mua Sắm 2 Bạn (<span x-text="personalFlexibleExpenses.length"></span>)
               </button>
@@ -1937,50 +1941,50 @@
   </main>
 
   <!-- ==================== MOBILE BOTTOM NAVIGATION BAR ==================== -->
-  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-around h-16 px-2 shadow-lg"
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/80 flex items-center justify-around h-16 px-1 shadow-lg"
        x-show="isLoggedIn">
     <button type="button" @click="activeTab = 'overview'"
             x-show="currentUser?.isAdmin || currentUser?.permissions?.viewOverview"
-            class="flex flex-col items-center justify-center w-full h-full text-[10px] font-bold"
-            :class="activeTab === 'overview' ? 'text-slate-900' : 'text-slate-400'">
+            class="flex flex-col items-center justify-center min-w-0 flex-1 h-full text-[10px] font-bold transition"
+            :class="activeTab === 'overview' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'">
       <i class="fa-solid fa-table-columns text-base mb-0.5"></i>
-      <span>Tổng Quan</span>
+      <span class="truncate">Tổng Quan</span>
     </button>
     <button type="button" @click="activeTab = 'transactions'"
             x-show="currentUser?.isAdmin || currentUser?.permissions?.manageTransactions"
-            class="flex flex-col items-center justify-center w-full h-full text-[10px] font-bold"
-            :class="activeTab === 'transactions' ? 'text-slate-900' : 'text-slate-400'">
+            class="flex flex-col items-center justify-center min-w-0 flex-1 h-full text-[10px] font-bold transition"
+            :class="activeTab === 'transactions' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'">
       <i class="fa-solid fa-receipt text-base mb-0.5"></i>
-      <span>Giao Dịch</span>
+      <span class="truncate">Giao Dịch</span>
     </button>
     <button type="button" @click="openTransactionModal()"
             x-show="currentUser?.isAdmin || currentUser?.permissions?.manageTransactions"
-            class="flex flex-col items-center justify-center -mt-5">
-      <div class="w-12 h-12 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-lg">
+            class="flex flex-col items-center justify-center -mt-5 px-1 shrink-0">
+      <div class="w-12 h-12 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-lg active:scale-95 transition">
         <i class="fa-solid fa-plus text-base text-emerald-400"></i>
       </div>
-      <span class="text-[9px] font-bold text-slate-900 mt-0.5">Ghi Mới</span>
+      <span class="text-[9px] font-bold text-slate-900 mt-0.5 whitespace-nowrap">Ghi Mới</span>
     </button>
     <button type="button" @click="activeTab = 'dining'"
             x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily || currentUser?.permissions?.viewDining"
-            class="flex flex-col items-center justify-center w-full h-full text-[10px] font-bold"
-            :class="activeTab === 'dining' ? 'text-slate-900' : 'text-slate-400'">
+            class="flex flex-col items-center justify-center min-w-0 flex-1 h-full text-[10px] font-bold transition"
+            :class="activeTab === 'dining' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'">
       <i class="fa-solid fa-bowl-rice text-base mb-0.5"></i>
-      <span>Quỹ Ăn</span>
+      <span class="truncate">Quỹ Ăn</span>
     </button>
     <button type="button" @click="activeTab = 'personal'"
             x-show="currentUser?.isAdmin || currentUser?.permissions?.managePersonalHub"
-            class="flex flex-col items-center justify-center w-full h-full text-[10px] font-bold"
-            :class="activeTab === 'personal' ? 'text-purple-700' : 'text-slate-400'">
+            class="flex flex-col items-center justify-center min-w-0 flex-1 h-full text-[10px] font-bold transition"
+            :class="activeTab === 'personal' ? 'text-purple-700' : 'text-slate-400 hover:text-purple-600'">
       <i class="fa-solid fa-heart-pulse text-base mb-0.5"></i>
-      <span>Cá Nhân</span>
+      <span class="truncate">Cá Nhân</span>
     </button>
     <button type="button" @click="activeTab = 'debts'"
             x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDebts"
-            class="flex flex-col items-center justify-center w-full h-full text-[10px] font-bold"
-            :class="activeTab === 'debts' ? 'text-slate-900' : 'text-slate-400'">
+            class="flex flex-col items-center justify-center min-w-0 flex-1 h-full text-[10px] font-bold transition"
+            :class="activeTab === 'debts' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'">
       <i class="fa-solid fa-hand-holding-dollar text-base mb-0.5"></i>
-      <span>Sổ Nợ</span>
+      <span class="truncate">Sổ Nợ</span>
     </button>
   </nav>
 

@@ -143,7 +143,7 @@ function cashFlowApp() {
     activeTab: 'overview',
     diningCategory: 'work', // 'work' (Ăn nhóm đồng nghiệp) | 'family' (Quỹ gia đình) | 'all' (Tất cả)
     diningTab: 'members',   // 'members' | 'bills' | 'settlements'
-    diningMemberView: 'excel', // 'excel' (Bảng Excel) | 'cards' (Dạng Thẻ)
+    diningMemberView: (typeof window !== 'undefined' && window.innerWidth < 640) ? 'cards' : 'excel', // 'excel' (Bảng Excel) | 'cards' (Dạng Thẻ)
     memberFilter: 'all',    // 'all' | 'surplus' | 'debt'
     personalTab: 'fixed',   // 'fixed' (Hóa đơn cố định) | 'savings' (Sổ tiết kiệm) | 'spending' (Ăn ngoài & Mua sắm)
     debtFilter: 'all',      // 'all' | 'receivable' | 'payable' | 'pending' | 'paid'
