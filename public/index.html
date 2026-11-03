@@ -298,25 +298,6 @@
   <!-- ==================== MAIN CONTENT WRAPPER ==================== -->
   <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
-    <!-- Default Password Security Notice Banner -->
-    <div x-show="isLoggedIn && currentUser?.isDefaultPassword" x-cloak
-         class="p-4 rounded-2xl bg-amber-50/95 border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
-      <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-          <i class="fa-solid fa-shield-halved text-sm"></i>
-        </div>
-        <div>
-          <strong class="font-bold text-amber-900">Yêu cầu bảo mật:</strong>
-          <span class="text-amber-800">Tài khoản của bạn đang dùng mật khẩu mặc định (12345678). Hãy đổi mật khẩu mới để bảo vệ dữ liệu tài chính.</span>
-        </div>
-      </div>
-      <button type="button" @click="openChangePasswordModal()"
-              class="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-bold text-xs transition shrink-0 flex items-center justify-center gap-1.5 shadow-xs">
-        <i class="fa-solid fa-key text-[11px]"></i>
-        <span>Đổi Mật Khẩu Ngay</span>
-      </button>
-    </div>
-
     <!-- Loading State -->
     <div x-show="loading" class="text-center py-20 text-slate-400 text-sm">
       <i class="fa-solid fa-circle-notch fa-spin text-2xl text-slate-900 mb-3 block"></i>

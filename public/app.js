@@ -455,9 +455,6 @@ function cashFlowApp() {
           this.loginForm.error = '';
           this.notify(`Xin chào, ${data.user.fullName}!`);
           await this.fetchDashboard();
-          if (data.user?.isDefaultPassword) {
-            this.openChangePasswordModal();
-          }
         } else {
           this.loginForm.error = data.error || 'Tên đăng nhập hoặc mật khẩu không chính xác';
         }

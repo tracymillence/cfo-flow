@@ -16,3 +16,4 @@ const correctionRequestSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 module.exports = mongoose.model('CorrectionRequest', correctionRequestSchema);
+
