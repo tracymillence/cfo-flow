@@ -71,6 +71,8 @@
     .font-mono {
       font-feature-settings: "tnum" 1, "zero" 1;
     }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
 <body x-data="cashFlowApp()" class="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-800 antialiased selection:bg-brand-100 selection:text-brand-900 pb-20 sm:pb-8">
@@ -147,10 +149,10 @@
 
   <!-- ==================== PREMIUM STRIPE/NOTION HEADER ==================== -->
   <header class="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3 min-w-0">
       
       <!-- Brand Logo -->
-      <div class="flex items-center gap-3 shrink-0">
+      <div @click="activeTab = 'overview'" class="flex items-center gap-2.5 shrink-0 cursor-pointer select-none">
         <div class="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-extrabold text-sm shadow-sm relative overflow-hidden">
           <i class="fa-solid fa-chart-pie text-xs"></i>
           <span class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
@@ -162,46 +164,46 @@
       </div>
 
       <!-- Main Navigation Tabs (Desktop) -->
-      <nav class="hidden md:flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/60 text-xs font-semibold">
+      <nav class="hidden md:flex items-center p-1 rounded-xl bg-slate-100/90 border border-slate-200/60 text-xs font-semibold shrink-0 gap-0.5 overflow-x-auto no-scrollbar">
         <button type="button" @click="activeTab = 'overview'"
                 x-show="currentUser?.isAdmin || currentUser?.permissions?.viewOverview"
-                class="px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap"
                 :class="activeTab === 'overview' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
-          <i class="fa-solid fa-table-columns text-[11px] text-slate-400" :class="activeTab === 'overview' ? 'text-slate-900' : ''"></i>
+          <i class="fa-solid fa-table-columns text-[11px]" :class="activeTab === 'overview' ? 'text-slate-900' : 'text-slate-400'"></i>
           <span>Tổng Quan</span>
         </button>
 
         <button type="button" @click="activeTab = 'transactions'"
                 x-show="currentUser?.isAdmin || currentUser?.permissions?.manageTransactions"
-                class="px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap"
                 :class="activeTab === 'transactions' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
-          <i class="fa-solid fa-receipt text-[11px] text-slate-400" :class="activeTab === 'transactions' ? 'text-slate-900' : ''"></i>
+          <i class="fa-solid fa-receipt text-[11px]" :class="activeTab === 'transactions' ? 'text-slate-900' : 'text-slate-400'"></i>
           <span>Sổ Giao Dịch</span>
-          <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600"
+          <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200/70 text-slate-700 font-mono"
                 x-text="dashboard.transactions?.length || 0"></span>
         </button>
 
         <button type="button" @click="activeTab = 'dining'"
                 x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
-                class="px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap"
                 :class="activeTab === 'dining' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
-          <i class="fa-solid fa-bowl-rice text-[11px] text-slate-400" :class="activeTab === 'dining' ? 'text-slate-900' : ''"></i>
+          <i class="fa-solid fa-bowl-rice text-[11px]" :class="activeTab === 'dining' ? 'text-slate-900' : 'text-slate-400'"></i>
           <span>Quỹ Ăn &amp; Gia Đình</span>
         </button>
 
         <button type="button" @click="activeTab = 'personal'"
                 x-show="currentUser?.isAdmin || currentUser?.permissions?.managePersonalHub"
-                class="px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
-                :class="activeTab === 'personal' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
-          <i class="fa-solid fa-heart-pulse text-[11px] text-purple-600" :class="activeTab === 'personal' ? 'text-purple-600' : 'text-slate-400'"></i>
-          <span>Sổ Cá Nhân (Hub 4)</span>
+                class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+                :class="activeTab === 'personal' ? 'bg-white text-purple-900 shadow-xs font-bold' : 'text-slate-500 hover:text-purple-700'">
+          <i class="fa-solid fa-heart-pulse text-[11px]" :class="activeTab === 'personal' ? 'text-purple-600' : 'text-slate-400'"></i>
+          <span>Sổ Cá Nhân</span>
         </button>
 
         <button type="button" @click="activeTab = 'debts'"
                 x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDebts"
-                class="px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap"
                 :class="activeTab === 'debts' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'">
-          <i class="fa-solid fa-hand-holding-dollar text-[11px] text-slate-400" :class="activeTab === 'debts' ? 'text-slate-900' : ''"></i>
+          <i class="fa-solid fa-hand-holding-dollar text-[11px]" :class="activeTab === 'debts' ? 'text-slate-900' : 'text-slate-400'"></i>
           <span>Công Nợ &amp; NCC</span>
           <span x-show="dashboard.supplierPot?.totalAmount > 0"
                 class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
@@ -209,43 +211,43 @@
       </nav>
 
       <!-- Right Actions & Quick Cash Display -->
-      <div class="flex items-center gap-2.5">
-        <!-- Live Cash Balance Pill (Hub 1) -->
+      <div class="flex items-center gap-2 shrink-0">
+        <!-- Live Cash Balance Pill (Hub 1) - Only visible on xl screens to protect laptop viewports -->
         <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageAccounts"
-             class="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+             class="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs shrink-0 whitespace-nowrap">
           <span class="text-slate-400 font-medium">Thực tế:</span>
-          <strong class="font-mono font-bold text-slate-900" x-text="formatVND(dashboard.accounts.totalCash)"></strong>
+          <strong class="font-mono font-bold text-slate-900" x-text="formatVND(dashboard.accounts?.totalCash)"></strong>
           <span class="text-slate-300">•</span>
           <span class="text-slate-400 font-medium">Khả dụng:</span>
           <strong class="font-mono font-bold" 
-                  :class="dashboard.card1_cash.spendableCash >= 0 ? 'text-emerald-600' : 'text-rose-600'"
-                  x-text="formatVND(dashboard.card1_cash.spendableCash)"></strong>
+                  :class="dashboard.card1_cash?.spendableCash >= 0 ? 'text-emerald-600' : 'text-rose-600'"
+                  x-text="formatVND(dashboard.card1_cash?.spendableCash)"></strong>
         </div>
 
         <!-- Primary CTA: Ghi Giao Dịch -->
         <button type="button" @click="openTransactionModal()"
                 x-show="currentUser?.isAdmin || currentUser?.permissions?.manageTransactions"
-                class="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+                class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 whitespace-nowrap">
           <i class="fa-solid fa-plus text-[10px] text-emerald-400"></i>
-          <span>Ghi Giao Dịch</span>
+          <span class="hidden sm:inline">Ghi </span><span>Giao Dịch</span>
         </button>
 
         <!-- Quick Settings -->
         <button type="button" @click="modals.config = true" title="Cài đặt hạn mức"
                 x-show="currentUser?.isAdmin || currentUser?.permissions?.manageConfig"
-                class="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition">
+                class="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition shrink-0">
           <i class="fa-solid fa-gear text-sm"></i>
         </button>
 
         <!-- Current User Profile & RBAC Dropdown -->
-        <div class="relative" x-data="{ open: false }" x-show="isLoggedIn">
+        <div class="relative shrink-0" x-data="{ open: false }" x-show="isLoggedIn">
           <button type="button" @click="open = !open" @click.away="open = false"
-                  class="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 transition text-xs font-semibold text-slate-800">
-            <div class="w-6 h-6 rounded-lg bg-slate-900 text-emerald-400 flex items-center justify-center text-[10px] font-bold">
+                  class="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 transition text-xs font-semibold text-slate-800 shrink-0 whitespace-nowrap">
+            <div class="w-6 h-6 rounded-lg bg-slate-900 text-emerald-400 flex items-center justify-center text-[10px] font-bold shrink-0">
               <span x-text="(currentUser?.fullName || currentUser?.username || 'U').charAt(0).toUpperCase()"></span>
             </div>
-            <span class="max-w-[110px] truncate" x-text="currentUser?.fullName || currentUser?.username"></span>
-            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
+            <span class="max-w-[100px] truncate" x-text="currentUser?.fullName || currentUser?.username"></span>
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0"
                   :class="currentUser?.isAdmin ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'"
                   x-text="currentUser?.isAdmin ? 'Admin' : (currentUser?.role || 'User')"></span>
             <i class="fa-solid fa-chevron-down text-[9px] text-slate-400"></i>
@@ -1854,7 +1856,7 @@
   </main>
 
   <!-- ==================== MOBILE BOTTOM NAVIGATION BAR ==================== -->
-  <nav class="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-around h-16 px-2 shadow-lg"
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-around h-16 px-2 shadow-lg"
        x-show="isLoggedIn">
     <button type="button" @click="activeTab = 'overview'"
             x-show="currentUser?.isAdmin || currentUser?.permissions?.viewOverview"
