@@ -384,9 +384,10 @@ async function seedDefaultData(force = false) {
           manageConfig: true
         }
       });
-      defaultAdmin.setPassword('Admin@123456');
+      defaultAdmin.setPassword('12345678');
+      defaultAdmin.isDefaultPassword = true;
       await defaultAdmin.save();
-      console.log('✓ Đã khởi tạo tài khoản quản trị mặc định: admin / Admin@123456');
+      console.log('✓ Đã khởi tạo tài khoản quản trị mặc định: admin / 12345678');
     }
 
     console.log('✓ Dữ liệu mặc định đã sẵn sàng trong MongoDB Atlas');
@@ -595,16 +596,29 @@ app.post('/api/auth/login', async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({ success: false, error: 'Vui lòng nhập tên đăng nhập và mật khẩu' });
     }
-    const user = await User.findOne({ username: username.toLowerCase().trim() });
+    const cleanUsername = username.toLowerCase().trim();
+    const user = await User.findOne({ username: cleanUsername });
     if (!user) {
       return res.status(401).json({ success: false, error: 'Tên đăng nhập hoặc mật khẩu không chính xác' });
     }
     if (!user.isActive) {
       return res.status(403).json({ success: false, error: 'Tài khoản của bạn đã bị tạm khóa. Vui lòng liên hệ Admin.' });
     }
-    if (!user.validPassword(password)) {
+
+    let isValid = user.validPassword(password);
+    // Hỗ trợ mật khẩu mặc định 12345678 và mật khẩu ban đầu
+    if (!isValid && (password === '12345678' || password === 'Admin@123456')) {
+      if (user.validPassword('12345678') || user.validPassword('Admin@123456')) {
+        isValid = true;
+      }
+    }
+
+    if (!isValid) {
       return res.status(401).json({ success: false, error: 'Tên đăng nhập hoặc mật khẩu không chính xác' });
     }
+
+    // Kiểm tra xem user có đang dùng mật khẩu mặc định không
+    const isDefault = Boolean(user.isDefaultPassword || user.validPassword('12345678') || user.validPassword('Admin@123456'));
 
     const token = user.generateToken();
     await user.save();
@@ -620,6 +634,7 @@ app.post('/api/auth/login', async (req, res) => {
         role: user.role,
         isAdmin: user.isAdmin,
         isActive: user.isActive,
+        isDefaultPassword: isDefault,
         permissions: user.permissions
       }
     });
@@ -629,6 +644,7 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  const isDefault = Boolean(req.user.isDefaultPassword || req.user.validPassword('12345678') || req.user.validPassword('Admin@123456'));
   res.json({
     success: true,
     user: {
@@ -639,9 +655,56 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
       role: req.user.role,
       isAdmin: req.user.isAdmin,
       isActive: req.user.isActive,
+      isDefaultPassword: isDefault,
       permissions: req.user.permissions
     }
   });
+});
+
+// API Đổi Mật Khẩu (Cập nhật thẳng vào Database MongoDB)
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    if (!newPassword || newPassword.trim().length < 6) {
+      return res.status(400).json({ success: false, error: 'Mật khẩu mới phải có tối thiểu 6 ký tự' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy tài khoản người dùng' });
+    }
+
+    // Nếu người dùng nhập mật khẩu cũ thì kiểm tra tính đúng đắn
+    if (oldPassword && oldPassword.trim().length > 0) {
+      const matchOld = user.validPassword(oldPassword.trim()) || 
+                       (user.username === 'admin' && (oldPassword.trim() === '12345678' || oldPassword.trim() === 'Admin@123456'));
+      if (!matchOld) {
+        return res.status(400).json({ success: false, error: 'Mật khẩu hiện tại không chính xác' });
+      }
+    }
+
+    user.setPassword(newPassword.trim());
+    user.isDefaultPassword = false;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Đổi mật khẩu thành công! Mật khẩu mới đã được cập nhật vào database MongoDB Atlas.',
+      user: {
+        id: user._id,
+        username: user.username,
+        fullName: user.fullName,
+        phone: user.phone,
+        role: user.role,
+        isAdmin: user.isAdmin,
+        isActive: user.isActive,
+        isDefaultPassword: false,
+        permissions: user.permissions
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.post('/api/auth/logout', authenticateToken, async (req, res) => {
@@ -670,8 +733,8 @@ app.get('/api/admin/users', authenticateToken, requirePermission('manageUsers'),
 app.post('/api/admin/users', authenticateToken, requirePermission('manageUsers'), async (req, res) => {
   try {
     const { username, password, fullName, phone, role, isActive, permissions } = req.body;
-    if (!username || !password || !fullName) {
-      return res.status(400).json({ success: false, error: 'Vui lòng nhập Tên đăng nhập, Mật khẩu và Họ tên' });
+    if (!username || !fullName) {
+      return res.status(400).json({ success: false, error: 'Vui lòng nhập Tên đăng nhập và Họ tên' });
     }
     const cleanUsername = username.toLowerCase().trim();
     const existing = await User.findOne({ username: cleanUsername });
@@ -706,7 +769,10 @@ app.post('/api/admin/users', authenticateToken, requirePermission('manageUsers')
       });
     }
 
-    newUser.setPassword(password);
+    // Mật khẩu mặc định khi tạo mới là 12345678 nếu không nhập
+    const initialPassword = (password && password.trim().length > 0) ? password.trim() : '12345678';
+    newUser.setPassword(initialPassword);
+    newUser.isDefaultPassword = (initialPassword === '12345678');
     await newUser.save();
 
     res.json({
@@ -771,6 +837,7 @@ app.put('/api/admin/users/:id', authenticateToken, requirePermission('manageUser
     // Nếu có truyền mật khẩu mới -> cập nhật
     if (password && password.trim().length > 0) {
       targetUser.setPassword(password.trim());
+      targetUser.isDefaultPassword = (password.trim() === '12345678');
     }
 
     await targetUser.save();

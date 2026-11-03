@@ -69,7 +69,7 @@ function cashFlowApp() {
     editingUserId: null,
     userModalForm: {
       username: '',
-      password: '',
+      password: '12345678',
       fullName: '',
       phone: '',
       role: 'member',
@@ -310,7 +310,19 @@ function cashFlowApp() {
       personalExpense: false,
       personalConfig: false,
       userManagement: false,
-      userEdit: false
+      userEdit: false,
+      changePassword: false
+    },
+
+    // Form đổi mật khẩu
+    changePasswordForm: {
+      oldPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+      showOld: false,
+      showNew: false,
+      loading: false,
+      error: ''
     },
 
     // Toast
@@ -423,6 +435,9 @@ function cashFlowApp() {
           this.loginForm.error = '';
           this.notify(`Xin chào, ${data.user.fullName}!`);
           await this.fetchDashboard();
+          if (data.user?.isDefaultPassword) {
+            this.openChangePasswordModal();
+          }
         } else {
           this.loginForm.error = data.error || 'Tên đăng nhập hoặc mật khẩu không chính xác';
         }
@@ -476,7 +491,7 @@ function cashFlowApp() {
       this.editingUserId = null;
       this.userModalForm = {
         username: '',
-        password: '',
+        password: '12345678',
         fullName: '',
         phone: '',
         role: 'member',
@@ -597,12 +612,12 @@ function cashFlowApp() {
         };
 
         if (!this.editingUserId) {
-          if (!this.userModalForm.username.trim() || !this.userModalForm.password.trim()) {
-            this.notify('Vui lòng nhập Tên đăng nhập và Mật khẩu cho người dùng mới');
+          if (!this.userModalForm.username.trim() || !this.userModalForm.fullName.trim()) {
+            this.notify('Vui lòng nhập Tên đăng nhập và Họ tên cho người dùng mới');
             return;
           }
           payload.username = this.userModalForm.username.trim();
-          payload.password = this.userModalForm.password.trim();
+          payload.password = this.userModalForm.password.trim() || '12345678';
 
           const res = await this.authFetch('/api/admin/users', {
             method: 'POST',
@@ -610,7 +625,7 @@ function cashFlowApp() {
           });
           const data = await res.json();
           if (data.success) {
-            this.notify(data.message || 'Đã tạo người dùng mới thành công');
+            this.notify(data.message || 'Đã tạo người dùng mới thành công (Mật khẩu mặc định: 12345678)');
             this.modals.userEdit = false;
             await this.fetchUsersList();
           } else {
@@ -677,6 +692,56 @@ function cashFlowApp() {
         }
       } catch (err) {
         this.notify(err.message);
+      }
+    },
+
+    // ==================== CHANGE PASSWORD METHODS ====================
+    openChangePasswordModal() {
+      this.changePasswordForm = {
+        oldPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+        showOld: false,
+        showNew: false,
+        loading: false,
+        error: ''
+      };
+      this.modals.changePassword = true;
+    },
+
+    async submitChangePassword() {
+      if (!this.changePasswordForm.newPassword || this.changePasswordForm.newPassword.trim().length < 6) {
+        this.changePasswordForm.error = 'Mật khẩu mới phải có tối thiểu 6 ký tự!';
+        return;
+      }
+      if (this.changePasswordForm.newPassword !== this.changePasswordForm.confirmPassword) {
+        this.changePasswordForm.error = 'Mật khẩu xác nhận không khớp nhau!';
+        return;
+      }
+      this.changePasswordForm.loading = true;
+      this.changePasswordForm.error = '';
+      try {
+        const res = await this.authFetch('/api/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({
+            oldPassword: this.changePasswordForm.oldPassword.trim(),
+            newPassword: this.changePasswordForm.newPassword.trim()
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          if (this.currentUser) {
+            this.currentUser.isDefaultPassword = false;
+          }
+          this.modals.changePassword = false;
+          this.notify('🎉 Đổi mật khẩu thành công! Mật khẩu mới đã được lưu vào database.');
+        } else {
+          this.changePasswordForm.error = data.error || 'Lỗi khi đổi mật khẩu';
+        }
+      } catch (err) {
+        this.changePasswordForm.error = err.message || 'Lỗi kết nối máy chủ';
+      } finally {
+        this.changePasswordForm.loading = false;
       }
     },
 

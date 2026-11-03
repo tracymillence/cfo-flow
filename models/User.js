@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
   role: { type: String, default: 'custom' },
   isAdmin: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
+  isDefaultPassword: { type: Boolean, default: true },
   sessionToken: { type: String, default: null },
   tokenExpiresAt: { type: Date, default: null },
   // Granular permissions object - Cấu hình trực tiếp trên UI admin không cần sửa code!
