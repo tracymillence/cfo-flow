@@ -142,12 +142,16 @@ function cashFlowApp() {
         const res = await fetch('/api/dashboard');
         const data = await res.json();
         if (data.success) {
+          this.error = null;
           this.dashboard = data;
           this.configForm.initialCash = data.config.initialCash;
           this.configForm.weeklyLimit = data.config.weeklyLimit;
+        } else {
+          this.error = data.error || 'Chưa thể kết nối tới cơ sở dữ liệu MongoDB Atlas.';
         }
       } catch (err) {
         console.error('Lỗi nạp dashboard:', err);
+        this.error = err.message;
       } finally {
         this.loading = false;
       }

@@ -117,6 +117,23 @@
       Đang tải dữ liệu thời gian thực từ MongoDB Atlas...
     </div>
 
+    <!-- Error Banner if MongoDB not ready -->
+    <div x-show="!loading && error" x-cloak
+         class="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+      <div class="flex items-center gap-2.5">
+        <i class="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i>
+        <div>
+          <strong>Cảnh báo kết nối:</strong> <span x-text="error"></span>
+          <p class="text-[11px] text-amber-700 mt-0.5">Vui lòng kiểm tra đã cấu hình biến MONGODB_URI trên Render và mở IP 0.0.0.0/0 trên MongoDB Atlas.</p>
+        </div>
+      </div>
+      <button type="button" @click="loading = true; fetchDashboard()"
+              class="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition flex items-center justify-center gap-1.5">
+        <i class="fa-solid fa-rotate-right text-[11px]"></i>
+        <span>Thử Kết Nối Lại</span>
+      </button>
+    </div>
+
     <div x-show="!loading" x-cloak class="space-y-6">
 
       <!-- ==================== NHẬP / CHỈNH SỬA ĐƠN DỊCH VỤ ==================== -->

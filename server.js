@@ -15,6 +15,7 @@ const Debt = require('./models/Debt');
 const app = express();
 const PORT = process.env.PORT || 10000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/cfo_flow_db';
+let lastMongoError = null;
 
 // Middleware
 app.use(cors());
@@ -222,6 +223,22 @@ async function seedDefaultData(force = false) {
 }
 
 // ==================== RESTFUL API ROUTES ====================
+
+// 0. GET /api/health (Diagnostics & Mongo Status)
+app.get('/api/health', (req, res) => {
+  const uri = process.env.MONGODB_URI || '';
+  const maskedUri = uri ? uri.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:***@') : 'CHƯA_CÓ_BIẾN_MÔI_TRƯỜNG (mặc định localhost)';
+  res.json({
+    status: 'ok',
+    mongodb: {
+      status: mongoose.connection.readyState === 1 ? 'connected' : (mongoose.connection.readyState === 2 ? 'connecting' : 'disconnected'),
+      readyState: mongoose.connection.readyState,
+      hasEnvUri: !!process.env.MONGODB_URI,
+      maskedUri,
+      lastError: lastMongoError ? lastMongoError.message : null
+    }
+  });
+});
 
 // 1. GET /api/dashboard (CFO Logic Aggregator)
 app.get('/api/dashboard', async (req, res) => {
@@ -783,6 +800,7 @@ app.listen(PORT, () => {
     await seedDefaultData(false);
   })
   .catch(err => {
+    lastMongoError = err;
     console.error('❌ Lỗi kết nối MongoDB:', err.message);
   });
 });
