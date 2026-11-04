@@ -600,60 +600,7 @@
               </div>
             </div>
 
-            <!-- LỊCH NHẮC DÒNG TIỀN (TIMELINE) -->
-            <div class="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-card space-y-4">
-              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                <div>
-                  <h3 class="text-sm font-bold text-slate-900">Lịch Nhắc Dòng Tiền &amp; Mốc Thu Chi</h3>
-                  <p class="text-xs text-slate-400 mt-0.5">Timeline các mốc thanh toán tiền hàng, nhận lương và chi tiêu</p>
-                </div>
-                <button type="button" @click="openReminderModal()"
-                        class="self-start sm:self-auto px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1">
-                  <i class="fa-solid fa-plus text-[10px] text-indigo-500"></i>
-                  <span>Thêm Dòng Nhắc</span>
-                </button>
-              </div>
-
-              <div class="space-y-2">
-                <template x-for="r in dashboard.reminders" :key="r._id">
-                  <div class="p-3 rounded-xl border border-slate-200/70 bg-white hover:border-slate-300 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-                       :class="r.status === 'completed' ? 'opacity-60 bg-slate-50/60' : ''">
-                    <div class="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
-                      <span class="px-2 py-0.5 rounded font-mono text-[10px] font-bold shrink-0 mt-0.5 sm:mt-0"
-                            :class="r.type === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
-                            x-text="formatDate(r.date)"></span>
-                      <div class="min-w-0 flex-1">
-                        <strong class="text-xs font-bold text-slate-900 block truncate" x-text="r.title"></strong>
-                        <p class="text-[10px] text-slate-400 mt-0.5 truncate" x-text="r.notes || (r.status === 'completed' ? 'Đã hoàn thành' : 'Đang chờ')"></p>
-                      </div>
-                    </div>
-
-                    <div class="flex items-center justify-between sm:justify-end gap-2.5 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
-                      <span class="font-mono font-bold text-xs"
-                            :class="r.type === 'income' ? 'text-emerald-600' : 'text-rose-600'"
-                            x-text="(r.type === 'income' ? '+' : '-') + formatVND(r.amount)"></span>
-
-                      <div class="flex items-center gap-1">
-                        <button type="button" @click="toggleReminderStatus(r._id)" title="Đánh dấu đã hoàn thành"
-                                class="w-7 h-7 rounded-lg flex items-center justify-center text-xs transition"
-                                :class="r.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:text-slate-900'">
-                          <i class="fa-solid fa-check"></i>
-                        </button>
-                        <button type="button" @click="openReminderModal(r)" title="Sửa"
-                                class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 text-xs">
-                          <i class="fa-solid fa-pen"></i>
-                        </button>
-                        <button type="button" @click="deleteReminder(r._id, r.title)" title="Xóa"
-                                class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs">
-                          <i class="fa-solid fa-trash-can"></i>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </div>
-
+            <!-- Đã loại bỏ khối Lịch Nhắc Dòng Tiền cũ (Yêu cầu 1) - chuyển sang module Dự Báo Dòng Tiền Tương Lai -->
           </div>
 
           <!-- RIGHT 1 COL: QUICK GLANCES (DINING & DEBTS) -->
@@ -797,27 +744,96 @@
             </div>
           </div>
 
-          <!-- Alert Box: Cảnh báo thiếu hụt thanh khoản (nếu có bất kỳ Hub nào có số dư giả lập < 0) -->
-          <div class="space-y-2.5" x-show="getProjectedAlerts().length > 0">
-            <template x-for="alert in getProjectedAlerts()" :key="alert.hubRole">
-              <div class="p-4 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-900 flex items-start gap-3 shadow-sm">
-                <div class="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 mt-0.5">
-                  <i class="fa-solid fa-triangle-exclamation text-base"></i>
+          <!-- Alert Box: Cảnh báo đỏ nếu Sức khỏe tài chính tổng thể hoặc bất kỳ Hub nào có nguy cơ thiếu hụt -->
+          <div class="space-y-2.5" x-show="overallFinancialHealth.isDeficit || getProjectedAlerts().length > 0">
+            <!-- Cảnh báo cấp tổng thể -->
+            <div x-show="overallFinancialHealth.isDeficit" class="p-4 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-900 flex items-start gap-3 shadow-sm">
+              <div class="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 mt-0.5">
+                <i class="fa-solid fa-triangle-exclamation text-base"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-bold text-rose-800 text-sm sm:text-base">
+                    ⚠️ Cảnh báo thiếu hụt thanh khoản dòng tiền! Dự kiến âm quỹ vào ngày <span class="underline font-semibold" x-text="formatDate(overallFinancialHealth.earliestDeficitDate)"></span>!
+                  </span>
+                  <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-200 text-rose-800">Cần cân đối nguồn tiền</span>
                 </div>
+                <p class="text-xs text-rose-700 mt-1">
+                  Sức khỏe tài chính tổng thể (sau khi trừ nợ &amp; cộng dự thu/chi): <strong class="font-mono font-bold" x-text="formatVND(overallFinancialHealth.projectedBalance)"></strong>
+                  (Mức thiếu hụt dự kiến: <span class="font-mono font-bold" x-text="formatVND(Math.abs(overallFinancialHealth.earliestDeficitAmount || overallFinancialHealth.projectedBalance))"></span>).
+                </p>
+              </div>
+            </div>
+
+            <!-- Cảnh báo chi tiết từng Hub nếu có -->
+            <template x-for="alert in getProjectedAlerts()" :key="alert.hubRole">
+              <div class="p-3.5 rounded-xl bg-rose-50/80 border border-rose-200 text-rose-900 flex items-start gap-3 text-xs">
+                <i class="fa-solid fa-circle-exclamation text-rose-500 mt-0.5 shrink-0"></i>
                 <div class="flex-1 min-w-0">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-bold text-rose-800 text-sm">
-                      ⚠️ Cảnh báo thiếu hụt thanh khoản ở <span x-text="alert.hubName"></span> vào ngày <span class="underline font-semibold" x-text="formatDate(alert.earliestDeficitDate)"></span>!
-                    </span>
-                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-200 text-rose-800">Cần cân đối nguồn tiền</span>
-                  </div>
-                  <p class="text-xs text-rose-700 mt-1">
-                    Số dư giả lập sau các khoản dự kiến: <strong class="font-mono font-bold" x-text="formatVND(alert.projectedBalance)"></strong>
-                    (Số dư khả dụng hiện tại: <span class="font-mono font-semibold" x-text="formatVND(alert.currentBalance)"></span>, Tổng dự thu: <span class="font-mono font-semibold text-emerald-700" x-text="'+' + formatVND(alert.totalIncome)"></span>, Tổng dự chi: <span class="font-mono font-semibold text-rose-700" x-text="'-' + formatVND(alert.totalExpense)"></span>).
-                  </p>
+                  <span class="font-bold text-rose-800">Thiếu hụt ở <span x-text="alert.hubName"></span> vào ngày <span class="underline" x-text="formatDate(alert.earliestDeficitDate)"></span></span>
+                  <span class="text-rose-600 ml-1" x-text="'(Số dư giả lập Hub: ' + formatVND(alert.projectedBalance) + ')'"></span>
                 </div>
               </div>
             </template>
+          </div>
+
+          <!-- BANNER SỨC KHỎE TÀI CHÍNH TỔNG THỂ THEO CÔNG THỨC CHUẨN (REAL-TIME COMPUTED) -->
+          <div class="p-5 rounded-2xl border transition-all space-y-4"
+               :class="overallFinancialHealth.isDeficit ? 'bg-rose-50/60 border-rose-300 ring-2 ring-rose-200' : 'bg-gradient-to-br from-slate-50 to-indigo-50/30 border-slate-200/80'">
+            
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <!-- Left: Text & Con số chính theo đúng yêu cầu -->
+              <div class="space-y-1">
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+                        :class="overallFinancialHealth.isDeficit ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'"
+                        x-text="overallFinancialHealth.isDeficit ? '⚠️ Thiếu Hụt Thanh Khoản' : '✓ Dòng Tiền An Toàn'"></span>
+                  <span class="text-[11px] text-slate-400 font-medium">Tự động cập nhật thời gian thực (Real-time)</span>
+                </div>
+                <h4 class="text-xs sm:text-sm font-bold text-slate-700">
+                  Sức khỏe tài chính tổng thể (sau khi trừ nợ &amp; cộng dự thu/chi):
+                </h4>
+                <div class="font-mono text-2xl sm:text-3xl font-extrabold tracking-tight"
+                     :class="overallFinancialHealth.projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'"
+                     x-text="formatVND(overallFinancialHealth.projectedBalance)"></div>
+              </div>
+
+              <!-- Right: Bóc tách 5 thành phần công thức chuẩn -->
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs bg-white/90 p-3.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                <div class="space-y-0.5">
+                  <span class="text-[10px] text-slate-500 font-semibold block uppercase">TIỀN MẶT THỰC TẾ:</span>
+                  <span class="font-mono font-bold text-slate-900" x-text="formatVND(overallFinancialHealth.totalActualCash)"></span>
+                </div>
+                <div class="space-y-0.5">
+                  <span class="text-[10px] text-amber-600 font-semibold block uppercase">- NỢ NCC / HŨ TIỀN HÀNG:</span>
+                  <span class="font-mono font-bold text-amber-700" x-text="'-' + formatVND(overallFinancialHealth.supplierDebt)"></span>
+                </div>
+                <div class="space-y-0.5">
+                  <span class="text-[10px] text-indigo-600 font-semibold block uppercase">+ MỌI NGƯỜI NỢ TÔI:</span>
+                  <span class="font-mono font-bold text-indigo-700" x-text="'+' + formatVND(overallFinancialHealth.totalReceivable)"
+                        :title="'Sổ quỹ ăn: ' + formatVND(overallFinancialHealth.diningReceivable) + ' + Sổ nợ 2 chiều: ' + formatVND(overallFinancialHealth.debtReceivable)"></span>
+                  <span class="text-[9px] text-slate-400 block truncate" x-text="'Quỹ ăn: ' + formatVND(overallFinancialHealth.diningReceivable)"></span>
+                </div>
+                <div class="space-y-0.5">
+                  <span class="text-[10px] text-slate-500 font-semibold block uppercase">DỰ THU / DỰ CHI:</span>
+                  <div class="font-mono font-bold text-[11px] flex items-center gap-1">
+                    <span class="text-emerald-600" x-text="'+' + formatVND(overallFinancialHealth.totalUpcomingIncome)"></span>
+                    <span>/</span>
+                    <span class="text-rose-600" x-text="'-' + formatVND(overallFinancialHealth.totalUpcomingExpense)"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dòng công thức diễn giải -->
+            <div class="pt-2.5 border-t border-slate-200/60 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
+              <span>
+                <strong>Công thức:</strong> [Tổng tiền mặt thực tế] - [Hũ tiền hàng NCC] + [Tổng nợ mọi người nợ tôi (Sổ quỹ ăn + Sổ nợ 2 chiều)] + [Tổng Dự Thu] - [Tổng Dự Chi]
+              </span>
+              <span class="font-mono text-[10px] text-slate-400">
+                (Sổ quỹ ăn nợ: <span class="font-bold text-slate-700" x-text="formatVND(overallFinancialHealth.diningReceivable)"></span> | Sổ nợ 2 chiều nợ: <span class="font-bold text-slate-700" x-text="formatVND(overallFinancialHealth.debtReceivable)"></span>)
+              </span>
+            </div>
           </div>
 
           <!-- PHẦN 3: THANH CẢNH BÁO SỨC KHỎE DÒNG TIỀN (Projected Balance 4 Hubs Cards) -->
@@ -4393,6 +4409,6 @@
   </div>
 
   <!-- Load App Script -->
-  <script src="/app.js?v=2.2"></script>
+  <script src="/app.js?v=2.3"></script>
 </body>
 </html>
