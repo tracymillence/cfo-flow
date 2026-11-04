@@ -18,6 +18,7 @@ const Transaction = require('./models/Transaction');
 const PersonalExpense = require('./models/PersonalExpense');
 const User = require('./models/User');
 const CorrectionRequest = require('./models/CorrectionRequest');
+const UpcomingTransaction = require('./models/UpcomingTransaction');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -1460,6 +1461,62 @@ app.delete('/api/reminders/:id', authenticateToken, requirePermission('manageTra
     const rem = await CashflowReminder.findByIdAndDelete(req.params.id);
     if (!rem) return res.status(404).json({ success: false, message: 'Không tìm thấy dòng nhắc' });
     res.json({ success: true, message: 'Đã xóa dòng nhắc dòng tiền' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// ==================== DỰ BÁO DÒNG TIỀN TƯƠNG LAI (CASH FLOW PROJECTION) ====================
+// Collection 'upcoming_transactions' tách biệt 100%, không can thiệp hay merge với sổ giao dịch thực tế
+app.get('/api/upcoming', authenticateToken, async (req, res) => {
+  try {
+    const upcoming = await UpcomingTransaction.find().sort({ date: 1, createdAt: 1 });
+    res.json({ success: true, upcoming });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/upcoming', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
+  try {
+    const { title, amount, type, date, hubRole, notes } = req.body;
+    if (!title || !title.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập tên khoản mục dự kiến' });
+    }
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ success: false, message: 'Số tiền dự kiến phải là số lớn hơn 0' });
+    }
+    if (!date) {
+      return res.status(400).json({ success: false, message: 'Vui lòng chọn ngày dự kiến thực hiện' });
+    }
+    const validHubs = ['hub1_income', 'hub2_dining', 'hub3_family', 'hub4_personal'];
+    const chosenHub = validHubs.includes(hubRole) ? hubRole : 'hub1_income';
+    const chosenType = (type === 'income') ? 'income' : 'expense';
+
+    const item = await UpcomingTransaction.create({
+      title: title.trim(),
+      amount: numAmount,
+      type: chosenType,
+      date: String(date).trim(),
+      hubRole: chosenHub,
+      notes: notes ? String(notes).trim() : '',
+      createdBy: req.user?.username || 'admin'
+    });
+
+    res.json({ success: true, item });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/upcoming/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
+  try {
+    const item = await UpcomingTransaction.findByIdAndDelete(req.params.id);
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy khoản dự kiến' });
+    }
+    res.json({ success: true, message: 'Đã hoàn tất / Xóa khoản dự kiến thành công' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }

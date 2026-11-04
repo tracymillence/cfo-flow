@@ -192,6 +192,20 @@ function cashFlowApp() {
       notes: ''
     },
 
+    // ==================== DỰ BÁO DÒNG TIỀN TƯƠNG LAI (UPCOMING CASH FLOW) ====================
+    upcomingList: [],
+    upcomingLoading: false,
+    upcomingFilterRange: 'all', // 'all' | '7days' | '30days'
+    upcomingFilterHub: 'all',   // 'all' | 'hub1_income' | 'hub2_dining' | 'hub3_family' | 'hub4_personal'
+    upcomingForm: {
+      type: 'expense',          // 'income' (Dự Thu) | 'expense' (Dự Chi)
+      amount: '',
+      title: '',
+      date: new Date().toISOString().slice(0, 10),
+      hubRole: 'hub1_income',   // Dropdown chọn 1 trong 4 Hub hiện tại
+      notes: ''
+    },
+
     debtForm: {
       type: 'receivable',
       personName: '',
@@ -1069,6 +1083,7 @@ function cashFlowApp() {
             this.personalConfigForm.weeklyLimit = data.card4_personal_hub.weeklyLimit || 1500000;
           }
           this.fetchCorrectionRequests();
+          this.fetchUpcomingTransactions();
         } else {
           this.error = data.error || 'Chưa thể kết nối tới cơ sở dữ liệu MongoDB Atlas.';
         }
@@ -2281,6 +2296,195 @@ function cashFlowApp() {
       } catch (err) {
         alert('Lỗi: ' + err.message);
       }
+    },
+
+    // ==================== DỰ BÁO DÒNG TIỀN TƯƠNG LAI (UPCOMING CASH FLOW) ====================
+    async fetchUpcomingTransactions() {
+      try {
+        this.upcomingLoading = true;
+        const res = await this.authFetch('/api/upcoming');
+        const data = await res.json();
+        if (data.success) {
+          this.upcomingList = data.upcoming || [];
+        }
+      } catch (err) {
+        console.error('Lỗi nạp dự báo dòng tiền:', err);
+      } finally {
+        this.upcomingLoading = false;
+      }
+    },
+
+    async submitUpcomingTransaction() {
+      if (!this.upcomingForm.title || !this.upcomingForm.title.trim()) {
+        this.notify('⚠️ Vui lòng nhập tên khoản mục dự kiến');
+        return;
+      }
+      const amount = Number(this.upcomingForm.amount);
+      if (!amount || amount <= 0) {
+        this.notify('⚠️ Vui lòng nhập số tiền dự kiến hợp lệ (> 0)');
+        return;
+      }
+      if (!this.upcomingForm.date) {
+        this.notify('⚠️ Vui lòng chọn ngày dự kiến thực hiện');
+        return;
+      }
+
+      try {
+        const res = await this.authFetch('/api/upcoming', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: this.upcomingForm.title.trim(),
+            amount: amount,
+            type: this.upcomingForm.type,
+            date: this.upcomingForm.date,
+            hubRole: this.upcomingForm.hubRole,
+            notes: this.upcomingForm.notes ? this.upcomingForm.notes.trim() : ''
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('✓ Đã ghi nhận khoản ' + (this.upcomingForm.type === 'income' ? 'Dự Thu' : 'Dự Chi') + ' vào bảng dự báo!');
+          this.upcomingForm.title = '';
+          this.upcomingForm.amount = '';
+          this.upcomingForm.notes = '';
+          await this.fetchUpcomingTransactions();
+        } else {
+          this.notify('❌ ' + (data.message || data.error || 'Lỗi lưu dự báo'));
+        }
+      } catch (err) {
+        this.notify('❌ Lỗi hệ thống: ' + err.message);
+      }
+    },
+
+    async deleteUpcomingTransaction(id, isMarkAsDone = true) {
+      const confirmText = isMarkAsDone
+        ? 'Xác nhận khoản này "Đã hoàn tất"?\n\nKhoản mục sẽ được xóa khỏi danh sách dự kiến (Bạn có thể tự ghi nhận vào sổ giao dịch thực tế nếu cần).'
+        : 'Bạn có chắc chắn muốn xóa khoản dự kiến này khỏi danh sách?';
+      if (!confirm(confirmText)) return;
+
+      try {
+        const res = await this.authFetch(`/api/upcoming/${id}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(isMarkAsDone ? '✓ Đã hoàn tất khoản dự kiến và gỡ khỏi danh sách!' : '🗑️ Đã xóa khoản dự kiến!');
+          await this.fetchUpcomingTransactions();
+        } else {
+          this.notify('❌ ' + (data.message || data.error || 'Lỗi'));
+        }
+      } catch (err) {
+        this.notify('❌ Lỗi hệ thống: ' + err.message);
+      }
+    },
+
+    getHubDisplayName(hubRole) {
+      const map = {
+        hub1_income: 'Hub 1: Thu Nhập & Kinh Doanh',
+        hub2_dining: 'Hub 2: Quỹ Ứng Ăn Nhóm',
+        hub3_family: 'Hub 3: Quỹ Gia Đình (6 người)',
+        hub4_personal: 'Hub 4: Cá Nhân & Tiết Kiệm'
+      };
+      return map[hubRole] || hubRole;
+    },
+
+    getHubCurrentAvailableBalance(hubRole) {
+      if (hubRole === 'hub1_income') {
+        // Tiền thật sự khả dụng của Hub 1 (đã trừ nợ NCC)
+        return (this.dashboard?.card1_cash?.spendableCash !== undefined)
+          ? this.dashboard.card1_cash.spendableCash
+          : (this.dashboard?.accounts?.hubs?.hub1_income?.balance || 0);
+      }
+      return this.dashboard?.accounts?.hubs?.[hubRole]?.balance || 0;
+    },
+
+    // Hàm read-only tính: [Số dư khả dụng hiện tại của Hub] + [Tổng Dự Thu của Hub đó] - [Tổng Dự Chi của Hub đó]
+    getProjectedBalanceForHub(hubRole) {
+      const currentBalance = this.getHubCurrentAvailableBalance(hubRole);
+      const items = (this.upcomingList || [])
+        .filter(it => it.hubRole === hubRole)
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+      const totalIncome = items
+        .filter(it => it.type === 'income')
+        .reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
+
+      const totalExpense = items
+        .filter(it => it.type === 'expense')
+        .reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
+
+      const projectedBalance = currentBalance + totalIncome - totalExpense;
+
+      // Tìm ngày đầu tiên xuất hiện thiếu hụt thanh khoản (running balance < 0)
+      let runningBalance = currentBalance;
+      let earliestDeficitDate = null;
+      let earliestDeficitAmount = 0;
+
+      for (const it of items) {
+        if (it.type === 'income') {
+          runningBalance += (Number(it.amount) || 0);
+        } else {
+          runningBalance -= (Number(it.amount) || 0);
+        }
+        if (runningBalance < 0 && !earliestDeficitDate) {
+          earliestDeficitDate = it.date;
+          earliestDeficitAmount = runningBalance;
+        }
+      }
+
+      if (projectedBalance < 0 && !earliestDeficitDate) {
+        earliestDeficitDate = items.length > 0 ? items[items.length - 1].date : new Date().toISOString().slice(0, 10);
+        earliestDeficitAmount = projectedBalance;
+      }
+
+      return {
+        hubRole,
+        hubName: this.getHubDisplayName(hubRole),
+        currentBalance,
+        totalIncome,
+        totalExpense,
+        projectedBalance,
+        isDeficit: (projectedBalance < 0) || (earliestDeficitDate !== null),
+        earliestDeficitDate,
+        earliestDeficitAmount,
+        itemCount: items.length
+      };
+    },
+
+    // Trả về danh sách cảnh báo thiếu hụt thanh khoản cho các Hub bị âm
+    getProjectedAlerts() {
+      const hubs = ['hub1_income', 'hub2_dining', 'hub3_family', 'hub4_personal'];
+      return hubs
+        .map(h => this.getProjectedBalanceForHub(h))
+        .filter(s => s.isDeficit);
+    },
+
+    // Danh sách dự kiến có lọc theo khoảng thời gian và Hub
+    getFilteredUpcomingTransactions() {
+      let list = [...(this.upcomingList || [])];
+
+      if (this.upcomingFilterHub && this.upcomingFilterHub !== 'all') {
+        list = list.filter(it => it.hubRole === this.upcomingFilterHub);
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayStr = today.toISOString().slice(0, 10);
+
+      if (this.upcomingFilterRange === '7days') {
+        const d7 = new Date(today);
+        d7.setDate(d7.getDate() + 7);
+        const d7Str = d7.toISOString().slice(0, 10);
+        list = list.filter(it => it.date >= todayStr && it.date <= d7Str);
+      } else if (this.upcomingFilterRange === '30days') {
+        const d30 = new Date(today);
+        d30.setDate(d30.getDate() + 30);
+        const d30Str = d30.toISOString().slice(0, 10);
+        list = list.filter(it => it.date >= todayStr && it.date <= d30Str);
+      }
+
+      return list.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     }
   };
 }
