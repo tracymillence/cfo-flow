@@ -986,7 +986,7 @@
                 </p>
               </div>
 
-              <form @submit.prevent="submitUpcomingTransaction()" class="space-y-3.5">
+              <form @submit.prevent="submitUpcomingTransaction()" novalidate class="space-y-3.5">
                 
                 <!-- Loại giao dịch: [Dự Thu] hoặc [Dự Chi] -->
                 <div>
@@ -1013,7 +1013,7 @@
                     Số tiền dự kiến (VNĐ): <span class="text-rose-500">*</span>
                   </label>
                   <div class="relative">
-                    <input type="number" x-model.number="upcomingForm.amount" required min="0" step="any"
+                    <input type="number" x-model.number="upcomingForm.amount" min="0" step="any"
                            placeholder="Ví dụ: 2000000"
                            class="w-full px-3 py-2 pr-12 text-sm font-mono border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition">
                     <span class="absolute right-3 top-2.5 text-xs font-bold text-slate-400">đ</span>
@@ -4393,6 +4393,6 @@
   </div>
 
   <!-- Load App Script -->
-  <script src="/app.js"></script>
+  <script src="/app.js?v=2.2"></script>
 </body>
 </html>
