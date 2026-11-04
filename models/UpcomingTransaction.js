@@ -45,3 +45,4 @@ upcomingTransactionSchema.index({ date: 1, createdAt: 1 });
 upcomingTransactionSchema.index({ hubRole: 1, date: 1 });
 
 module.exports = mongoose.model('UpcomingTransaction', upcomingTransactionSchema);
+
