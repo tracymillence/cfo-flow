@@ -119,7 +119,7 @@
       </div>
 
       <!-- Login Form -->
-      <form @submit.prevent="submitLogin()" class="space-y-4">
+      <form @submit.prevent="submitLogin()" class="space-y-4" novalidate>
         <div>
           <label class="block text-xs font-bold text-amber-200/90 mb-1.5 flex items-center gap-1.5">
             <i class="fa-solid fa-scroll text-amber-400 text-[11px]"></i>
@@ -2732,7 +2732,7 @@
         </button>
       </div>
 
-      <form @submit.prevent="submitTransaction()" class="space-y-3.5">
+      <form @submit.prevent="submitTransaction()" class="space-y-3.5" novalidate>
         <!-- Loại giao dịch -->
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Loại giao dịch</label>
@@ -2766,7 +2766,7 @@
           <!-- Số tiền -->
           <div>
             <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền (đ)</label>
-            <input type="number" x-model.number="transactionForm.amount" required placeholder="VD: 150000"
+            <input type="number" step="any" x-model.number="transactionForm.amount" required placeholder="VD: 150000"
                    class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none">
           </div>
           <!-- Ngày giao dịch -->
@@ -2865,7 +2865,7 @@
         </button>
       </div>
 
-      <form @submit.prevent="submitDiningBill()" class="space-y-3.5">
+      <form @submit.prevent="submitDiningBill()" class="space-y-3.5" novalidate>
         <!-- 1. Chọn loại quỹ -->
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Loại sổ quỹ</label>
@@ -2896,7 +2896,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tổng tiền bill (đ)</label>
-            <input type="number" x-model.number="diningBillForm.totalBill" @input="recalculateBillSplits()" required placeholder="VD: 156000"
+            <input type="number" step="any" x-model.number="diningBillForm.totalBill" @input="recalculateBillSplits()" required placeholder="VD: 156000"
                    class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none">
           </div>
           <div>
@@ -2978,7 +2978,7 @@
                           :class="p.selected ? 'font-bold' : 'text-slate-300'"
                           x-text="p.selected ? formatVND(p.customAmount) : '0đ'"></span>
 
-                    <input x-show="diningBillForm.splitMode === 'custom'" type="number"
+                    <input x-show="diningBillForm.splitMode === 'custom'" type="number" step="any"
                            x-model.number="p.customAmount" @input="recalculateBillSplits()"
                            :disabled="!p.selected"
                            placeholder="0"
@@ -3030,7 +3030,7 @@
         </button>
       </div>
 
-      <form @submit.prevent="submitSettlement()" class="space-y-3.5">
+      <form @submit.prevent="submitSettlement()" class="space-y-3.5" novalidate>
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Thuộc quỹ nào</label>
           <div class="grid grid-cols-2 gap-2">
@@ -3071,7 +3071,7 @@
 
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền (đ)</label>
-          <input type="number" x-model.number="settlementForm.amount" required placeholder="VD: 300000"
+          <input type="number" step="any" x-model.number="settlementForm.amount" required placeholder="VD: 300000"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none">
         </div>
 
@@ -3271,7 +3271,7 @@
         </button>
       </div>
 
-      <form @submit.prevent="submitMember()" class="space-y-3.5">
+      <form @submit.prevent="submitMember()" class="space-y-3.5" novalidate>
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tên thành viên</label>
           <input type="text" x-model="memberForm.name" required placeholder="VD: Yến, Bố, Mẹ..."
@@ -3289,7 +3289,7 @@
 
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số dư đầu kỳ (đ) (Dương: Còn quỹ, Âm: Đang nợ)</label>
-          <input type="number" x-model.number="memberForm.openingBalance" required placeholder="VD: 1276411 hoặc -8004088"
+          <input type="number" step="any" x-model.number="memberForm.openingBalance" required placeholder="VD: 1276411 hoặc -8004088"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none">
         </div>
 
@@ -3321,7 +3321,7 @@
         </button>
       </div>
 
-      <form @submit.prevent="submitAccount()" class="space-y-3.5">
+      <form @submit.prevent="submitAccount()" class="space-y-3.5" novalidate>
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tên tài khoản / Ngân hàng</label>
           <input type="text" x-model="accountForm.name" required placeholder="VD: Vietcombank, MoMo, Tiền mặt..."
@@ -3353,7 +3353,7 @@
 
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số dư thực tế hiện có (đ)</label>
-          <input type="number" x-model.number="accountForm.balance" required placeholder="VD: 3280742"
+          <input type="number" step="any" x-model.number="accountForm.balance" required placeholder="VD: 3280742"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none">
         </div>
 
@@ -3386,7 +3386,7 @@
         </button>
       </div>
 
-      <form @submit.prevent="submitSupplier()" class="space-y-3.5">
+      <form @submit.prevent="submitSupplier()" class="space-y-3.5" novalidate>
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Tên nhà cung cấp</label>
           <input type="text" x-model="supplierForm.supplierName" required placeholder="VD: NCC Pass Thuế, Xưởng Khắc Dấu..."
@@ -3395,7 +3395,7 @@
 
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền nợ thực tế hiện tại (đ)</label>
-          <input type="number" x-model.number="supplierForm.remainingAmount" required placeholder="VD: 420000"
+          <input type="number" step="any" x-model.number="supplierForm.remainingAmount" required placeholder="VD: 420000"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none">
         </div>
 
@@ -3434,7 +3434,7 @@
         </button>
       </div>
 
-      <form @submit.prevent="submitReminder()" class="space-y-3.5">
+      <form @submit.prevent="submitReminder()" class="space-y-3.5" novalidate>
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Nội dung nhắc nhở</label>
           <input type="text" x-model="reminderForm.title" required placeholder="VD: Nhận lương, Trả nợ NCC..."
@@ -3465,7 +3465,7 @@
 
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền dự kiến (đ)</label>
-          <input type="number" x-model.number="reminderForm.amount" required placeholder="VD: 17000000"
+          <input type="number" step="any" x-model.number="reminderForm.amount" required placeholder="VD: 17000000"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none">
         </div>
 
@@ -3504,7 +3504,7 @@
         </button>
       </div>
 
-      <form @submit.prevent="submitDebt()" class="space-y-3.5">
+      <form @submit.prevent="submitDebt()" class="space-y-3.5" novalidate>
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Chiều ghi nhận nợ</label>
           <div class="grid grid-cols-2 gap-2">
@@ -3529,7 +3529,7 @@
 
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Số tiền (đ)</label>
-          <input type="number" x-model.number="debtForm.amount" required placeholder="VD: 500000"
+          <input type="number" step="any" x-model.number="debtForm.amount" required placeholder="VD: 500000"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none">
         </div>
 
@@ -3568,10 +3568,10 @@
         </button>
       </div>
 
-      <form @submit.prevent="submitConfig()" class="space-y-3.5">
+      <form @submit.prevent="submitConfig()" class="space-y-3.5" novalidate>
         <div>
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Hạn mức chi tiêu tuần (đ)</label>
-          <input type="number" x-model.number="configForm.weeklyLimit" required
+          <input type="number" step="any" x-model.number="configForm.weeklyLimit" required
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-slate-900 focus:outline-none">
           <p class="text-[10px] text-slate-400 mt-1">Mặc định 1.500.000đ/tuần (tương đương 6.000.000đ/tháng)</p>
         </div>
@@ -3910,7 +3910,7 @@
         </button>
       </div>
 
-      <form @submit.prevent="submitUserModal()" class="space-y-4">
+      <form @submit.prevent="submitUserModal()" class="space-y-4" novalidate>
         
         <!-- User Basic Details -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -4141,7 +4141,7 @@
         <span x-text="changePasswordForm.error"></span>
       </div>
 
-      <form @submit.prevent="submitChangePassword()" class="space-y-3.5">
+      <form @submit.prevent="submitChangePassword()" class="space-y-3.5" novalidate>
         
         <!-- Mật khẩu hiện tại (hoặc mật khẩu mặc định) -->
         <div>
@@ -4411,7 +4411,7 @@
         </button>
       </div>
 
-      <form @submit.prevent="submitCorrectionRequest()" class="space-y-4 text-xs">
+      <form @submit.prevent="submitCorrectionRequest()" class="space-y-4 text-xs" novalidate>
         <div x-show="newCorrectionForm.error" class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium" x-text="newCorrectionForm.error"></div>
 
         <div class="grid grid-cols-2 gap-3">
@@ -4442,7 +4442,7 @@
 
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Số Tiền Liên Quan (VNĐ) <span class="text-slate-400 font-normal">(Nếu có)</span></label>
-          <input type="number" x-model="newCorrectionForm.amount" placeholder="0"
+          <input type="number" step="any" x-model="newCorrectionForm.amount" placeholder="0"
                  class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs">
         </div>
 
@@ -4894,6 +4894,6 @@
   </div>
 
   <!-- Load App Script -->
-  <script src="/app.js?v=3.1"></script>
+  <script src="/app.js?v=3.2"></script>
 </body>
 </html>
