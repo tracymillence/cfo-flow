@@ -622,6 +622,20 @@ function requirePermission(permKey) {
   };
 }
 
+function requireAnyPermission(...permKeys) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ success: false, error: 'Chưa đăng nhập' });
+    if (req.user.isAdmin) return next();
+    if (req.user.permissions && permKeys.some(k => req.user.permissions[k])) {
+      return next();
+    }
+    return res.status(403).json({
+      success: false,
+      error: `Tài khoản của bạn chưa được cấp quyền [${permKeys.join(' hoặc ')}]. Hãy liên hệ Quản trị viên (Admin) để cấu hình.`
+    });
+  };
+}
+
 // ==================== AUTHENTICATION APIS ====================
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -1642,70 +1656,185 @@ app.delete('/api/debts/:id', authenticateToken, requirePermission('manageDebts')
   }
 });
 
-// ==================== 5. ĐƠN DỊCH VỤ / BÁN DẤU CRUD ====================
-app.post('/api/service-orders', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
+// ==================== 5. ĐƠN DỊCH VỤ / BÁN HÀNG CRUD (CÔNG NỢ KHÁCH & VỐN NCC) ====================
+app.post('/api/service-orders', authenticateToken, requireAnyPermission('manageDebts', 'manageTransactions'), async (req, res) => {
   try {
-    const { customerName, serviceName, costPrice, salePrice, supplierKey, supplierName, customerPaid, supplierPaid, note } = req.body;
+    const { customerName, serviceName, costPrice, salePrice, supplierName, customerPaid, supplierPaid, date, note, receivedAccount } = req.body;
+    if (!customerName || !customerName.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập tên khách hàng' });
+    }
+
+    const sName = (supplierName || '').trim();
+    const sKey = sName ? normalizeKey(sName) : '';
+    const cPrice = Math.max(0, Number(costPrice) || 0);
+    const sPrice = Math.max(0, Number(salePrice) || 0);
+    const cPaid = Boolean(customerPaid);
+    const sPaid = Boolean(supplierPaid);
+
     const order = await ServiceOrder.create({
-      customerName,
-      serviceName,
-      costPrice: Number(costPrice) || 0,
-      salePrice: Number(salePrice) || 0,
-      supplierKey: supplierKey || normalizeKey(supplierName),
-      supplierName: supplierName || 'NCC',
-      customerPaid: Boolean(customerPaid),
-      supplierPaid: Boolean(supplierPaid),
-      note: note || ''
+      customerName: customerName.trim(),
+      serviceName: (serviceName || 'Bán dấu / Khắc dấu').trim(),
+      costPrice: cPrice,
+      salePrice: sPrice,
+      supplierName: sName,
+      supplierKey: sKey,
+      customerPaid: cPaid,
+      supplierPaid: sPaid,
+      receivedAccount: receivedAccount || 'Vietcombank',
+      date: date || new Date().toISOString().slice(0, 10),
+      note: (note || '').trim()
     });
 
-    if (!order.supplierPaid && order.costPrice > 0) {
-      const sKey = order.supplierKey || normalizeKey(order.supplierName);
+    // Nếu chưa thanh toán cho NCC và có giá vốn > 0 -> tự động cộng vào Hũ tiền nợ NCC
+    if (!sPaid && cPrice > 0 && sKey) {
       await SupplierDebt.findOneAndUpdate(
         { supplierKey: sKey },
         { 
-          $inc: { remainingAmount: order.costPrice },
-          $setOnInsert: { supplierName: order.supplierName }
+          $inc: { remainingAmount: cPrice },
+          $setOnInsert: { supplierName: sName }
         },
         { upsert: true }
       );
     }
 
-    res.json({ success: true, order });
+    res.json({ success: true, order, message: 'Đã lưu đơn hàng thành công' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-app.put('/api/service-orders/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
+app.put('/api/service-orders/:id', authenticateToken, requireAnyPermission('manageDebts', 'manageTransactions'), async (req, res) => {
   try {
-    const { customerName, serviceName, costPrice, salePrice, supplierName, customerPaid, supplierPaid, note } = req.body;
-    const order = await ServiceOrder.findByIdAndUpdate(
-      req.params.id,
-      {
-        customerName,
-        serviceName,
-        costPrice: Number(costPrice) || 0,
-        salePrice: Number(salePrice) || 0,
-        supplierName,
-        supplierKey: normalizeKey(supplierName),
-        customerPaid: Boolean(customerPaid),
-        supplierPaid: Boolean(supplierPaid),
-        note: note || ''
-      },
-      { new: true }
-    );
+    const { customerName, serviceName, costPrice, salePrice, supplierName, customerPaid, supplierPaid, date, note, receivedAccount } = req.body;
+    const oldOrder = await ServiceOrder.findById(req.params.id);
+    if (!oldOrder) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
+
+    const newSName = (supplierName || '').trim();
+    const newSKey = newSName ? normalizeKey(newSName) : '';
+    const newCPrice = Math.max(0, Number(costPrice) || 0);
+    const newSPrice = Math.max(0, Number(salePrice) || 0);
+    const newCPaid = Boolean(customerPaid);
+    const newSPaid = Boolean(supplierPaid);
+
+    // Hoàn tác trừ công nợ NCC cũ nếu đơn cũ từng chưa trả NCC
+    if (!oldOrder.supplierPaid && oldOrder.costPrice > 0 && oldOrder.supplierKey) {
+      await SupplierDebt.findOneAndUpdate(
+        { supplierKey: oldOrder.supplierKey },
+        { $inc: { remainingAmount: -oldOrder.costPrice } }
+      );
+    }
+
+    // Cập nhật đơn hàng
+    oldOrder.customerName = (customerName || '').trim();
+    oldOrder.serviceName = (serviceName || 'Bán dấu / Khắc dấu').trim();
+    oldOrder.costPrice = newCPrice;
+    oldOrder.salePrice = newSPrice;
+    oldOrder.supplierName = newSName;
+    oldOrder.supplierKey = newSKey;
+    oldOrder.customerPaid = newCPaid;
+    oldOrder.supplierPaid = newSPaid;
+    if (date) oldOrder.date = date;
+    if (receivedAccount !== undefined) oldOrder.receivedAccount = receivedAccount;
+    if (note !== undefined) oldOrder.note = (note || '').trim();
+    await oldOrder.save();
+
+    // Cộng công nợ NCC mới nếu đơn mới chưa trả NCC
+    if (!newSPaid && newCPrice > 0 && newSKey) {
+      await SupplierDebt.findOneAndUpdate(
+        { supplierKey: newSKey },
+        { 
+          $inc: { remainingAmount: newCPrice },
+          $setOnInsert: { supplierName: newSName }
+        },
+        { upsert: true }
+      );
+    }
+
+    // Đảm bảo không bị âm nợ NCC
+    await SupplierDebt.updateMany({ remainingAmount: { $lt: 0 } }, { $set: { remainingAmount: 0 } });
+
+    res.json({ success: true, order: oldOrder, message: 'Đã cập nhật đơn hàng thành công' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Chuyển đổi nhanh trạng thái: Khách đã trả / Chưa trả
+app.patch('/api/service-orders/:id/toggle-customer-paid', authenticateToken, requireAnyPermission('manageDebts', 'manageTransactions'), async (req, res) => {
+  try {
+    const order = await ServiceOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
-    res.json({ success: true, order });
+    order.customerPaid = !order.customerPaid;
+    await order.save();
+    res.json({ 
+      success: true, 
+      order, 
+      message: order.customerPaid ? `✓ Đã đánh dấu ${order.customerName} đã thanh toán!` : `Đã chuyển đơn của ${order.customerName} sang Chưa thanh toán` 
+    });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-app.delete('/api/service-orders/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
+// Chuyển đổi nhanh trạng thái: Đã trả vốn NCC / Nợ NCC
+app.patch('/api/service-orders/:id/toggle-supplier-paid', authenticateToken, requireAnyPermission('manageDebts', 'manageTransactions'), async (req, res) => {
   try {
-    const order = await ServiceOrder.findByIdAndDelete(req.params.id);
+    const order = await ServiceOrder.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
+    
+    const nextSupplierPaid = !order.supplierPaid;
+    const sKey = order.supplierKey || (order.supplierName ? normalizeKey(order.supplierName) : '');
+
+    if (order.costPrice > 0 && sKey) {
+      if (nextSupplierPaid) {
+        // Đã trả vốn -> trừ nợ NCC
+        await SupplierDebt.findOneAndUpdate(
+          { supplierKey: sKey },
+          { $inc: { remainingAmount: -order.costPrice } }
+        );
+      } else {
+        // Quay lại nợ vốn -> tăng lại nợ NCC
+        await SupplierDebt.findOneAndUpdate(
+          { supplierKey: sKey },
+          { 
+            $inc: { remainingAmount: order.costPrice },
+            $setOnInsert: { supplierName: order.supplierName }
+          },
+          { upsert: true }
+        );
+      }
+      await SupplierDebt.updateMany({ remainingAmount: { $lt: 0 } }, { $set: { remainingAmount: 0 } });
+    }
+
+    order.supplierPaid = nextSupplierPaid;
+    await order.save();
+
+    res.json({ 
+      success: true, 
+      order, 
+      message: nextSupplierPaid ? `✓ Đã đánh dấu đã trả vốn cho ${order.supplierName || 'NCC'}!` : `Đã chuyển sang còn nợ vốn NCC` 
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/service-orders/:id', authenticateToken, requireAnyPermission('manageDebts', 'manageTransactions'), async (req, res) => {
+  try {
+    const order = await ServiceOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
-    res.json({ success: true, message: 'Đã xóa đơn hàng' });
+
+    // Nếu đơn này chưa trả NCC, hoàn tác trừ nợ NCC
+    if (!order.supplierPaid && order.costPrice > 0 && order.supplierKey) {
+      await SupplierDebt.findOneAndUpdate(
+        { supplierKey: order.supplierKey },
+        { $inc: { remainingAmount: -order.costPrice } }
+      );
+      await SupplierDebt.updateMany({ remainingAmount: { $lt: 0 } }, { $set: { remainingAmount: 0 } });
+    }
+
+    await ServiceOrder.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Đã xóa đơn hàng thành công' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }

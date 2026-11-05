@@ -2111,6 +2111,178 @@
 
         </div>
 
+        <!-- 3. SỔ THEO DÕI ĐƠN HÀNG: CÔNG NỢ KHÁCH HÀNG & GIÁ VỐN NHÀ CUNG CẤP -->
+        <div class="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/80 shadow-card space-y-5">
+          <!-- Header -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold shadow-xs">
+                  <i class="fa-solid fa-file-invoice-dollar"></i>
+                </span>
+                <div>
+                  <h3 class="text-sm sm:text-base font-bold text-slate-900">Sổ Đơn Hàng: Khách Nợ Mua Hàng &amp; Giá Vốn Trả NCC</h3>
+                  <p class="text-xs text-slate-500 mt-0.5">Theo dõi khách mua hàng chưa thanh toán &amp; giá vốn phải trả nhà cung cấp theo thời gian thực (Real-time)</p>
+                </div>
+              </div>
+            </div>
+
+            <button type="button" @click="openServiceOrderModal()"
+                    class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0">
+              <i class="fa-solid fa-plus text-[10px]"></i>
+              <span>+ Ghi Đơn Hàng Mới</span>
+            </button>
+          </div>
+
+          <!-- 3 Thống kê trực quan: Khách nợ tôi, Nợ vốn NCC, Lợi nhuận dự kiến -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <!-- 1. Khách nợ tôi -->
+            <div class="p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 space-y-1">
+              <div class="flex items-center justify-between text-[11px] font-bold text-amber-900">
+                <span class="uppercase tracking-wider">Khách Nợ Tôi (Chưa Thu)</span>
+                <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px]" x-text="serviceOrdersSummary.countCustomerUnpaid + ' đơn'"></span>
+              </div>
+              <div class="text-2xl font-extrabold font-mono text-amber-700" x-text="formatVND(serviceOrdersSummary.totalCustomerUnpaid)"></div>
+              <p class="text-[10px] text-amber-700/80">Số tiền khách mua hàng/dấu/dịch vụ chưa trả</p>
+            </div>
+
+            <!-- 2. Nợ vốn NCC -->
+            <div class="p-4 rounded-xl bg-rose-50/70 border border-rose-200/80 space-y-1">
+              <div class="flex items-center justify-between text-[11px] font-bold text-rose-900">
+                <span class="uppercase tracking-wider">Nợ Vốn NCC (Chưa Trả)</span>
+                <span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px]" x-text="serviceOrdersSummary.countSupplierUnpaid + ' đơn'"></span>
+              </div>
+              <div class="text-2xl font-extrabold font-mono text-rose-600" x-text="formatVND(serviceOrdersSummary.totalSupplierUnpaid)"></div>
+              <p class="text-[10px] text-rose-600/80">Tiền vốn nhập hàng/dấu đang nợ nhà cung cấp</p>
+            </div>
+
+            <!-- 3. Lợi nhuận gộp -->
+            <div class="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200/80 space-y-1">
+              <div class="flex items-center justify-between text-[11px] font-bold text-emerald-900">
+                <span class="uppercase tracking-wider">Lợi Nhuận Gộp Đơn Hàng</span>
+                <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px]" x-text="serviceOrdersSummary.totalOrders + ' tổng đơn'"></span>
+              </div>
+              <div class="text-2xl font-extrabold font-mono text-emerald-700" x-text="formatVND(serviceOrdersSummary.totalProfit)"></div>
+              <p class="text-[10px] text-emerald-700/80">Chênh lệch giữa Giá bán khách và Giá vốn NCC</p>
+            </div>
+          </div>
+
+          <!-- Bộ lọc & Tìm kiếm -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+            <div class="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-semibold">
+              <button type="button" @click="serviceOrderFilter = 'all'"
+                      class="px-3 py-1.5 rounded-lg transition cursor-pointer"
+                      :class="serviceOrderFilter === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'">
+                Tất cả (<span x-text="dashboard?.allOrders?.length || 0"></span>)
+              </button>
+              <button type="button" @click="serviceOrderFilter = 'unpaid_customer'"
+                      class="px-3 py-1.5 rounded-lg transition cursor-pointer"
+                      :class="serviceOrderFilter === 'unpaid_customer' ? 'bg-amber-500 text-white shadow-xs' : 'text-amber-700 hover:text-amber-900'">
+                Khách chưa trả (<span x-text="serviceOrdersSummary.countCustomerUnpaid"></span>)
+              </button>
+              <button type="button" @click="serviceOrderFilter = 'unpaid_supplier'"
+                      class="px-3 py-1.5 rounded-lg transition cursor-pointer"
+                      :class="serviceOrderFilter === 'unpaid_supplier' ? 'bg-rose-500 text-white shadow-xs' : 'text-rose-700 hover:text-rose-900'">
+                Nợ vốn NCC (<span x-text="serviceOrdersSummary.countSupplierUnpaid"></span>)
+              </button>
+              <button type="button" @click="serviceOrderFilter = 'completed'"
+                      class="px-3 py-1.5 rounded-lg transition cursor-pointer"
+                      :class="serviceOrderFilter === 'completed' ? 'bg-emerald-600 text-white shadow-xs' : 'text-emerald-700 hover:text-emerald-900'">
+                Đã tất toán
+              </button>
+            </div>
+
+            <div class="relative w-full sm:w-64">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-400"></i>
+              <input type="text" x-model="serviceOrderSearch" placeholder="Tìm tên khách, con dấu, NCC..."
+                     class="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900">
+            </div>
+          </div>
+
+          <!-- Danh sách Đơn hàng -->
+          <div class="space-y-2.5">
+            <template x-for="o in filteredServiceOrders" :key="o._id">
+              <div class="p-4 rounded-xl border transition bg-white flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 hover:border-slate-300"
+                   :class="(!o.customerPaid && !o.supplierPaid) ? 'border-amber-200 bg-amber-50/20' : (o.customerPaid && o.supplierPaid ? 'border-slate-200/70 bg-slate-50/40 opacity-75' : 'border-slate-200/80')">
+                
+                <!-- Cột 1: Thông tin khách & mặt hàng -->
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <strong class="text-sm font-bold text-slate-900" x-text="o.customerName"></strong>
+                    <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700" x-text="o.serviceName || o.serviceType"></span>
+                    <span class="text-[11px] text-slate-400" x-text="formatDate(o.date)"></span>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-1">
+                    <span x-show="o.supplierName" class="flex items-center gap-1">
+                      <i class="fa-solid fa-truck text-[10px] text-slate-400"></i>
+                      <span>NCC: <strong class="text-slate-700 font-semibold" x-text="o.supplierName"></strong></span>
+                    </span>
+                    <span class="flex items-center gap-1">
+                      <i class="fa-solid fa-chart-line text-[10px] text-emerald-500"></i>
+                      <span>Lợi nhuận: <strong class="text-emerald-700 font-bold" x-text="formatVND((o.salePrice || 0) - (o.costPrice || 0))"></strong></span>
+                    </span>
+                    <span x-show="o.note" class="text-slate-400 italic" x-text="'• ' + o.note"></span>
+                  </div>
+                </div>
+
+                <!-- Cột 2: Trạng thái Khách hàng (Thu tiền) & Trạng thái NCC (Trả vốn) -->
+                <div class="flex flex-wrap items-center gap-3 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100">
+                  
+                  <!-- Khối Khách hàng -->
+                  <div class="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+                    <div class="text-right">
+                      <div class="text-[10px] text-slate-400 font-medium">Giá thu khách:</div>
+                      <div class="font-mono text-xs font-bold text-slate-900" x-text="formatVND(o.salePrice)"></div>
+                    </div>
+                    <button type="button" @click="toggleCustomerPaid(o)"
+                            class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                            :class="o.customerPaid ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' : 'bg-amber-500 text-white hover:bg-amber-600'">
+                      <i class="fa-solid" :class="o.customerPaid ? 'fa-check' : 'fa-hourglass-half'"></i>
+                      <span x-text="o.customerPaid ? 'Đã thu khách' : 'Chưa thu tiền'"></span>
+                    </button>
+                  </div>
+
+                  <!-- Khối NCC -->
+                  <div class="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+                    <div class="text-right">
+                      <div class="text-[10px] text-slate-400 font-medium">Giá vốn NCC:</div>
+                      <div class="font-mono text-xs font-bold text-amber-700" x-text="formatVND(o.costPrice)"></div>
+                    </div>
+                    <button type="button" @click="toggleSupplierPaid(o)"
+                            :disabled="!o.costPrice || o.costPrice === 0"
+                            class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs disabled:opacity-40 cursor-pointer"
+                            :class="o.supplierPaid ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' : 'bg-rose-500 text-white hover:bg-rose-600'">
+                      <i class="fa-solid" :class="o.supplierPaid ? 'fa-check' : 'fa-clock'"></i>
+                      <span x-text="o.supplierPaid ? 'Đã trả NCC' : 'Chưa trả vốn'"></span>
+                    </button>
+                  </div>
+
+                  <!-- Thao tác Sửa / Xóa -->
+                  <div class="flex items-center gap-1 border-l border-slate-200 pl-2">
+                    <button type="button" @click="openServiceOrderModal(o)" title="Sửa đơn"
+                            class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xs transition cursor-pointer">
+                      <i class="fa-solid fa-pen"></i>
+                    </button>
+                    <button type="button" @click="deleteServiceOrder(o)" title="Xoá đơn"
+                            class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs transition cursor-pointer">
+                      <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                  </div>
+
+                </div>
+
+              </div>
+            </template>
+
+            <!-- Trống -->
+            <div x-show="filteredServiceOrders.length === 0" class="py-8 text-center text-slate-400 space-y-2">
+              <i class="fa-solid fa-inbox text-3xl opacity-40"></i>
+              <p class="text-xs">Chưa có đơn hàng nào trong mục này. Bấm <strong>"+ Ghi Đơn Hàng Mới"</strong> để thêm!</p>
+            </div>
+          </div>
+
+        </div>
+
       </div>
 
       <!-- ==================================================================== -->
@@ -4400,6 +4572,164 @@
     </div>
   </div>
 
+  <!-- MODAL: GHI ĐƠN HÀNG & CÔNG NỢ KHÁCH - NCC -->
+  <div x-show="modals.service" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div @click.away="modals.service = false"
+         class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+        <div>
+          <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+            <span class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm shadow-xs">
+              <i class="fa-solid fa-file-invoice-dollar"></i>
+            </span>
+            <span x-text="serviceOrderForm._id ? 'Cập Nhật Đơn Hàng' : 'Ghi Nhận Đơn Hàng Mới'"></span>
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">Theo dõi khách mua hàng chưa thanh toán &amp; giá vốn phải trả nhà cung cấp.</p>
+        </div>
+        <button @click="modals.service = false" class="text-slate-400 hover:text-slate-600 text-lg p-1 cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="saveServiceOrder()" class="space-y-4 text-xs" novalidate>
+        <!-- Tên khách hàng -->
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Tên khách hàng: <span class="text-rose-500">*</span></label>
+          <input type="text" x-model="serviceOrderForm.customerName" placeholder="VD: Anh Tâm, Chị Vy, Bác Sĩ Cường..." required
+                 class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs font-medium">
+        </div>
+
+        <!-- Tên mặt hàng / dịch vụ -->
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Hàng hóa / Dịch vụ:</label>
+          <input type="text" x-model="serviceOrderForm.serviceName" placeholder="VD: 1 con dấu, Bán dấu, Reset pass thuế..."
+                 class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs">
+          <!-- Gợi ý nhanh -->
+          <div class="flex flex-wrap gap-1.5 mt-1.5">
+            <template x-for="item in ['1 con dấu', 'Khắc dấu chức danh', 'Reset pass thuế', 'Chữ ký số / Hóa đơn']">
+              <button type="button" @click="serviceOrderForm.serviceName = item"
+                      class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] transition cursor-pointer"
+                      x-text="item"></button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Giá bán & Trạng thái thu khách -->
+        <div class="p-3.5 rounded-xl bg-amber-50/50 border border-amber-200/80 space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="font-bold text-amber-900">1. Giá bán thu khách: <span class="text-rose-500">*</span></label>
+            <span class="text-[10px] text-amber-700">Khách trả tiền cho bạn</span>
+          </div>
+          <div>
+            <div class="relative">
+              <input type="text" x-model="serviceOrderForm.salePrice" placeholder="VD: 90000 hoặc 90k" required
+                     class="w-full px-3 py-2 border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-xs font-mono font-bold">
+              <span class="absolute right-3 top-2 text-xs font-bold text-slate-400">đ</span>
+            </div>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1.5">Trạng thái thanh toán của khách:</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" @click="serviceOrderForm.customerPaid = false"
+                      class="p-2 rounded-lg border text-center font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      :class="!serviceOrderForm.customerPaid ? 'bg-amber-500 border-amber-600 text-white shadow-2xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'">
+                <i class="fa-solid fa-hourglass-half"></i>
+                <span>Chưa trả (Khách nợ)</span>
+              </button>
+              <button type="button" @click="serviceOrderForm.customerPaid = true"
+                      class="p-2 rounded-lg border text-center font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      :class="serviceOrderForm.customerPaid ? 'bg-emerald-600 border-emerald-700 text-white shadow-2xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'">
+                <i class="fa-solid fa-check"></i>
+                <span>Đã thu tiền khách</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Giá vốn & Trạng thái trả NCC -->
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="font-bold text-slate-900">2. Giá vốn &amp; Nhà cung cấp:</label>
+            <span class="text-[10px] text-slate-500">Tiền vốn trả đối tác/NCC</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Tên Nhà cung cấp:</label>
+              <input type="text" x-model="serviceOrderForm.supplierName" list="supplierNamesList" placeholder="VD: Xưởng Khắc Dấu, Thuỳ BH..."
+                     class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs">
+              <datalist id="supplierNamesList">
+                <template x-for="sup in dashboard?.supplierPot?.suppliers || []" :key="sup._id">
+                  <option :value="sup.supplierName"></option>
+                </template>
+              </datalist>
+            </div>
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Giá vốn trả NCC:</label>
+              <div class="relative">
+                <input type="text" x-model="serviceOrderForm.costPrice" placeholder="VD: 50000 hoặc 50k"
+                       class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs font-mono font-bold text-amber-700">
+                <span class="absolute right-3 top-2 text-xs font-bold text-slate-400">đ</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1.5">Trạng thái thanh toán vốn NCC:</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" @click="serviceOrderForm.supplierPaid = false"
+                      class="p-2 rounded-lg border text-center font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      :class="!serviceOrderForm.supplierPaid ? 'bg-rose-500 border-rose-600 text-white shadow-2xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'">
+                <i class="fa-solid fa-clock"></i>
+                <span>Chưa trả (Nợ vốn NCC)</span>
+              </button>
+              <button type="button" @click="serviceOrderForm.supplierPaid = true"
+                      class="p-2 rounded-lg border text-center font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      :class="serviceOrderForm.supplierPaid ? 'bg-emerald-600 border-emerald-700 text-white shadow-2xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'">
+                <i class="fa-solid fa-check"></i>
+                <span>Đã trả vốn cho NCC</span>
+              </button>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1.5 italic" x-show="!serviceOrderForm.supplierPaid && serviceOrderForm.supplierName">
+              💡 Lưu ý: Khi chọn "Chưa trả", hệ thống sẽ tự động cộng số tiền vốn này vào Hũ nợ của NCC <strong x-text="serviceOrderForm.supplierName"></strong>.
+            </p>
+          </div>
+        </div>
+
+        <!-- Ngày & Ghi chú -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Ngày ghi nhận:</label>
+            <input type="date" x-model="serviceOrderForm.date" required
+                   class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Ghi chú (tùy chọn):</label>
+            <input type="text" x-model="serviceOrderForm.note" placeholder="VD: Khách hẹn chiều mai CK, nợ tạm..."
+                   class="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs">
+          </div>
+        </div>
+
+        <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
+          <button type="button" @click="modals.service = false"
+                  class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer">Hủy</button>
+          <button type="submit"
+                  class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer">
+            <i class="fa-solid fa-floppy-disk"></i>
+            <span>Lưu Đơn Hàng</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- TOAST NOTIFICATION -->
   <div x-show="toast.show" x-cloak
        x-transition:enter="transition ease-out duration-200"
@@ -4414,6 +4744,6 @@
   </div>
 
   <!-- Load App Script -->
-  <script src="/app.js?v=2.5"></script>
+  <script src="/app.js?v=2.6"></script>
 </body>
 </html>

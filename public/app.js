@@ -214,15 +214,20 @@ function cashFlowApp() {
       note: ''
     },
 
-    serviceForm: {
+    serviceOrderForm: {
+      _id: null,
       customerName: '',
-      serviceType: 'Reset pass thuế',
-      costPrice: 420000,
-      salePrice: 600000,
-      customerPaid: true,
+      serviceName: 'Bán dấu / Khắc dấu',
+      salePrice: '',
+      costPrice: '',
+      supplierName: '',
+      customerPaid: false,
       supplierPaid: false,
-      date: new Date().toISOString().slice(0, 10)
+      date: new Date().toISOString().slice(0, 10),
+      note: ''
     },
+    serviceOrderFilter: 'all', // 'all' | 'unpaid_customer' | 'unpaid_supplier' | 'completed'
+    serviceOrderSearch: '',
 
     // Sổ Giao Dịch Thu / Chi (Request 1)
     transactionForm: {
@@ -1397,6 +1402,138 @@ function cashFlowApp() {
       }
     },
 
+    // ==================== 3B. ĐƠN DỊCH VỤ / BÁN HÀNG & CÔNG NỢ KHÁCH - NCC ====================
+    openServiceOrderModal(order = null) {
+      if (order) {
+        this.serviceOrderForm = {
+          _id: order._id,
+          customerName: order.customerName || '',
+          serviceName: order.serviceName || 'Bán dấu / Khắc dấu',
+          salePrice: order.salePrice || '',
+          costPrice: order.costPrice || '',
+          supplierName: order.supplierName || '',
+          customerPaid: Boolean(order.customerPaid),
+          supplierPaid: Boolean(order.supplierPaid),
+          date: order.date || new Date().toISOString().slice(0, 10),
+          note: order.note || ''
+        };
+      } else {
+        this.serviceOrderForm = {
+          _id: null,
+          customerName: '',
+          serviceName: 'Bán dấu / Khắc dấu',
+          salePrice: '',
+          costPrice: '',
+          supplierName: '',
+          customerPaid: false,
+          supplierPaid: false,
+          date: new Date().toISOString().slice(0, 10),
+          note: ''
+        };
+      }
+      this.modals.service = true;
+    },
+
+    async saveServiceOrder() {
+      if (!this.serviceOrderForm.customerName || !this.serviceOrderForm.customerName.trim()) {
+        alert('Vui lòng nhập tên khách hàng!');
+        return;
+      }
+      const saleAmt = this.parseVND(this.serviceOrderForm.salePrice);
+      if (saleAmt <= 0) {
+        alert('Vui lòng nhập giá bán thu khách hợp lệ (> 0đ)!');
+        return;
+      }
+      const costAmt = this.parseVND(this.serviceOrderForm.costPrice);
+
+      const payload = {
+        customerName: this.serviceOrderForm.customerName.trim(),
+        serviceName: (this.serviceOrderForm.serviceName || 'Bán dấu / Khắc dấu').trim(),
+        salePrice: saleAmt,
+        costPrice: costAmt,
+        supplierName: (this.serviceOrderForm.supplierName || '').trim(),
+        customerPaid: Boolean(this.serviceOrderForm.customerPaid),
+        supplierPaid: Boolean(this.serviceOrderForm.supplierPaid),
+        date: this.serviceOrderForm.date || new Date().toISOString().slice(0, 10),
+        note: (this.serviceOrderForm.note || '').trim()
+      };
+
+      try {
+        const url = this.serviceOrderForm._id 
+          ? `/api/service-orders/${this.serviceOrderForm._id}`
+          : '/api/service-orders';
+        const method = this.serviceOrderForm._id ? 'PUT' : 'POST';
+
+        const res = await this.authFetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(this.serviceOrderForm._id ? '✓ Đã cập nhật đơn hàng!' : '✓ Đã ghi nhận đơn hàng mới!');
+          this.modals.service = false;
+          await this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async toggleCustomerPaid(order) {
+      try {
+        const res = await this.authFetch(`/api/service-orders/${order._id}/toggle-customer-paid`, {
+          method: 'PATCH'
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(data.message || '✓ Đã cập nhật trạng thái thu tiền khách!');
+          await this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async toggleSupplierPaid(order) {
+      try {
+        const res = await this.authFetch(`/api/service-orders/${order._id}/toggle-supplier-paid`, {
+          method: 'PATCH'
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(data.message || '✓ Đã cập nhật trạng thái trả vốn NCC!');
+          await this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async deleteServiceOrder(order) {
+      if (!confirm(`Xác nhận xóa đơn hàng của khách "${order.customerName}" (${this.formatVND(order.salePrice)})?`)) return;
+      try {
+        const res = await this.authFetch(`/api/service-orders/${order._id}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('🗑️ Đã xóa đơn hàng!');
+          await this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
     // ==================== 4. LỊCH NHẮC DÒNG TIỀN (TIMELINE CRUD) ====================
     openReminderModal(rem = null) {
       if (rem) {
@@ -2417,10 +2554,13 @@ function cashFlowApp() {
       // 2. Hũ tiền hàng / Nợ NCC hiện tại
       const supplierDebt = Number(this.dashboard?.supplierPot?.totalAmount ?? (this.dashboard?.card1_cash?.supplierPot || 0));
 
-      // 3. Tổng tiền mọi người đang nợ tôi (Khoản phải thu: Sổ quỹ ăn nợ tôi + Sổ nợ Bạn nợ tôi)
+      // 3. Tổng tiền mọi người đang nợ tôi (Khoản phải thu: Sổ quỹ ăn nợ tôi + Sổ nợ Bạn nợ tôi + Khách nợ tiền hàng chưa thu)
       const diningReceivable = Number(this.dashboard?.card4_dining?.combined?.totalDebtReceivable ?? (this.dashboard?.card4_dining?.totalDebtReceivable || 0));
       const debtReceivable = Number(this.dashboard?.debtSummary?.totalReceivable || 0);
-      const totalReceivable = diningReceivable + debtReceivable;
+      const ordersReceivable = (this.dashboard?.allOrders || [])
+        .filter(o => !o.customerPaid)
+        .reduce((sum, o) => sum + (Number(o.salePrice) || 0), 0);
+      const totalReceivable = diningReceivable + debtReceivable + ordersReceivable;
 
       // 4. Tổng tiền tôi đang nợ mọi người (Khoản phải trả: Còn dư quỹ ăn tôi giữ hộ + Sổ nợ Tôi nợ bạn)
       const diningPayable = Number(this.dashboard?.card4_dining?.combined?.totalSurplusFund ?? (this.dashboard?.card4_dining?.totalSurplusFund || 0));
@@ -2480,6 +2620,49 @@ function cashFlowApp() {
         earliestDeficitDate,
         earliestDeficitAmount
       };
+    },
+
+    get serviceOrdersSummary() {
+      const orders = this.dashboard?.allOrders || [];
+      const unpaidCustomers = orders.filter(o => !o.customerPaid);
+      const unpaidSuppliers = orders.filter(o => !o.supplierPaid && (Number(o.costPrice) || 0) > 0);
+      
+      const totalCustomerUnpaid = unpaidCustomers.reduce((sum, o) => sum + (Number(o.salePrice) || 0), 0);
+      const totalSupplierUnpaid = unpaidSuppliers.reduce((sum, o) => sum + (Number(o.costPrice) || 0), 0);
+      const totalProfit = orders.reduce((sum, o) => sum + ((Number(o.salePrice) || 0) - (Number(o.costPrice) || 0)), 0);
+
+      return {
+        totalCustomerUnpaid,
+        countCustomerUnpaid: unpaidCustomers.length,
+        totalSupplierUnpaid,
+        countSupplierUnpaid: unpaidSuppliers.length,
+        totalProfit,
+        totalOrders: orders.length
+      };
+    },
+
+    get filteredServiceOrders() {
+      let list = [...(this.dashboard?.allOrders || [])];
+      
+      if (this.serviceOrderFilter === 'unpaid_customer') {
+        list = list.filter(o => !o.customerPaid);
+      } else if (this.serviceOrderFilter === 'unpaid_supplier') {
+        list = list.filter(o => !o.supplierPaid && (Number(o.costPrice) || 0) > 0);
+      } else if (this.serviceOrderFilter === 'completed') {
+        list = list.filter(o => o.customerPaid && (o.supplierPaid || (Number(o.costPrice) || 0) === 0));
+      }
+
+      if (this.serviceOrderSearch && this.serviceOrderSearch.trim()) {
+        const q = this.serviceOrderSearch.trim().toLowerCase();
+        list = list.filter(o => 
+          (o.customerName && o.customerName.toLowerCase().includes(q)) ||
+          (o.serviceName && o.serviceName.toLowerCase().includes(q)) ||
+          (o.supplierName && o.supplierName.toLowerCase().includes(q)) ||
+          (o.note && o.note.toLowerCase().includes(q))
+        );
+      }
+
+      return list;
     },
 
     getHubDisplayName(hubRole) {
