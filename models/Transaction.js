@@ -20,6 +20,7 @@ const transactionSchema = new mongoose.Schema({
     default: 'hub4_personal' 
   },
   impactsWeeklyLimit: { type: Boolean, default: false },
+  usingSupplierFloat: { type: Boolean, default: false },
   relatedBillId: { type: String, default: '' },
   notes: { type: String, default: '' }
 }, { timestamps: true });

@@ -358,6 +358,14 @@
       <!-- ==================================================================== -->
       <div x-show="activeTab === 'overview' && (currentUser?.isAdmin || currentUser?.permissions?.viewOverview)" class="space-y-6">
 
+        <!-- BANNER CẢNH BÁO THẤU CHI NỘI BỘ (VỐN CHIẾM DỤNG NCC) -->
+        <div x-show="(dashboard.card1_cash?.spendableCash || 0) < 0" x-cloak
+             class="p-4 rounded-2xl bg-amber-600 text-white font-bold text-sm sm:text-base flex items-center justify-between gap-3 shadow-md border border-amber-500">
+          <div class="flex items-center gap-3">
+            <span>⚠️ ĐANG DÙNG VỐN CHIẾM DỤNG (NCC): <span x-text="Math.abs(dashboard.card1_cash?.spendableCash || 0).toLocaleString('vi-VN')"></span> VNĐ - Hãy lưu ý dòng tiền khi đến hạn thanh toán!</span>
+          </div>
+        </div>
+
         <!-- 1. HERO METRIC CARDS (4 CARDS) -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
@@ -1383,6 +1391,9 @@
                             x-text="t.hubRole === 'hub1_income' ? 'Hub 1' : (t.hubRole === 'hub2_dining' ? 'Hub 2' : (t.hubRole === 'hub3_family' ? 'Hub 3' : 'Hub 4'))"></span>
                       <span x-show="t.impactsWeeklyLimit" class="px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 text-[10px] font-bold">
                         Trừ Hạn Mức Tuần
+                      </span>
+                      <span x-show="t.usingSupplierFloat" class="px-1.5 py-0.2 rounded bg-amber-500 text-white text-[10px] font-bold shadow-xs">
+                        ⚠️ Thấu chi NCC
                       </span>
                       <span x-show="t.source && t.source !== 'direct'"
                             class="px-1.5 py-0.2 rounded text-[10px] font-bold border"
@@ -2749,6 +2760,12 @@
         <button type="button" @click="modals.transaction = false" class="text-slate-400 hover:text-slate-700">
           <i class="fa-solid fa-xmark text-sm"></i>
         </button>
+      </div>
+
+      <!-- Banner cảnh báo thấu chi nội bộ khi tiền khả dụng âm trong Form Thu/Chi -->
+      <div x-show="(dashboard.card1_cash?.spendableCash || 0) < 0" x-cloak
+           class="p-3.5 rounded-xl bg-amber-600 text-white text-xs font-bold shadow-sm flex items-center gap-2">
+        <span>⚠️ ĐANG DÙNG VỐN CHIẾM DỤNG (NCC): <span x-text="Math.abs(dashboard.card1_cash?.spendableCash || 0).toLocaleString('vi-VN')"></span> VNĐ - Hãy lưu ý dòng tiền khi đến hạn thanh toán!</span>
       </div>
 
       <form @submit.prevent="submitTransaction()" class="space-y-3.5" novalidate>

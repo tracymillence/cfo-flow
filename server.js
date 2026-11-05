@@ -190,10 +190,10 @@ app.use('/api', async (req, res, next) => {
 
 // ==================== CORE FINANCIAL ENGINE & GUARDS ====================
 
-// ISSUE 1: Hard Block for Spendable Cash (SpendableCash = TotalPhysicalCash - TotalSupplierDebt)
-async function checkSpendableCashBlock(amountToSpend, session = null) {
+// Hỗ trợ Thấu chi nội bộ (Supplier Float): kiểm tra nếu khoản chi vượt quá Tiền Khả Dụng (SpendableCash)
+async function isUsingSupplierFloat(amountToSpend, session = null) {
   const parsedAmount = Number(amountToSpend);
-  if (isNaN(parsedAmount) || parsedAmount <= 0) return;
+  if (isNaN(parsedAmount) || parsedAmount <= 0) return false;
 
   const [cashResult] = await Account.aggregate([
     { $group: { _id: null, totalCash: { $sum: '$balance' } } }
@@ -207,16 +207,13 @@ async function checkSpendableCashBlock(amountToSpend, session = null) {
   const totalSupplierDebt = debtResult ? debtResult.totalDebt : 0;
   const spendableCash = totalPhysicalCash - totalSupplierDebt;
 
-  if (spendableCash < parsedAmount) {
-    const error = new Error(
-      `Không đủ tiền khả dụng: Hũ tiền hàng nợ NCC đang khóa ${totalSupplierDebt.toLocaleString('vi-VN')}đ. ` +
-      `Tiền thực khả dụng hiện tại: ${spendableCash.toLocaleString('vi-VN')}đ, cần chi: ${parsedAmount.toLocaleString('vi-VN')}đ.`
-    );
-    error.statusCode = 400;
-    error.code = 'ERR_SPENDABLE_CASH_EXCEEDED';
-    throw error;
-  }
-  return { totalPhysicalCash, totalSupplierDebt, spendableCash };
+  // Trả về true nếu số tiền chi tiêu vượt quá tiền thực khả dụng (đang chiếm dụng vốn nợ NCC)
+  return spendableCash < parsedAmount;
+}
+
+// Giữ lại hàm tương thích ngược nhưng KHÔNG throw error 400 (chuyển hoàn toàn sang cơ chế Thấu chi nội bộ)
+async function checkSpendableCashBlock(amountToSpend, session = null) {
+  return await isUsingSupplierFloat(amountToSpend, session);
 }
 
 // ISSUE 4: Atomic Account Balance Update using MongoDB $inc operator (Prevents race conditions)
@@ -1382,9 +1379,11 @@ app.post('/api/transactions', authenticateToken, requirePermission('manageTransa
 
     const numAmount = Number(amount);
 
-    // ISSUE 1: Hard Block - Chặn mọi chi tiêu nếu vượt quá tiền khả dụng (bảo vệ hũ hàng NCC)
+    // TÁC VỤ 2: Cơ chế Thấu chi nội bộ (Supplier Float) - Không chặn lỗi 400
+    // Nếu SpendableCash < amountToSpend thì tự động gán usingSupplierFloat = true
+    let usingSupplierFloat = false;
     if (type === 'expense') {
-      await checkSpendableCashBlock(numAmount);
+      usingSupplierFloat = await isUsingSupplierFloat(numAmount);
     }
 
     const tx = await Transaction.create({
@@ -1397,6 +1396,7 @@ app.post('/api/transactions', authenticateToken, requirePermission('manageTransa
       category: category || 'Chi tiêu',
       hubRole: hubRole || 'hub4_personal',
       impactsWeeklyLimit: Boolean(impactsWeeklyLimit),
+      usingSupplierFloat,
       notes: notes || ''
     });
 
@@ -1450,9 +1450,10 @@ app.put('/api/transactions/:id', authenticateToken, requirePermission('manageTra
       }
     }
 
-    // ISSUE 1: Hard block kiểm tra sau khi hoàn tác
+    // TÁC VỤ 2: Thấu chi nội bộ (Supplier Float) khi chỉnh sửa
+    let usingSupplierFloat = false;
     if (type === 'expense') {
-      await checkSpendableCashBlock(numAmount);
+      usingSupplierFloat = await isUsingSupplierFloat(numAmount);
     }
 
     oldTx.date = date || oldTx.date;
@@ -1464,6 +1465,7 @@ app.put('/api/transactions/:id', authenticateToken, requirePermission('manageTra
     oldTx.category = category;
     oldTx.hubRole = hubRole;
     oldTx.impactsWeeklyLimit = Boolean(impactsWeeklyLimit);
+    oldTx.usingSupplierFloat = usingSupplierFloat;
     oldTx.notes = notes || '';
 
     await oldTx.save();
@@ -2153,11 +2155,6 @@ app.post('/api/dining/bill', authenticateToken, async (req, res) => {
     const numTotal = Number(totalBill) || 0;
     const shouldDeduct = deductFromAccount !== false;
 
-    // ISSUE 1: Hard block kiểm tra tiền khả dụng trước khi chi tiêu quỹ ăn
-    if (shouldDeduct && numTotal > 0) {
-      await checkSpendableCashBlock(numTotal);
-    }
-
     // ISSUE 3: Chuẩn hóa gán memberId cho từng người trong split nếu có
     let formattedSplits = Array.isArray(splits) ? [...splits] : [];
     for (const sp of formattedSplits) {
@@ -2224,11 +2221,6 @@ app.put('/api/dining/bill/:id', authenticateToken, async (req, res) => {
 
     const numTotal = Number(totalBill) || 0;
     const shouldDeduct = deductFromAccount !== false;
-
-    // ISSUE 1: Hard block sau khi đã hoàn tác số cũ
-    if (shouldDeduct && numTotal > 0) {
-      await checkSpendableCashBlock(numTotal);
-    }
 
     // ISSUE 3: Chuẩn hóa gán memberId
     let formattedSplits = Array.isArray(splits) ? [...splits] : (oldBill.splits || []);
@@ -2300,11 +2292,6 @@ app.post('/api/dining/settlement', authenticateToken, async (req, res) => {
     const numAmount = Number(amount) || 0;
     const shouldAdd = addToAccount !== false;
 
-    // ISSUE 1: Hard block kiểm tra tiền khả dụng nếu là rút tiền mặt/chi từ ngân hàng
-    if (shouldAdd && direction === 'out' && numAmount > 0) {
-      await checkSpendableCashBlock(numAmount);
-    }
-
     // ISSUE 3: Tra cứu memberId chính xác cho thành viên
     let mId = req.body.memberId || null;
     if (!mId && personName) {
@@ -2359,11 +2346,6 @@ app.put('/api/dining/settlement/:id', authenticateToken, async (req, res) => {
     const pKey = normalizeKey(personName);
     const numAmount = Number(amount) || 0;
     const shouldAdd = addToAccount !== false;
-
-    // ISSUE 1: Hard block kiểm tra tiền khả dụng sau khi hoàn tác
-    if (shouldAdd && direction === 'out' && numAmount > 0) {
-      await checkSpendableCashBlock(numAmount);
-    }
 
     // ISSUE 3: Tra cứu memberId
     let finalMemberId = memberId || oldS.memberId || null;
