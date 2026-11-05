@@ -77,62 +77,86 @@
 </head>
 <body x-data="cashFlowApp()" class="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-800 antialiased selection:bg-brand-100 selection:text-brand-900 pb-20 sm:pb-8 overflow-x-hidden w-full max-w-full">
 
-  <!-- ==================== 0. LOGIN SCREEN OVERLAY ==================== -->
-  <div x-show="!isLoggedIn" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
-    <div class="bg-white rounded-3xl border border-slate-200/80 shadow-2xl max-w-md w-full p-7 sm:p-8 relative overflow-hidden"
-         @keyup.enter="submitLogin()">
-      <!-- Background Ambient Glow -->
-      <div class="absolute -top-16 -right-16 w-36 h-36 bg-emerald-400/20 rounded-full blur-2xl pointer-events-none"></div>
-      <div class="absolute -bottom-16 -left-16 w-36 h-36 bg-sky-500/20 rounded-full blur-2xl pointer-events-none"></div>
+  <!-- ==================== 0. LOGIN SCREEN OVERLAY (ZHONGLI / GEO ARCHON STYLE) ==================== -->
+  <div x-show="!isLoggedIn" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0a0806]/92 backdrop-blur-xl">
+    <!-- Atmospheric Ambient Geo Amber Glows -->
+    <div class="w-96 h-96 bg-amber-500/15 rounded-full blur-3xl pointer-events-none absolute -top-20"></div>
+    <div class="w-96 h-96 bg-yellow-600/10 rounded-full blur-3xl pointer-events-none absolute -bottom-20"></div>
 
-      <!-- Brand Logo & Header -->
+    <div class="bg-[#171310]/95 rounded-3xl border border-amber-500/40 shadow-[0_0_50px_rgba(217,119,6,0.25)] max-w-md w-full p-7 sm:p-8 relative overflow-hidden text-stone-100"
+         @keyup.enter="submitLogin()">
+      
+      <!-- Decorative Liyue Geometric Corner Brackets (Rex Lapis Stone Style) -->
+      <div class="absolute top-2.5 left-2.5 w-4 h-4 border-t-2 border-l-2 border-amber-400/80 pointer-events-none"></div>
+      <div class="absolute top-2.5 right-2.5 w-4 h-4 border-t-2 border-r-2 border-amber-400/80 pointer-events-none"></div>
+      <div class="absolute bottom-2.5 left-2.5 w-4 h-4 border-b-2 border-l-2 border-amber-400/80 pointer-events-none"></div>
+      <div class="absolute bottom-2.5 right-2.5 w-4 h-4 border-b-2 border-r-2 border-amber-400/80 pointer-events-none"></div>
+
+      <!-- Top Subtle Gold Highlight Line -->
+      <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent"></div>
+
+      <!-- Rex Lapis Geo Emblem (Glowing Amber Diamond Seal) -->
       <div class="text-center mb-6 relative">
-        <div class="w-13 h-13 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-extrabold text-xl shadow-md mx-auto mb-3 relative">
-          <i class="fa-solid fa-gem text-emerald-400"></i>
-          <span class="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+        <div class="relative mx-auto w-14 h-14 mb-3.5 flex items-center justify-center">
+          <div class="absolute inset-0 bg-gradient-to-tr from-amber-600 via-yellow-500 to-amber-700 rounded-2xl rotate-45 shadow-[0_0_25px_rgba(245,158,11,0.55)] border border-amber-300/80"></div>
+          <i class="fa-solid fa-gem text-stone-950 text-xl relative z-10 drop-shadow-sm"></i>
+          <span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-300 shadow-[0_0_8px_#fde047] z-20"></span>
         </div>
-        <h2 class="text-xl font-extrabold text-slate-900 tracking-tight">CFO Flow</h2>
-        <p class="text-xs font-medium text-slate-500 mt-1">Hệ Thống Quản Lý Dòng Tiền &amp; Sổ Quỹ Tách Biệt</p>
+
+        <h2 class="text-2xl font-black tracking-wider bg-gradient-to-r from-amber-100 via-amber-300 to-yellow-500 bg-clip-text text-transparent uppercase font-serif">CFO Flow</h2>
+        <div class="flex items-center justify-center gap-2 mt-1.5">
+          <span class="h-[1px] w-6 bg-amber-500/50"></span>
+          <p class="text-[11px] font-bold text-amber-300/90 tracking-widest uppercase">Khế Ước Bàn Thạch • Nham Vương</p>
+          <span class="h-[1px] w-6 bg-amber-500/50"></span>
+        </div>
+        <p class="text-[10px] text-stone-400 mt-1 italic">"Mọi khế ước tài chính đều vững vàng như thạch trụ"</p>
       </div>
 
       <!-- Error Alert -->
-      <div x-show="loginForm.error" x-cloak class="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-        <i class="fa-solid fa-triangle-exclamation text-rose-500 shrink-0"></i>
+      <div x-show="loginForm.error" x-cloak class="mb-4 p-3 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-200 text-xs flex items-center gap-2">
+        <i class="fa-solid fa-triangle-exclamation text-rose-400 shrink-0"></i>
         <span x-text="loginForm.error"></span>
       </div>
 
       <!-- Login Form -->
       <form @submit.prevent="submitLogin()" class="space-y-4">
         <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Tên đăng nhập</label>
+          <label class="block text-xs font-bold text-amber-200/90 mb-1.5 flex items-center gap-1.5">
+            <i class="fa-solid fa-scroll text-amber-400 text-[11px]"></i>
+            <span>Danh tính Khế Ước (Tên đăng nhập)</span>
+          </label>
           <div class="relative">
-            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-amber-500/70 pointer-events-none">
               <i class="fa-solid fa-user text-xs"></i>
             </span>
             <input type="text" x-model="loginForm.username" required placeholder="admin hoặc tên tài khoản"
-                   class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-slate-900 focus:outline-none transition">
+                   class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#0d0b09]/90 border border-amber-500/30 text-amber-100 text-xs font-medium placeholder-stone-500 focus:ring-2 focus:ring-amber-500/40 focus:border-amber-400 focus:outline-none transition">
           </div>
         </div>
 
         <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Mật khẩu</label>
+          <label class="block text-xs font-bold text-amber-200/90 mb-1.5 flex items-center gap-1.5">
+            <i class="fa-solid fa-shield-halved text-amber-400 text-[11px]"></i>
+            <span>Mật ấn Khế Ước (Mật khẩu)</span>
+          </label>
           <div class="relative">
-            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-amber-500/70 pointer-events-none">
               <i class="fa-solid fa-lock text-xs"></i>
             </span>
-            <input :type="loginForm.showPassword ? 'text' : 'password'" x-model="loginForm.password" required placeholder="Nhập mật khẩu"
-                   class="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-slate-900 focus:outline-none transition">
+            <input :type="loginForm.showPassword ? 'text' : 'password'" x-model="loginForm.password" required placeholder="Nhập mật ấn"
+                   class="w-full pl-10 pr-10 py-2.5 rounded-xl bg-[#0d0b09]/90 border border-amber-500/30 text-amber-100 text-xs font-medium placeholder-stone-500 focus:ring-2 focus:ring-amber-500/40 focus:border-amber-400 focus:outline-none transition">
             <button type="button" @click="loginForm.showPassword = !loginForm.showPassword"
-                    class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600">
+                    class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-amber-400/70 hover:text-amber-300 cursor-pointer">
               <i class="fa-solid" :class="loginForm.showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
             </button>
           </div>
         </div>
 
         <button type="submit" :disabled="loginForm.loading"
-                class="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-2">
+                class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 active:scale-[0.99] text-stone-950 text-xs font-extrabold uppercase tracking-wider transition-all duration-300 shadow-[0_0_20px_rgba(245,158,11,0.4)] flex items-center justify-center gap-2 border border-amber-300/50 cursor-pointer disabled:opacity-50 mt-1">
           <i x-show="loginForm.loading" class="fa-solid fa-circle-notch fa-spin text-xs"></i>
-          <span x-text="loginForm.loading ? 'Đang xác thực...' : 'Đăng Nhập'"></span>
+          <i x-show="!loginForm.loading" class="fa-solid fa-gem text-xs"></i>
+          <span x-text="loginForm.loading ? 'Đang thẩm định khế ước...' : 'Ký Kết Khế Ước (Đăng Nhập)'"></span>
         </button>
       </form>
     </div>
@@ -4863,6 +4887,6 @@
   </div>
 
   <!-- Load App Script -->
-  <script src="/app.js?v=2.8"></script>
+  <script src="/app.js?v=2.9"></script>
 </body>
 </html>
