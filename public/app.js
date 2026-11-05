@@ -896,6 +896,27 @@ function cashFlowApp() {
       return Math.round(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') + 'đ';
     },
 
+    parseVND(input) {
+      if (input === null || input === undefined) return 0;
+      let s = String(input).trim().toLowerCase();
+      let multiplier = 1;
+      if (s.endsWith('tr') || s.endsWith('m') || s.endsWith('triệu')) {
+        multiplier = 1000000;
+        s = s.replace(/(tr|m|triệu)/g, '').trim();
+      } else if (s.endsWith('k') || s.endsWith('nghìn') || s.endsWith('ngàn')) {
+        multiplier = 1000;
+        s = s.replace(/(k|nghìn|ngàn)/g, '').trim();
+      }
+      s = s.replace(/[đ\s]/g, '');
+      if (multiplier === 1) {
+        s = s.replace(/[.,]/g, '');
+      } else {
+        s = s.replace(',', '.');
+      }
+      const val = parseFloat(s) * multiplier;
+      return isNaN(val) ? 0 : Math.round(val);
+    },
+
     formatDate(str) {
       if (!str) return '';
       const parts = str.split('-');
@@ -1322,11 +1343,14 @@ function cashFlowApp() {
     },
 
     async paySupplierPrompt(sup) {
-      const input = prompt(`Số tiền trả cho NCC "${sup.supplierName}" (Hiện nợ: ${this.formatVND(sup.remainingAmount)}):`, sup.remainingAmount);
+      const input = prompt(
+        `Nhập số tiền muốn trả cho NCC "${sup.supplierName}":\n(Nợ hiện tại: ${this.formatVND(sup.remainingAmount)})\n\n💡 Bạn có thể trả một phần (VD: gõ 480k, 480000 hoặc 480.000):`,
+        sup.remainingAmount
+      );
       if (input === null) return;
-      const payAmount = parseFloat(input.replace(/[^\d.-]/g, ''));
-      if (isNaN(payAmount) || payAmount <= 0) {
-        alert('Vui lòng nhập số tiền hợp lệ!');
+      const payAmount = this.parseVND(input);
+      if (payAmount <= 0) {
+        alert('Vui lòng nhập số tiền hợp lệ lớn hơn 0đ!');
         return;
       }
       try {
