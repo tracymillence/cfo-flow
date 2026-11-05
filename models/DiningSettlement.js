@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const diningSettlementSchema = new mongoose.Schema({
   monthKey: { type: String, default: '2026-11' },
+  memberId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'DiningMember', 
+    default: null,
+    index: true 
+  },
   personKey: { type: String, required: true },
   personName: { type: String, required: true },
   category: { type: String, enum: ['work', 'family'], default: 'work' },

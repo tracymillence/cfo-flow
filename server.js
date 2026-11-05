@@ -19,6 +19,7 @@ const PersonalExpense = require('./models/PersonalExpense');
 const User = require('./models/User');
 const CorrectionRequest = require('./models/CorrectionRequest');
 const UpcomingTransaction = require('./models/UpcomingTransaction');
+const { validateTransaction } = require('./middlewares/validateTransaction');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -167,6 +168,7 @@ async function ensureMongoConnected() {
     lastMongoError = null;
     await ensureCleanIndexes();
     await seedDefaultData(false);
+    await backfillMemberIds();
     return true;
   } catch (err) {
     lastMongoError = err;
@@ -183,17 +185,96 @@ app.use('/api', async (req, res, next) => {
   next();
 });
 
-// Helper to adjust account balance safely in real-time
-async function adjustAccountBalance(accountName, delta) {
-  if (!accountName || !delta) return null;
-  const trimmed = accountName.trim();
-  const acc = await Account.findOne({ name: { $regex: new RegExp(`^${trimmed}$`, 'i') } });
-  if (acc) {
-    acc.balance = (acc.balance || 0) + delta;
-    await acc.save();
-    return acc;
+// ==================== CORE FINANCIAL ENGINE & GUARDS ====================
+
+// ISSUE 1: Hard Block for Spendable Cash (SpendableCash = TotalPhysicalCash - TotalSupplierDebt)
+async function checkSpendableCashBlock(amountToSpend, session = null) {
+  const parsedAmount = Number(amountToSpend);
+  if (isNaN(parsedAmount) || parsedAmount <= 0) return;
+
+  const [cashResult] = await Account.aggregate([
+    { $group: { _id: null, totalCash: { $sum: '$balance' } } }
+  ]).session(session);
+
+  const [debtResult] = await SupplierDebt.aggregate([
+    { $group: { _id: null, totalDebt: { $sum: '$remainingAmount' } } }
+  ]).session(session);
+
+  const totalPhysicalCash = cashResult ? cashResult.totalCash : 0;
+  const totalSupplierDebt = debtResult ? debtResult.totalDebt : 0;
+  const spendableCash = totalPhysicalCash - totalSupplierDebt;
+
+  if (spendableCash < parsedAmount) {
+    const error = new Error(
+      `Không đủ tiền khả dụng: Hũ tiền hàng nợ NCC đang khóa ${totalSupplierDebt.toLocaleString('vi-VN')}đ. ` +
+      `Tiền thực khả dụng hiện tại: ${spendableCash.toLocaleString('vi-VN')}đ, cần chi: ${parsedAmount.toLocaleString('vi-VN')}đ.`
+    );
+    error.statusCode = 400;
+    error.code = 'ERR_SPENDABLE_CASH_EXCEEDED';
+    throw error;
   }
-  return null;
+  return { totalPhysicalCash, totalSupplierDebt, spendableCash };
+}
+
+// ISSUE 4: Atomic Account Balance Update using MongoDB $inc operator (Prevents race conditions)
+async function adjustAccountBalance(accountName, delta, session = null) {
+  const numDelta = Number(delta);
+  if (!accountName || !numDelta) return null;
+  const trimmed = accountName.trim();
+  const filter = trimmed.match(/^[0-9a-fA-F]{24}$/)
+    ? { _id: trimmed }
+    : { name: { $regex: new RegExp(`^${escapeRegex(trimmed)}$`, 'i') } };
+
+  const updatedAcc = await Account.findOneAndUpdate(
+    filter,
+    { $inc: { balance: numDelta } },
+    { new: true, runValidators: true, session }
+  );
+  return updatedAcc;
+}
+
+// ISSUE 3: Safe backfill of memberId for existing DiningSettlement and DiningLedger
+async function backfillMemberIds() {
+  try {
+    const allMembers = await DiningMember.find().lean();
+    if (allMembers.length === 0) return;
+
+    const memberMap = new Map();
+    allMembers.forEach(m => {
+      memberMap.set(`${m.group || 'work'}_${normalizeKey(m.name)}`, m._id);
+    });
+
+    // 1. DiningSettlement
+    const unlinkedSettlements = await DiningSettlement.find({ memberId: { $in: [null, undefined] } });
+    for (const s of unlinkedSettlements) {
+      const key = `${s.category || 'work'}_${normalizeKey(s.personName)}`;
+      const mId = memberMap.get(key);
+      if (mId) {
+        await DiningSettlement.updateOne({ _id: s._id }, { $set: { memberId: mId } });
+      }
+    }
+
+    // 2. DiningLedger splits
+    const unlinkedBills = await DiningLedger.find({ 'splits.memberId': { $in: [null, undefined] } });
+    for (const b of unlinkedBills) {
+      let modified = false;
+      for (const sp of b.splits) {
+        if (!sp.memberId) {
+          const key = `${b.category || 'work'}_${normalizeKey(sp.personName)}`;
+          const mId = memberMap.get(key);
+          if (mId) {
+            sp.memberId = mId;
+            modified = true;
+          }
+        }
+      }
+      if (modified) {
+        await DiningLedger.updateOne({ _id: b._id }, { $set: { splits: b.splits } });
+      }
+    }
+  } catch (err) {
+    console.error('Lỗi backfill memberIds:', err.message);
+  }
 }
 
 // ==================== SEED DATA HELPER (PRESERVES EXISTING DATA) ====================
@@ -602,6 +683,11 @@ function calculateDiningGroup(bills, settlements, members) {
     };
     memberObjList.push(memberObj);
 
+    // Đăng ký cả ObjectId chuẩn
+    if (m._id) {
+      memberKeyMap.set(m._id.toString(), memberObj);
+    }
+
     // Đăng ký tất cả các alias định danh
     getMemberLookupKeys(m.group, m.personKey, m.name).forEach(k => {
       memberKeyMap.set(k, memberObj);
@@ -609,12 +695,16 @@ function calculateDiningGroup(bills, settlements, members) {
   });
 
   settlements.forEach(s => {
-    const sKeys = getMemberLookupKeys(s.category, s.personKey, s.personName);
     let matchedMember = null;
-    for (const k of sKeys) {
-      if (memberKeyMap.has(k)) {
-        matchedMember = memberKeyMap.get(k);
-        break;
+    if (s.memberId && memberKeyMap.has(s.memberId.toString())) {
+      matchedMember = memberKeyMap.get(s.memberId.toString());
+    } else {
+      const sKeys = getMemberLookupKeys(s.category, s.personKey, s.personName);
+      for (const k of sKeys) {
+        if (memberKeyMap.has(k)) {
+          matchedMember = memberKeyMap.get(k);
+          break;
+        }
       }
     }
     if (matchedMember) {
@@ -631,12 +721,16 @@ function calculateDiningGroup(bills, settlements, members) {
   bills.forEach(b => {
     b.splits.forEach(sp => {
       if (sp.isMe || normalizeKey(sp.personName) === 'toi') return;
-      const spKeys = getMemberLookupKeys(b.category, sp.personKey, sp.personName);
       let matchedMember = null;
-      for (const k of spKeys) {
-        if (memberKeyMap.has(k)) {
-          matchedMember = memberKeyMap.get(k);
-          break;
+      if (sp.memberId && memberKeyMap.has(sp.memberId.toString())) {
+        matchedMember = memberKeyMap.get(sp.memberId.toString());
+      } else {
+        const spKeys = getMemberLookupKeys(b.category, sp.personKey, sp.personName);
+        for (const k of spKeys) {
+          if (memberKeyMap.has(k)) {
+            matchedMember = memberKeyMap.get(k);
+            break;
+          }
         }
       }
       if (matchedMember) {
@@ -1107,11 +1201,17 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
       .filter(t => t.type === 'expense' && t.impactsWeeklyLimit)
       .reduce((sum, t) => sum + (t.amount || 0), 0);
 
+    // ISSUE 2 FIX: Khấu trừ các khoản hoàn tiền / hoàn trả / thu nhập ròng cho Hub 4 trong tuần
+    const hub4WeeklyRefunds = transactions
+      .filter(t => t.type === 'income' && (t.hubRole === 'hub4_personal' || t.impactsWeeklyLimit))
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+
     const weeklyPaidDebts = debts
       .filter(d => d.type === 'payable' && d.status === 'paid')
       .reduce((sum, d) => sum + (d.amount || 0), 0);
 
-    const currentWeekSpent = myDiningShareWeekly + transactionsWeeklySpent + weeklyPaidDebts;
+    const grossWeeklySpent = myDiningShareWeekly + transactionsWeeklySpent + weeklyPaidDebts;
+    const currentWeekSpent = Math.max(0, grossWeeklySpent - hub4WeeklyRefunds);
     const weeklyPercent = config.weeklyLimit > 0 ? Math.round((currentWeekSpent / config.weeklyLimit) * 100) : 0;
 
     // --- 5. SỔ ĂN NHÓM & QUỸ GIA ĐÌNH ---
@@ -1199,13 +1299,16 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
       card2_weekly: {
         limit: config.weeklyLimit,
         spent: currentWeekSpent,
+        grossSpent: grossWeeklySpent,
+        hub4Refunds: hub4WeeklyRefunds,
         percent: weeklyPercent,
         isWarning: weeklyPercent >= 80,
         isBrake: weeklyPercent >= 100,
         breakdown: {
           diningShare: myDiningShareWeekly,
           transactions: transactionsWeeklySpent,
-          paidDebts: weeklyPaidDebts
+          paidDebts: weeklyPaidDebts,
+          refundsCredit: hub4WeeklyRefunds
         }
       },
       card4_dining: {
@@ -1374,7 +1477,7 @@ app.get('/api/transactions', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/transactions', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
+app.post('/api/transactions', authenticateToken, requirePermission('manageTransactions'), validateTransaction, async (req, res) => {
   try {
     const {
       date,
@@ -1389,12 +1492,11 @@ app.post('/api/transactions', authenticateToken, requirePermission('manageTransa
       notes
     } = req.body;
 
-    const numAmount = Math.abs(Number(amount)) || 0;
-    if (!title || !title.trim()) {
-      return res.status(400).json({ success: false, message: 'Vui lòng nhập tên giao dịch' });
-    }
-    if (numAmount <= 0) {
-      return res.status(400).json({ success: false, message: 'Số tiền phải lớn hơn 0' });
+    const numAmount = Number(amount);
+
+    // ISSUE 1: Hard Block - Chặn mọi chi tiêu nếu vượt quá tiền khả dụng (bảo vệ hũ hàng NCC)
+    if (type === 'expense') {
+      await checkSpendableCashBlock(numAmount);
     }
 
     const tx = await Transaction.create({
@@ -1410,7 +1512,7 @@ app.post('/api/transactions', authenticateToken, requirePermission('manageTransa
       notes: notes || ''
     });
 
-    // Cập nhật số dư ngân hàng thời gian thực
+    // ISSUE 4: Cập nhật số dư ngân hàng thời gian thực bằng toán tử $inc nguyên tử
     if (tx.type === 'expense') {
       await adjustAccountBalance(tx.accountName, -tx.amount);
     } else if (tx.type === 'income') {
@@ -1424,26 +1526,14 @@ app.post('/api/transactions', authenticateToken, requirePermission('manageTransa
 
     res.json({ success: true, transaction: tx });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(err.statusCode || 400).json({ success: false, message: err.message });
   }
 });
 
-app.put('/api/transactions/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
+app.put('/api/transactions/:id', authenticateToken, requirePermission('manageTransactions'), validateTransaction, async (req, res) => {
   try {
     const oldTx = await Transaction.findById(req.params.id);
     if (!oldTx) return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
-
-    // Hoàn tác số dư cũ
-    if (oldTx.type === 'expense') {
-      await adjustAccountBalance(oldTx.accountName, oldTx.amount);
-    } else if (oldTx.type === 'income') {
-      await adjustAccountBalance(oldTx.accountName, -oldTx.amount);
-    } else if (oldTx.type === 'transfer') {
-      await adjustAccountBalance(oldTx.accountName, oldTx.amount);
-      if (oldTx.toAccountName) {
-        await adjustAccountBalance(oldTx.toAccountName, -oldTx.amount);
-      }
-    }
 
     const {
       date,
@@ -1458,21 +1548,39 @@ app.put('/api/transactions/:id', authenticateToken, requirePermission('manageTra
       notes
     } = req.body;
 
-    const numAmount = Math.abs(Number(amount)) || 0;
+    const numAmount = Number(amount);
+
+    // Hoàn tác số dư cũ nguyên tử bằng $inc
+    if (oldTx.type === 'expense') {
+      await adjustAccountBalance(oldTx.accountName, oldTx.amount);
+    } else if (oldTx.type === 'income') {
+      await adjustAccountBalance(oldTx.accountName, -oldTx.amount);
+    } else if (oldTx.type === 'transfer') {
+      await adjustAccountBalance(oldTx.accountName, oldTx.amount);
+      if (oldTx.toAccountName) {
+        await adjustAccountBalance(oldTx.toAccountName, -oldTx.amount);
+      }
+    }
+
+    // ISSUE 1: Hard block kiểm tra sau khi hoàn tác
+    if (type === 'expense') {
+      await checkSpendableCashBlock(numAmount);
+    }
+
     oldTx.date = date || oldTx.date;
-    oldTx.title = title ? title.trim() : oldTx.title;
-    oldTx.amount = numAmount > 0 ? numAmount : oldTx.amount;
-    oldTx.type = type || oldTx.type;
-    oldTx.accountName = accountName || oldTx.accountName;
-    oldTx.toAccountName = toAccountName !== undefined ? toAccountName : oldTx.toAccountName;
-    oldTx.category = category || oldTx.category;
-    oldTx.hubRole = hubRole || oldTx.hubRole;
-    oldTx.impactsWeeklyLimit = impactsWeeklyLimit !== undefined ? Boolean(impactsWeeklyLimit) : oldTx.impactsWeeklyLimit;
-    oldTx.notes = notes !== undefined ? notes : oldTx.notes;
+    oldTx.title = title.trim();
+    oldTx.amount = numAmount;
+    oldTx.type = type;
+    oldTx.accountName = accountName;
+    oldTx.toAccountName = toAccountName || '';
+    oldTx.category = category;
+    oldTx.hubRole = hubRole;
+    oldTx.impactsWeeklyLimit = Boolean(impactsWeeklyLimit);
+    oldTx.notes = notes || '';
 
     await oldTx.save();
 
-    // Áp dụng số dư mới
+    // Áp dụng số dư mới nguyên tử bằng $inc
     if (oldTx.type === 'expense') {
       await adjustAccountBalance(oldTx.accountName, -oldTx.amount);
     } else if (oldTx.type === 'income') {
@@ -1486,7 +1594,7 @@ app.put('/api/transactions/:id', authenticateToken, requirePermission('manageTra
 
     res.json({ success: true, transaction: oldTx });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(err.statusCode || 400).json({ success: false, message: err.message });
   }
 });
 
@@ -2125,6 +2233,20 @@ app.post('/api/dining/bill', authenticateToken, async (req, res) => {
     const numTotal = Number(totalBill) || 0;
     const shouldDeduct = deductFromAccount !== false;
 
+    // ISSUE 1: Hard block kiểm tra tiền khả dụng trước khi chi tiêu quỹ ăn
+    if (shouldDeduct && numTotal > 0) {
+      await checkSpendableCashBlock(numTotal);
+    }
+
+    // ISSUE 3: Chuẩn hóa gán memberId cho từng người trong split nếu có
+    let formattedSplits = Array.isArray(splits) ? [...splits] : [];
+    for (const sp of formattedSplits) {
+      if (!sp.memberId && sp.personName) {
+        const m = await DiningMember.findOne({ group: targetCat, personKey: normalizeKey(sp.personName) }).lean();
+        if (m) sp.memberId = m._id;
+      }
+    }
+
     const bill = await DiningLedger.create({
       date: date || new Date().toISOString().slice(0, 10),
       mealTitle: mealTitle || 'Bữa ăn nhóm',
@@ -2132,21 +2254,21 @@ app.post('/api/dining/bill', authenticateToken, async (req, res) => {
       totalBill: numTotal,
       myShare: Number(myShare) || 0,
       splitMode: splitMode || 'equal',
-      splits: splits || [],
+      splits: formattedSplits,
       paidAccount: paidAccount || 'Vietcombank',
       deductFromAccount: shouldDeduct,
       deductWeeklyLimit: deductWeeklyLimit !== false,
       notes: notes || ''
     });
 
-    // Trừ số tiền vào ngân hàng thời gian thực nếu được bật
+    // Trừ số tiền vào ngân hàng thời gian thực nếu được bật (Atomic $inc)
     if (shouldDeduct && bill.paidAccount && numTotal > 0) {
       await adjustAccountBalance(bill.paidAccount, -numTotal);
     }
 
     res.json({ success: true, bill });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(err.statusCode || 400).json({ success: false, error: err.message, message: err.message });
   }
 });
 
@@ -2183,13 +2305,27 @@ app.put('/api/dining/bill/:id', authenticateToken, async (req, res) => {
     const numTotal = Number(totalBill) || 0;
     const shouldDeduct = deductFromAccount !== false;
 
+    // ISSUE 1: Hard block sau khi đã hoàn tác số cũ
+    if (shouldDeduct && numTotal > 0) {
+      await checkSpendableCashBlock(numTotal);
+    }
+
+    // ISSUE 3: Chuẩn hóa gán memberId
+    let formattedSplits = Array.isArray(splits) ? [...splits] : (oldBill.splits || []);
+    for (const sp of formattedSplits) {
+      if (!sp.memberId && sp.personName) {
+        const m = await DiningMember.findOne({ group: targetCat, personKey: normalizeKey(sp.personName) }).lean();
+        if (m) sp.memberId = m._id;
+      }
+    }
+
     oldBill.date = date || oldBill.date;
     oldBill.mealTitle = mealTitle || oldBill.mealTitle;
     oldBill.category = category === 'family' ? 'family' : 'work';
     oldBill.totalBill = numTotal;
     oldBill.myShare = Number(myShare) || 0;
     oldBill.splitMode = splitMode || oldBill.splitMode;
-    oldBill.splits = splits || oldBill.splits;
+    oldBill.splits = formattedSplits;
     oldBill.paidAccount = paidAccount || oldBill.paidAccount;
     oldBill.deductFromAccount = shouldDeduct;
     oldBill.deductWeeklyLimit = deductWeeklyLimit !== false;
@@ -2204,7 +2340,7 @@ app.put('/api/dining/bill/:id', authenticateToken, async (req, res) => {
 
     res.json({ success: true, bill: oldBill });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(err.statusCode || 400).json({ success: false, error: err.message, message: err.message });
   }
 });
 
@@ -2244,9 +2380,22 @@ app.post('/api/dining/settlement', authenticateToken, async (req, res) => {
     const numAmount = Number(amount) || 0;
     const shouldAdd = addToAccount !== false;
 
+    // ISSUE 1: Hard block kiểm tra tiền khả dụng nếu là rút tiền mặt/chi từ ngân hàng
+    if (shouldAdd && direction === 'out' && numAmount > 0) {
+      await checkSpendableCashBlock(numAmount);
+    }
+
+    // ISSUE 3: Tra cứu memberId chính xác cho thành viên
+    let mId = req.body.memberId || null;
+    if (!mId && personName) {
+      const m = await DiningMember.findOne({ group: targetCat, personKey: pKey }).lean();
+      if (m) mId = m._id;
+    }
+
     const settlement = await DiningSettlement.create({
       personKey: pKey,
       personName,
+      memberId: mId,
       category: targetCat,
       amount: numAmount,
       direction: direction === 'out' ? 'out' : 'in',
@@ -2257,7 +2406,7 @@ app.post('/api/dining/settlement', authenticateToken, async (req, res) => {
       date: date || new Date().toISOString().slice(0, 10)
     });
 
-    // Cộng hoặc trừ tiền vào ngân hàng thời gian thực
+    // Cộng hoặc trừ tiền vào ngân hàng thời gian thực (Atomic $inc)
     if (shouldAdd && settlement.accountName && numAmount > 0) {
       const delta = settlement.direction === 'in' ? numAmount : -numAmount;
       await adjustAccountBalance(settlement.accountName, delta);
@@ -2265,7 +2414,7 @@ app.post('/api/dining/settlement', authenticateToken, async (req, res) => {
 
     res.json({ success: true, settlement });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(err.statusCode || 400).json({ success: false, error: err.message, message: err.message });
   }
 });
 
@@ -2280,19 +2429,32 @@ app.put('/api/dining/settlement/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ success: false, message: `Bạn không có quyền quản lý ${targetCat === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
     }
 
-    // Hoàn tác tiền cũ
+    // Hoàn tác tiền cũ (Atomic $inc)
     if (oldS.addToAccount && oldS.accountName && oldS.amount > 0) {
       const revertDelta = oldS.direction === 'in' ? -oldS.amount : oldS.amount;
       await adjustAccountBalance(oldS.accountName, revertDelta);
     }
 
-    const { personName, amount, direction, category, note, date, topupKind, accountName, addToAccount } = req.body;
+    const { personName, amount, direction, category, note, date, topupKind, accountName, addToAccount, memberId } = req.body;
     const pKey = normalizeKey(personName);
     const numAmount = Number(amount) || 0;
     const shouldAdd = addToAccount !== false;
 
+    // ISSUE 1: Hard block kiểm tra tiền khả dụng sau khi hoàn tác
+    if (shouldAdd && direction === 'out' && numAmount > 0) {
+      await checkSpendableCashBlock(numAmount);
+    }
+
+    // ISSUE 3: Tra cứu memberId
+    let finalMemberId = memberId || oldS.memberId || null;
+    if (!finalMemberId && personName) {
+      const m = await DiningMember.findOne({ group: targetCat, personKey: pKey }).lean();
+      if (m) finalMemberId = m._id;
+    }
+
     oldS.personKey = pKey || oldS.personKey;
     oldS.personName = personName || oldS.personName;
+    oldS.memberId = finalMemberId;
     oldS.category = category === 'family' ? 'family' : 'work';
     oldS.amount = numAmount;
     oldS.direction = direction === 'out' ? 'out' : 'in';
@@ -2304,7 +2466,7 @@ app.put('/api/dining/settlement/:id', authenticateToken, async (req, res) => {
 
     await oldS.save();
 
-    // Áp dụng tiền mới
+    // Áp dụng tiền mới (Atomic $inc)
     if (shouldAdd && oldS.accountName && numAmount > 0) {
       const delta = oldS.direction === 'in' ? numAmount : -numAmount;
       await adjustAccountBalance(oldS.accountName, delta);
@@ -2312,7 +2474,7 @@ app.put('/api/dining/settlement/:id', authenticateToken, async (req, res) => {
 
     res.json({ success: true, settlement: oldS });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(err.statusCode || 400).json({ success: false, error: err.message, message: err.message });
   }
 });
 
@@ -2326,16 +2488,30 @@ app.delete('/api/dining/settlement/:id', authenticateToken, async (req, res) => 
       return res.status(403).json({ success: false, message: `Bạn không có quyền quản lý ${s.category === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm'}` });
     }
 
-    // Hoàn tác tiền ngân hàng
+    // ISSUE 5: Xóa giao dịch cấn trừ liên quỹ bảo đảm ACID Transaction
+    if (s.transferRef) {
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const linkedList = await DiningSettlement.find({ transferRef: s.transferRef }).session(session);
+          for (const item of linkedList) {
+            if (item.addToAccount && item.accountName && item.amount > 0) {
+              const revertDelta = item.direction === 'in' ? -item.amount : item.amount;
+              await adjustAccountBalance(item.accountName, revertDelta, session);
+            }
+          }
+          await DiningSettlement.deleteMany({ transferRef: s.transferRef }, { session });
+        });
+      } finally {
+        await session.endSession();
+      }
+      return res.json({ success: true, message: 'Đã hoàn tác và xóa an toàn cả 2 vế giao dịch cấn trừ liên quỹ (ACID Transaction)' });
+    }
+
+    // Hoàn tác tiền ngân hàng đơn lẻ (Atomic $inc)
     if (s.addToAccount && s.accountName && s.amount > 0) {
       const revertDelta = s.direction === 'in' ? -s.amount : s.amount;
       await adjustAccountBalance(s.accountName, revertDelta);
-    }
-
-    if (s.transferRef) {
-      // Tự động xóa cả 2 vế cấn trừ để cân đối sổ
-      await DiningSettlement.deleteMany({ transferRef: s.transferRef });
-      return res.json({ success: true, message: 'Đã hoàn tác và xóa cả 2 vế giao dịch cấn trừ liên quỹ' });
     }
 
     await s.deleteOne();
@@ -2346,6 +2522,7 @@ app.delete('/api/dining/settlement/:id', authenticateToken, async (req, res) => 
 });
 
 // ==================== CẤN TRỪ SỐ DƯ LIÊN QUỸ (KHÔNG CẦN CHUYỂN KHOẢN) ====================
+// ISSUE 5: Dual-fund Reconciliation with MongoDB ACID Transactions
 app.post('/api/dining/transfer-balance', authenticateToken, async (req, res) => {
   try {
     if (!req.user.isAdmin && !(req.user.permissions && (req.user.permissions.manageDiningWork || req.user.permissions.manageDiningFamily))) {
@@ -2372,45 +2549,73 @@ app.post('/api/dining/transfer-balance', authenticateToken, async (req, res) => 
     const transferDate = date || new Date().toISOString().slice(0, 10);
     const transferRef = `transfer_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 
-    // 1. Tạo vế xuất từ quỹ nguồn (direction: 'out')
-    const debit = await DiningSettlement.create({
-      monthKey: transferDate.slice(0, 7),
-      personKey: pKey,
-      personName: personName.trim(),
-      category: fromCategory,
-      amount: numAmount,
-      direction: 'out',
-      topupKind: 'transfer_out',
-      accountName: 'Nội bộ (Cấn trừ 2 sổ)',
-      addToAccount: false,
-      transferRef,
-      note: note && note.trim()
-        ? `${note.trim()} (Chuyển sang ${targetName})`
-        : `Cấn trừ chuyển ${numAmount.toLocaleString('vi-VN')}đ sang ${targetName}`,
-      date: transferDate
-    });
+    const session = await mongoose.startSession();
+    let debit, credit;
 
-    // 2. Tạo vế nhập vào quỹ đích (direction: 'in')
-    const credit = await DiningSettlement.create({
-      monthKey: transferDate.slice(0, 7),
-      personKey: pKey,
-      personName: personName.trim(),
-      category: toCategory,
-      amount: numAmount,
-      direction: 'in',
-      topupKind: 'transfer_in',
-      accountName: 'Nội bộ (Cấn trừ 2 sổ)',
-      addToAccount: false,
-      transferRef,
-      note: note && note.trim()
-        ? `${note.trim()} (Nhận từ ${sourceName})`
-        : `Nhận cấn trừ ${numAmount.toLocaleString('vi-VN')}đ từ ${sourceName}`,
-      date: transferDate
-    });
+    try {
+      await session.withTransaction(async () => {
+        // ISSUE 3: Tra cứu memberId cho từng nhóm
+        let mIdFrom = null;
+        let mIdTo = null;
+
+        const mFrom = await DiningMember.findOne({ group: fromCategory, personKey: pKey }).session(session).lean();
+        if (mFrom) mIdFrom = mFrom._id;
+
+        const mTo = await DiningMember.findOne({ group: toCategory, personKey: pKey }).session(session).lean();
+        if (mTo) mIdTo = mTo._id;
+
+        // 1. Tạo vế xuất từ quỹ nguồn (direction: 'out')
+        const [d] = await DiningSettlement.create([
+          {
+            monthKey: transferDate.slice(0, 7),
+            personKey: pKey,
+            personName: personName.trim(),
+            memberId: mIdFrom,
+            category: fromCategory,
+            amount: numAmount,
+            direction: 'out',
+            topupKind: 'transfer_out',
+            accountName: 'Nội bộ (Cấn trừ 2 sổ)',
+            addToAccount: false,
+            transferRef,
+            note: note && note.trim()
+              ? `${note.trim()} (Chuyển sang ${targetName})`
+              : `Cấn trừ chuyển ${numAmount.toLocaleString('vi-VN')}đ sang ${targetName}`,
+            date: transferDate
+          }
+        ], { session });
+
+        // 2. Tạo vế nhập vào quỹ đích (direction: 'in')
+        const [c] = await DiningSettlement.create([
+          {
+            monthKey: transferDate.slice(0, 7),
+            personKey: pKey,
+            personName: personName.trim(),
+            memberId: mIdTo,
+            category: toCategory,
+            amount: numAmount,
+            direction: 'in',
+            topupKind: 'transfer_in',
+            accountName: 'Nội bộ (Cấn trừ 2 sổ)',
+            addToAccount: false,
+            transferRef,
+            note: note && note.trim()
+              ? `${note.trim()} (Nhận từ ${sourceName})`
+              : `Nhận cấn trừ ${numAmount.toLocaleString('vi-VN')}đ từ ${sourceName}`,
+            date: transferDate
+          }
+        ], { session });
+
+        debit = d;
+        credit = c;
+      });
+    } finally {
+      await session.endSession();
+    }
 
     res.json({
       success: true,
-      message: `Đã cấn trừ chuyển thành công ${numAmount.toLocaleString('vi-VN')}đ từ ${sourceName} sang ${targetName} cho ${personName.trim()}`,
+      message: `Đã cấn trừ chuyển thành công ${numAmount.toLocaleString('vi-VN')}đ từ ${sourceName} sang ${targetName} cho ${personName.trim()} (ACID Transaction)`,
       debit,
       credit
     });

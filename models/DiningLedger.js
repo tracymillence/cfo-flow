@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
 const splitSchema = new mongoose.Schema({
+  memberId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'DiningMember', 
+    default: null,
+    index: true 
+  },
   personKey: { type: String, default: '' },
   personName: { type: String, required: true },
   amount: { type: Number, required: true },
