@@ -2393,12 +2393,17 @@ function cashFlowApp() {
       // 2. Hũ tiền hàng / Nợ NCC hiện tại
       const supplierDebt = Number(this.dashboard?.supplierPot?.totalAmount ?? (this.dashboard?.card1_cash?.supplierPot || 0));
 
-      // 3. Tổng tiền mọi người đang nợ tôi (lấy từ Sổ quỹ ăn + Sổ nợ 2 chiều)
+      // 3. Tổng tiền mọi người đang nợ tôi (Khoản phải thu: Sổ quỹ ăn nợ tôi + Sổ nợ Bạn nợ tôi)
       const diningReceivable = Number(this.dashboard?.card4_dining?.combined?.totalDebtReceivable ?? (this.dashboard?.card4_dining?.totalDebtReceivable || 0));
       const debtReceivable = Number(this.dashboard?.debtSummary?.totalReceivable || 0);
       const totalReceivable = diningReceivable + debtReceivable;
 
-      // 4 & 5. Tổng khoản Dự Thu / Dự Chi
+      // 4. Tổng tiền tôi đang nợ mọi người (Khoản phải trả: Còn dư quỹ ăn tôi giữ hộ + Sổ nợ Tôi nợ bạn)
+      const diningPayable = Number(this.dashboard?.card4_dining?.combined?.totalSurplusFund ?? (this.dashboard?.card4_dining?.totalSurplusFund || 0));
+      const debtPayable = Number(this.dashboard?.debtSummary?.totalPayable || 0);
+      const totalPayable = diningPayable + debtPayable;
+
+      // 5 & 6. Tổng khoản Dự Thu / Dự Chi (từ module mới)
       const items = [...(this.upcomingList || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
       const totalUpcomingIncome = items
@@ -2409,11 +2414,12 @@ function cashFlowApp() {
         .filter(it => it.type === 'expense')
         .reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
 
-      // Công thức tính số dư giả lập tổng thể:
-      const projectedBalance = totalActualCash - supplierDebt + totalReceivable + totalUpcomingIncome - totalUpcomingExpense;
+      // Công thức tính Sức khỏe tài chính tổng thể chuẩn xác 2 chiều:
+      // = [Tiền mặt thực tế] - [Nợ NCC] + [Mọi người nợ tôi] - [Tôi nợ mọi người] + [Dự Thu] - [Dự Chi]
+      const projectedBalance = totalActualCash - supplierDebt + totalReceivable - totalPayable + totalUpcomingIncome - totalUpcomingExpense;
 
       // Quét timeline tìm ngày sớm nhất dòng tiền giả lập rơi xuống dưới 0
-      let runningBalance = totalActualCash - supplierDebt + totalReceivable;
+      let runningBalance = totalActualCash - supplierDebt + totalReceivable - totalPayable;
       let earliestDeficitDate = null;
       let earliestDeficitAmount = 0;
 
@@ -2440,6 +2446,9 @@ function cashFlowApp() {
         diningReceivable,
         debtReceivable,
         totalReceivable,
+        diningPayable,
+        debtPayable,
+        totalPayable,
         totalUpcomingIncome,
         totalUpcomingExpense,
         projectedBalance,
