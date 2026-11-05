@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>CFO Flow - Quản Lý Dòng Tiền &amp; Sổ Quỹ Cá Nhân</title>
   
-  <!-- Favicon -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💎</text></svg>">
+  <!-- Favicon (Zhongli Geo Archon Diamond Seal) -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1.0">
 
   <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -166,15 +166,22 @@
   <header class="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 w-full">
     <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4 min-w-0">
       
-      <!-- Brand Logo -->
-      <div @click="activeTab = 'overview'" class="flex items-center gap-2 sm:gap-2.5 shrink-0 cursor-pointer select-none">
-        <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-extrabold text-sm shadow-sm relative overflow-hidden shrink-0">
-          <i class="fa-solid fa-gem text-xs text-white"></i>
-          <span class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+      <!-- Brand Logo (Zhongli Geo Diamond Aesthetic) -->
+      <div @click="activeTab = 'overview'" class="flex items-center gap-2 sm:gap-2.5 shrink-0 cursor-pointer select-none group">
+        <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-[#261e17] via-[#171310] to-[#0d0a08] border border-amber-500/70 shadow-[0_0_12px_rgba(245,158,11,0.35)] flex items-center justify-center relative overflow-hidden shrink-0 transition-transform group-hover:scale-105">
+          <!-- Geo Diamond Rhombus Inner Frame -->
+          <div class="w-5 h-5 rounded-md bg-gradient-to-tr from-amber-600 to-yellow-400 rotate-45 flex items-center justify-center shadow-xs">
+            <i class="fa-solid fa-gem text-[10px] text-stone-950 -rotate-45"></i>
+          </div>
+          <!-- Rex Lapis Amber Bead -->
+          <span class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-300 shadow-[0_0_6px_#fde047]"></span>
         </div>
         <div>
-          <h1 class="text-sm font-extrabold text-slate-900 tracking-tight leading-tight">CFO Flow</h1>
-          <p class="text-[9px] sm:text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Hệ Thống Dòng Tiền</p>
+          <h1 class="text-sm font-extrabold text-slate-900 tracking-tight leading-tight flex items-center gap-1.5">
+            <span>CFO Flow</span>
+            <span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+          </h1>
+          <p class="text-[9px] sm:text-[10px] font-bold text-amber-700/90 uppercase tracking-wider">Hệ Thống Dòng Tiền</p>
         </div>
       </div>
 
@@ -4887,6 +4894,6 @@
   </div>
 
   <!-- Load App Script -->
-  <script src="/app.js?v=2.9"></script>
+  <script src="/app.js?v=3.0"></script>
 </body>
 </html>
