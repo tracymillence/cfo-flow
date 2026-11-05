@@ -1176,6 +1176,9 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
       allExpenses: personalExpenses
     };
 
+    // --- 8. TỔNG HỢP GIAO DỊCH TOÀN HỆ THỐNG (UNIFIED TRANSACTIONS) ---
+    const unifiedTransactions = await getUnifiedTransactions({ limit: 150 });
+
     res.json({
       success: true,
       config,
@@ -1213,7 +1216,7 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
         allMembers: diningMembers
       },
       card4_personal_hub,
-      transactions: transactions.slice(0, 100),
+      transactions: unifiedTransactions,
       reminders,
       allDebts: debts,
       debtSummary: {
@@ -1236,18 +1239,135 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
   }
 });
 
+// Helper tổng hợp tất cả giao dịch thu/chi trên toàn bộ các sổ vào Sổ Giao Dịch
+async function getUnifiedTransactions(filter = {}) {
+  const { type, accountName, hubRole, limit = 150 } = filter;
+
+  // 1. Giao dịch trực tiếp từ Transaction
+  const directQuery = {};
+  if (type && type !== 'all') directQuery.type = type;
+  if (accountName && accountName !== 'all') {
+    const accRegex = new RegExp(`^${escapeRegex(accountName)}$`, 'i');
+    directQuery.$or = [{ accountName: accRegex }, { toAccountName: accRegex }];
+  }
+  if (hubRole && hubRole !== 'all') directQuery.hubRole = hubRole;
+
+  const directTxs = await Transaction.find(directQuery).lean();
+  const list = directTxs.map(t => ({
+    ...t,
+    source: 'direct'
+  }));
+
+  // 2. Hóa đơn / Bữa ăn từ Quỹ Ăn Nhóm & Quỹ Gia Đình (DiningLedger có deductFromAccount: true)
+  const billQuery = { deductFromAccount: true };
+  if (accountName && accountName !== 'all') {
+    billQuery.paidAccount = new RegExp(`^${escapeRegex(accountName)}$`, 'i');
+  }
+  if (hubRole && hubRole !== 'all') {
+    if (hubRole === 'hub2_dining') billQuery.category = 'work';
+    else if (hubRole === 'hub3_family') billQuery.category = 'family';
+    else billQuery._id = null;
+  }
+  if (!type || type === 'all' || type === 'expense') {
+    const bills = await DiningLedger.find(billQuery).lean();
+    for (const b of bills) {
+      list.push({
+        _id: 'bill_' + b._id,
+        date: b.date,
+        title: b.mealTitle || 'Hóa đơn sổ quỹ',
+        amount: b.totalBill,
+        type: 'expense',
+        accountName: b.paidAccount || 'Vietcombank',
+        toAccountName: '',
+        category: b.category === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm',
+        hubRole: b.category === 'family' ? 'hub3_family' : 'hub2_dining',
+        impactsWeeklyLimit: Boolean(b.deductWeeklyLimit),
+        notes: b.notes ? `${b.notes} • [Đồng bộ Sổ Quỹ]` : '[Đồng bộ Sổ Quỹ]',
+        source: 'dining_bill',
+        sourceId: b._id,
+        createdAt: b.createdAt || new Date(b.date)
+      });
+    }
+  }
+
+  // 3. Giao dịch Nạp / Mượn Quỹ từ DiningSettlement (có addToAccount: true)
+  const settQuery = { addToAccount: true };
+  if (accountName && accountName !== 'all') {
+    settQuery.accountName = new RegExp(`^${escapeRegex(accountName)}$`, 'i');
+  }
+  if (hubRole && hubRole !== 'all') {
+    if (hubRole === 'hub2_dining') settQuery.category = 'work';
+    else if (hubRole === 'hub3_family') settQuery.category = 'family';
+    else settQuery._id = null;
+  }
+  const settlements = await DiningSettlement.find(settQuery).lean();
+  for (const s of settlements) {
+    if (s.transferRef) continue; // Bỏ qua cấn trừ nội bộ không làm biến động ngân hàng
+    const sType = s.direction === 'in' ? 'income' : 'expense';
+    if (type && type !== 'all' && type !== sType) continue;
+
+    list.push({
+      _id: 'settlement_' + s._id,
+      date: s.date,
+      title: `${s.personName}: ${s.direction === 'in' ? 'Nạp quỹ' : 'Mượn quỹ'}${s.note ? ' (' + s.note + ')' : ''}`,
+      amount: s.amount,
+      type: sType,
+      accountName: s.accountName || 'Vietcombank',
+      toAccountName: '',
+      category: s.category === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm',
+      hubRole: s.category === 'family' ? 'hub3_family' : 'hub2_dining',
+      impactsWeeklyLimit: false,
+      notes: '[Đồng bộ Nạp/Mượn Quỹ]',
+      source: 'dining_settlement',
+      sourceId: s._id,
+      createdAt: s.createdAt || new Date(s.date)
+    });
+  }
+
+  // 4. Chi phí cá nhân & Hóa đơn cố định từ PersonalExpense (Hub 4 có deductFromAccount: true và status === 'paid')
+  const pExpQuery = { status: 'paid', deductFromAccount: true };
+  if (accountName && accountName !== 'all') {
+    pExpQuery.paidAccount = new RegExp(`^${escapeRegex(accountName)}$`, 'i');
+  }
+  if (hubRole && hubRole !== 'all' && hubRole !== 'hub4_personal') {
+    pExpQuery._id = null;
+  }
+  if (!type || type === 'all' || type === 'expense') {
+    const pExpenses = await PersonalExpense.find(pExpQuery).lean();
+    for (const e of pExpenses) {
+      list.push({
+        _id: 'pexpense_' + e._id,
+        date: e.paidDate || e.date,
+        title: e.title,
+        amount: e.amount,
+        type: 'expense',
+        accountName: e.paidAccount || 'Timo tiền lời',
+        toAccountName: '',
+        category: e.category || 'Chi phí cá nhân',
+        hubRole: 'hub4_personal',
+        impactsWeeklyLimit: Boolean(e.impactsWeeklyLimit),
+        notes: e.note ? `${e.note} • [Đồng bộ Sổ Cá Nhân]` : '[Đồng bộ Sổ Cá Nhân]',
+        source: 'personal_expense',
+        sourceId: e._id,
+        createdAt: e.createdAt || new Date(e.date)
+      });
+    }
+  }
+
+  // Sắp xếp ngày giảm dần, thời gian giảm dần
+  list.sort((a, b) => {
+    const dateDiff = new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt);
+    if (dateDiff !== 0) return dateDiff;
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  });
+
+  return list.slice(0, Number(limit) || 150);
+}
+
 // ==================== 0. SỔ GIAO DỊCH THU / CHI / CHUYỂN KHOẢN (CRUD) ====================
 app.get('/api/transactions', authenticateToken, async (req, res) => {
   try {
-    const { type, accountName, hubRole, limit } = req.query;
-    const query = {};
-    if (type && type !== 'all') query.type = type;
-    if (accountName && accountName !== 'all') query.accountName = accountName;
-    if (hubRole && hubRole !== 'all') query.hubRole = hubRole;
-
-    const list = await Transaction.find(query)
-      .sort({ date: -1, createdAt: -1 })
-      .limit(Number(limit) || 100);
+    const list = await getUnifiedTransactions(req.query);
     res.json({ success: true, transactions: list });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

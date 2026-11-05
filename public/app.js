@@ -1062,20 +1062,25 @@ function cashFlowApp() {
       const list = this.dashboard.transactions || [];
       return list.filter(t => {
         if (this.txFilter.type !== 'all' && t.type !== this.txFilter.type) return false;
-        if (this.txFilter.accountName !== 'all' && t.accountName !== this.txFilter.accountName) return false;
+        if (this.txFilter.accountName !== 'all') {
+          const acc = (this.txFilter.accountName || '').toLowerCase().trim();
+          const matchFrom = (t.accountName || '').toLowerCase().trim() === acc;
+          const matchTo = (t.toAccountName || '').toLowerCase().trim() === acc;
+          if (!matchFrom && !matchTo) return false;
+        }
         if (this.txFilter.hubRole !== 'all' && t.hubRole !== this.txFilter.hubRole) return false;
         return true;
       });
     },
 
     get totalIncomeTransactions() {
-      return (this.dashboard.transactions || [])
+      return (this.filteredTransactions || [])
         .filter(t => t.type === 'income')
         .reduce((sum, t) => sum + (t.amount || 0), 0);
     },
 
     get totalExpenseTransactions() {
-      return (this.dashboard.transactions || [])
+      return (this.filteredTransactions || [])
         .filter(t => t.type === 'expense')
         .reduce((sum, t) => sum + (t.amount || 0), 0);
     },
