@@ -45,18 +45,43 @@ function normalizeKey(str) {
   return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ');
 }
 
-// Đảm bảo index unique tách biệt giữa group và personKey, không chặn người trùng tên giữa 2 nhóm
+// Đảm bảo index unique tách biệt giữa group và personKey, dọn dẹp các index rác cũ
 async function ensureCleanIndexes() {
   try {
     if (mongoose.connection.readyState !== 1) return;
-    const col = mongoose.connection.db.collection('diningmembers');
-    const indexes = await col.indexes();
-    if (indexes.some(i => i.name === 'personKey_1')) {
+    const db = mongoose.connection.db;
+
+    // 1. diningmembers: bỏ personKey_1 cũ
+    const dmCol = db.collection('diningmembers');
+    const dmIndexes = await dmCol.indexes();
+    if (dmIndexes.some(i => i.name === 'personKey_1')) {
       console.log('Đang loại bỏ index cũ personKey_1...');
-      await col.dropIndex('personKey_1');
+      await dmCol.dropIndex('personKey_1');
       console.log('Đã loại bỏ personKey_1 thành công.');
     }
-    await col.createIndex({ group: 1, personKey: 1 }, { unique: true });
+    await dmCol.createIndex({ group: 1, personKey: 1 }, { unique: true });
+
+    // 2. supplierdebts: loại bỏ index cũ id_1 gây lỗi E11000 dup key: { id: null }
+    const supCol = db.collection('supplierdebts');
+    const supIndexes = await supCol.indexes();
+    if (supIndexes.some(i => i.name === 'id_1')) {
+      console.log('Đang loại bỏ index cũ id_1 trên supplierdebts...');
+      await supCol.dropIndex('id_1');
+      console.log('Đã loại bỏ index id_1 trên supplierdebts thành công.');
+    }
+
+    // 3. Quét các collections khác nếu có index id_1 rác tương tự
+    const checkCols = ['debts', 'accounts', 'cashflowreminders', 'incomes', 'personalexpenses', 'upcoming_transactions'];
+    for (const cName of checkCols) {
+      try {
+        const c = db.collection(cName);
+        const idxs = await c.indexes();
+        if (idxs.some(i => i.name === 'id_1')) {
+          console.log(`Đang loại bỏ index rác id_1 trên ${cName}...`);
+          await c.dropIndex('id_1');
+        }
+      } catch (_) {}
+    }
   } catch (e) {
     // Không làm gián đoạn nếu index đã tồn tại
   }
@@ -1330,6 +1355,25 @@ app.post('/api/supplier-debts', authenticateToken, requirePermission('manageDebt
     });
     res.json({ success: true, supplier: sup });
   } catch (err) {
+    // Tự động xử lý nếu gặp lỗi E11000 do index id_1 rác cũ trên MongoDB Atlas
+    if (err.code === 11000 && err.message.includes('id_1')) {
+      try {
+        console.log('Phát hiện lỗi E11000 do index id_1 trên supplierdebts, tiến hành dropIndex...');
+        await mongoose.connection.db.collection('supplierdebts').dropIndex('id_1');
+        const { supplierName, remainingAmount, phone, bankInfo, notes } = req.body;
+        const sup = await SupplierDebt.create({
+          supplierName: supplierName.trim(),
+          supplierKey: normalizeKey(supplierName),
+          remainingAmount: Number(remainingAmount) || 0,
+          phone: phone || '',
+          bankInfo: bankInfo || '',
+          notes: notes || ''
+        });
+        return res.json({ success: true, supplier: sup });
+      } catch (retryErr) {
+        return res.status(400).json({ success: false, error: retryErr.message });
+      }
+    }
     res.status(400).json({ success: false, error: err.message });
   }
 });
