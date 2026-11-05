@@ -20,6 +20,9 @@ const User = require('./models/User');
 const CorrectionRequest = require('./models/CorrectionRequest');
 const UpcomingTransaction = require('./models/UpcomingTransaction');
 const { validateTransaction } = require('./middlewares/validateTransaction');
+const safeMath = require('./utils/math.util');
+const { getUnifiedFeed } = require('./services/unifiedFeed.service');
+const { calculateWeeklySpeedometerAgg } = require('./services/speedometer.service');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -1196,22 +1199,17 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
       .filter(b => b.deductWeeklyLimit !== false)
       .reduce((sum, b) => sum + (b.myShare || 0), 0);
 
-    // Giao dịch chi tiêu cá nhân được đánh dấu trừ vào hạn mức tuần
-    const transactionsWeeklySpent = transactions
-      .filter(t => t.type === 'expense' && t.impactsWeeklyLimit)
-      .reduce((sum, t) => sum + (t.amount || 0), 0);
-
-    // ISSUE 2 FIX: Khấu trừ các khoản hoàn tiền / hoàn trả / thu nhập ròng cho Hub 4 trong tuần
-    const hub4WeeklyRefunds = transactions
-      .filter(t => t.type === 'income' && (t.hubRole === 'hub4_personal' || t.impactsWeeklyLimit))
-      .reduce((sum, t) => sum + (t.amount || 0), 0);
+    // ISSUE 2: Tính toán chi tiêu và hoàn tiền theo múi giờ Việt Nam (Asia/Ho_Chi_Minh) qua MongoDB aggregation
+    const speedometerData = await calculateWeeklySpeedometerAgg();
+    const transactionsWeeklySpent = speedometerData.grossWeeklySpent;
+    const hub4WeeklyRefunds = speedometerData.hub4WeeklyRefunds;
 
     const weeklyPaidDebts = debts
       .filter(d => d.type === 'payable' && d.status === 'paid')
       .reduce((sum, d) => sum + (d.amount || 0), 0);
 
-    const grossWeeklySpent = myDiningShareWeekly + transactionsWeeklySpent + weeklyPaidDebts;
-    const currentWeekSpent = Math.max(0, grossWeeklySpent - hub4WeeklyRefunds);
+    const grossWeeklySpent = safeMath.add(safeMath.add(myDiningShareWeekly, transactionsWeeklySpent), weeklyPaidDebts);
+    const currentWeekSpent = Math.max(0, safeMath.subtract(grossWeeklySpent, hub4WeeklyRefunds));
     const weeklyPercent = config.weeklyLimit > 0 ? Math.round((currentWeekSpent / config.weeklyLimit) * 100) : 0;
 
     // --- 5. SỔ ĂN NHÓM & QUỸ GIA ĐÌNH ---
@@ -1237,24 +1235,25 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
       .reduce((sum, d) => sum + (d.amount || 0), 0);
 
     // --- 7. HUB 4: SỔ CHI TIÊU CÁ NHÂN & TIẾT KIỆM (QUY TRÌNH THÁC NƯỚC 3 BƯỚC) ---
+    // Sử dụng safeMath để triệt tiêu sai số dấu phẩy động (IEEE 754 precision)
     const hub4Budget = config.hub4MonthlyBudget || 6000000;
     const savingsRate = config.savingsRate || 15;
-    const targetSavings = Math.round(hub4Budget * (savingsRate / 100));
+    const targetSavings = safeMath.percent(hub4Budget, savingsRate);
 
     // 1. Tiết kiệm đã trích thực tế
     const savingsList = personalExpenses.filter(e => e.type === 'savings_deposit' || e.category === 'savings');
-    const actualSavings = savingsList.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const actualSavings = safeMath.sum(savingsList.map(e => e.amount));
 
     // 2. Hóa đơn cá nhân cố định (Gym, Streaming, Tiện ích sống)
     const fixedBillsList = personalExpenses.filter(e => e.type === 'fixed_bill');
-    const totalFixedBills = fixedBillsList.reduce((sum, e) => sum + (e.amount || 0), 0);
-    const paidFixedBills = fixedBillsList.filter(e => e.status === 'paid').reduce((sum, e) => sum + (e.amount || 0), 0);
-    const pendingFixedBills = fixedBillsList.filter(e => e.status === 'pending').reduce((sum, e) => sum + (e.amount || 0), 0);
+    const totalFixedBills = safeMath.sum(fixedBillsList.map(e => e.amount));
+    const paidFixedBills = safeMath.sum(fixedBillsList.filter(e => e.status === 'paid').map(e => e.amount));
+    const pendingFixedBills = safeMath.sum(fixedBillsList.filter(e => e.status === 'pending').map(e => e.amount));
 
     // 3. Hạn mức tiêu xài khả dụng thực tế của 2 người (Ăn ngoài, Cà phê, Mua sắm)
-    // = Tổng Ngân Sách - Tiết Kiệm - Hóa Đơn Cố Định
-    const spendableFlexibleMonthly = Math.max(0, hub4Budget - targetSavings - totalFixedBills);
-    const personalSpentMonthly = myDiningShareWeekly + transactionsWeeklySpent;
+    // = Tổng Ngân Sách - Tiết Kiệm - Hóa Đơn Cố Định (Tính toán chính xác từng xu với safeMath)
+    const spendableFlexibleMonthly = Math.max(0, safeMath.subtract(safeMath.subtract(hub4Budget, targetSavings), totalFixedBills));
+    const personalSpentMonthly = safeMath.add(myDiningShareWeekly, transactionsWeeklySpent);
 
     const card4_personal_hub = {
       monthlyBudget: hub4Budget,
@@ -1342,136 +1341,25 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
   }
 });
 
-// Helper tổng hợp tất cả giao dịch thu/chi trên toàn bộ các sổ vào Sổ Giao Dịch
+// ISSUE 3: Database-level Unified Feed using MongoDB $unionWith aggregation pipeline (prevents OOM)
 async function getUnifiedTransactions(filter = {}) {
-  const { type, accountName, hubRole, limit = 150 } = filter;
-
-  // 1. Giao dịch trực tiếp từ Transaction
-  const directQuery = {};
-  if (type && type !== 'all') directQuery.type = type;
-  if (accountName && accountName !== 'all') {
-    const accRegex = new RegExp(`^${escapeRegex(accountName)}$`, 'i');
-    directQuery.$or = [{ accountName: accRegex }, { toAccountName: accRegex }];
-  }
-  if (hubRole && hubRole !== 'all') directQuery.hubRole = hubRole;
-
-  const directTxs = await Transaction.find(directQuery).lean();
-  const list = directTxs.map(t => ({
-    ...t,
-    source: 'direct'
-  }));
-
-  // 2. Hóa đơn / Bữa ăn từ Quỹ Ăn Nhóm & Quỹ Gia Đình (DiningLedger có deductFromAccount: true)
-  const billQuery = { deductFromAccount: true };
-  if (accountName && accountName !== 'all') {
-    billQuery.paidAccount = new RegExp(`^${escapeRegex(accountName)}$`, 'i');
-  }
-  if (hubRole && hubRole !== 'all') {
-    if (hubRole === 'hub2_dining') billQuery.category = 'work';
-    else if (hubRole === 'hub3_family') billQuery.category = 'family';
-    else billQuery._id = null;
-  }
-  if (!type || type === 'all' || type === 'expense') {
-    const bills = await DiningLedger.find(billQuery).lean();
-    for (const b of bills) {
-      list.push({
-        _id: 'bill_' + b._id,
-        date: b.date,
-        title: b.mealTitle || 'Hóa đơn sổ quỹ',
-        amount: b.totalBill,
-        type: 'expense',
-        accountName: b.paidAccount || 'Vietcombank',
-        toAccountName: '',
-        category: b.category === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm',
-        hubRole: b.category === 'family' ? 'hub3_family' : 'hub2_dining',
-        impactsWeeklyLimit: Boolean(b.deductWeeklyLimit),
-        notes: b.notes ? `${b.notes} • [Đồng bộ Sổ Quỹ]` : '[Đồng bộ Sổ Quỹ]',
-        source: 'dining_bill',
-        sourceId: b._id,
-        createdAt: b.createdAt || new Date(b.date)
-      });
-    }
-  }
-
-  // 3. Giao dịch Nạp / Mượn Quỹ từ DiningSettlement (có addToAccount: true)
-  const settQuery = { addToAccount: true };
-  if (accountName && accountName !== 'all') {
-    settQuery.accountName = new RegExp(`^${escapeRegex(accountName)}$`, 'i');
-  }
-  if (hubRole && hubRole !== 'all') {
-    if (hubRole === 'hub2_dining') settQuery.category = 'work';
-    else if (hubRole === 'hub3_family') settQuery.category = 'family';
-    else settQuery._id = null;
-  }
-  const settlements = await DiningSettlement.find(settQuery).lean();
-  for (const s of settlements) {
-    if (s.transferRef) continue; // Bỏ qua cấn trừ nội bộ không làm biến động ngân hàng
-    const sType = s.direction === 'in' ? 'income' : 'expense';
-    if (type && type !== 'all' && type !== sType) continue;
-
-    list.push({
-      _id: 'settlement_' + s._id,
-      date: s.date,
-      title: `${s.personName}: ${s.direction === 'in' ? 'Nạp quỹ' : 'Mượn quỹ'}${s.note ? ' (' + s.note + ')' : ''}`,
-      amount: s.amount,
-      type: sType,
-      accountName: s.accountName || 'Vietcombank',
-      toAccountName: '',
-      category: s.category === 'family' ? 'Quỹ Gia Đình' : 'Quỹ Ăn Nhóm',
-      hubRole: s.category === 'family' ? 'hub3_family' : 'hub2_dining',
-      impactsWeeklyLimit: false,
-      notes: '[Đồng bộ Nạp/Mượn Quỹ]',
-      source: 'dining_settlement',
-      sourceId: s._id,
-      createdAt: s.createdAt || new Date(s.date)
-    });
-  }
-
-  // 4. Chi phí cá nhân & Hóa đơn cố định từ PersonalExpense (Hub 4 có deductFromAccount: true và status === 'paid')
-  const pExpQuery = { status: 'paid', deductFromAccount: true };
-  if (accountName && accountName !== 'all') {
-    pExpQuery.paidAccount = new RegExp(`^${escapeRegex(accountName)}$`, 'i');
-  }
-  if (hubRole && hubRole !== 'all' && hubRole !== 'hub4_personal') {
-    pExpQuery._id = null;
-  }
-  if (!type || type === 'all' || type === 'expense') {
-    const pExpenses = await PersonalExpense.find(pExpQuery).lean();
-    for (const e of pExpenses) {
-      list.push({
-        _id: 'pexpense_' + e._id,
-        date: e.paidDate || e.date,
-        title: e.title,
-        amount: e.amount,
-        type: 'expense',
-        accountName: e.paidAccount || 'Timo tiền lời',
-        toAccountName: '',
-        category: e.category || 'Chi phí cá nhân',
-        hubRole: 'hub4_personal',
-        impactsWeeklyLimit: Boolean(e.impactsWeeklyLimit),
-        notes: e.note ? `${e.note} • [Đồng bộ Sổ Cá Nhân]` : '[Đồng bộ Sổ Cá Nhân]',
-        source: 'personal_expense',
-        sourceId: e._id,
-        createdAt: e.createdAt || new Date(e.date)
-      });
-    }
-  }
-
-  // Sắp xếp ngày giảm dần, thời gian giảm dần
-  list.sort((a, b) => {
-    const dateDiff = new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt);
-    if (dateDiff !== 0) return dateDiff;
-    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-  });
-
-  return list.slice(0, Number(limit) || 150);
+  const page = parseInt(filter.page, 10) || 1;
+  const limit = parseInt(filter.limit, 10) || 150;
+  const result = await getUnifiedFeed(page, limit, filter);
+  return result.transactions;
 }
 
 // ==================== 0. SỔ GIAO DỊCH THU / CHI / CHUYỂN KHOẢN (CRUD) ====================
 app.get('/api/transactions', authenticateToken, async (req, res) => {
   try {
-    const list = await getUnifiedTransactions(req.query);
-    res.json({ success: true, transactions: list });
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 150;
+    const result = await getUnifiedFeed(page, limit, req.query);
+    res.json({
+      success: true,
+      transactions: result.transactions,
+      pagination: result.pagination
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -2008,7 +1896,12 @@ app.delete('/api/debts/:id', authenticateToken, requirePermission('manageDebts')
 // ==================== 5. ĐƠN DỊCH VỤ / BÁN HÀNG CRUD (CÔNG NỢ KHÁCH & VỐN NCC) ====================
 app.post('/api/service-orders', authenticateToken, requireAnyPermission('manageDebts', 'manageTransactions'), async (req, res) => {
   try {
-    const { customerName, serviceName, costPrice, salePrice, supplierName, customerPaid, supplierPaid, date, note, receivedAccount } = req.body;
+    const {
+      customerName, serviceName, costPrice, salePrice,
+      supplierName, customerPaid, supplierPaid,
+      customerPaidAmount, supplierPaidAmount,
+      date, note, receivedAccount
+    } = req.body;
     if (!customerName || !customerName.trim()) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập tên khách hàng' });
     }
@@ -2020,19 +1913,31 @@ app.post('/api/service-orders', authenticateToken, requireAnyPermission('manageD
     const cPaid = Boolean(customerPaid);
     const sPaid = Boolean(supplierPaid);
 
-    const order = await ServiceOrder.create({
+    const orderPayload = {
       customerName: customerName.trim(),
       serviceName: (serviceName || 'Bán dấu / Khắc dấu').trim(),
       costPrice: cPrice,
       salePrice: sPrice,
       supplierName: sName,
       supplierKey: sKey,
-      customerPaid: cPaid,
-      supplierPaid: sPaid,
       receivedAccount: receivedAccount || 'Vietcombank',
       date: date || new Date().toISOString().slice(0, 10),
       note: (note || '').trim()
-    });
+    };
+
+    if (customerPaidAmount !== undefined) {
+      orderPayload.customerPaidAmount = Math.max(0, Number(customerPaidAmount) || 0);
+    } else {
+      orderPayload.customerPaid = cPaid;
+    }
+
+    if (supplierPaidAmount !== undefined) {
+      orderPayload.supplierPaidAmount = Math.max(0, Number(supplierPaidAmount) || 0);
+    } else {
+      orderPayload.supplierPaid = sPaid;
+    }
+
+    const order = await ServiceOrder.create(orderPayload);
 
     // Nếu chưa thanh toán cho NCC và có giá vốn > 0 -> tự động cộng vào Hũ tiền nợ NCC (gộp đúng NCC)
     if (!sPaid && cPrice > 0 && sKey) {
@@ -2063,7 +1968,12 @@ app.post('/api/service-orders', authenticateToken, requireAnyPermission('manageD
 
 app.put('/api/service-orders/:id', authenticateToken, requireAnyPermission('manageDebts', 'manageTransactions'), async (req, res) => {
   try {
-    const { customerName, serviceName, costPrice, salePrice, supplierName, customerPaid, supplierPaid, date, note, receivedAccount } = req.body;
+    const {
+      customerName, serviceName, costPrice, salePrice,
+      supplierName, customerPaid, supplierPaid,
+      customerPaidAmount, supplierPaidAmount,
+      date, note, receivedAccount
+    } = req.body;
     const oldOrder = await ServiceOrder.findById(req.params.id);
     if (!oldOrder) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
 
@@ -2089,8 +1999,18 @@ app.put('/api/service-orders/:id', authenticateToken, requireAnyPermission('mana
     oldOrder.salePrice = newSPrice;
     oldOrder.supplierName = newSName;
     oldOrder.supplierKey = newSKey;
-    oldOrder.customerPaid = newCPaid;
-    oldOrder.supplierPaid = newSPaid;
+    if (customerPaidAmount !== undefined) {
+      oldOrder.customerPaidAmount = Math.max(0, Number(customerPaidAmount) || 0);
+    } else if (customerPaid !== undefined) {
+      oldOrder.customerPaid = newCPaid;
+    }
+
+    if (supplierPaidAmount !== undefined) {
+      oldOrder.supplierPaidAmount = Math.max(0, Number(supplierPaidAmount) || 0);
+    } else if (supplierPaid !== undefined) {
+      oldOrder.supplierPaid = newSPaid;
+    }
+
     if (date) oldOrder.date = date;
     if (receivedAccount !== undefined) oldOrder.receivedAccount = receivedAccount;
     if (note !== undefined) oldOrder.note = (note || '').trim();
