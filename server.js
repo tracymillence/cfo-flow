@@ -542,6 +542,27 @@ function getMemberSortIndex(name, group = 'work') {
   return idx !== -1 ? idx : 999;
 }
 
+// Trả về danh sách các key định danh khả dĩ cho một thành viên/giao dịch để khớp chính xác không lệch dấu
+function getMemberLookupKeys(group, personKey, name) {
+  const keys = new Set();
+  const g = group || 'work';
+  if (personKey) {
+    const pk = normalizeKey(personKey);
+    if (pk) {
+      keys.add(`${g}_${pk}`);
+      keys.add(`${g}_${normalizeKey(personKey.replace(/\(.*?\)/g, ''))}`);
+    }
+  }
+  if (name) {
+    const nk = normalizeKey(name);
+    if (nk) {
+      keys.add(`${g}_${nk}`);
+      keys.add(`${g}_${normalizeKey(name.replace(/\(.*?\)/g, ''))}`);
+    }
+  }
+  return Array.from(keys).filter(k => !k.endsWith('_'));
+}
+
 // Helper calculation engine for Dining Groups (Work vs Family)
 function calculateDiningGroup(bills, settlements, members) {
   const billPaidTotal = bills.reduce((sum, b) => sum + (b.totalBill || 0), 0);
@@ -562,12 +583,12 @@ function calculateDiningGroup(bills, settlements, members) {
     });
   });
 
-  const memberMap = {};
+  const memberObjList = [];
+  const memberKeyMap = new Map();
+
   members.forEach(m => {
-    const rawKey = m.personKey || normalizeKey(m.name);
-    // Prefix with group to ensure 100% isolation in combined view
-    const key = `${m.group || 'work'}_${rawKey}`;
-    memberMap[key] = {
+    const rawKey = normalizeKey(m.personKey || m.name);
+    const memberObj = {
       id: m._id,
       personKey: rawKey,
       name: m.name,
@@ -579,18 +600,30 @@ function calculateDiningGroup(bills, settlements, members) {
       mealCount: 0,
       currentBalance: m.openingBalance || 0
     };
+    memberObjList.push(memberObj);
+
+    // Đăng ký tất cả các alias định danh
+    getMemberLookupKeys(m.group, m.personKey, m.name).forEach(k => {
+      memberKeyMap.set(k, memberObj);
+    });
   });
 
   settlements.forEach(s => {
-    const rawKey = s.personKey || normalizeKey(s.personName);
-    const key = `${s.category || 'work'}_${rawKey}`;
-    if (memberMap[key]) {
+    const sKeys = getMemberLookupKeys(s.category, s.personKey, s.personName);
+    let matchedMember = null;
+    for (const k of sKeys) {
+      if (memberKeyMap.has(k)) {
+        matchedMember = memberKeyMap.get(k);
+        break;
+      }
+    }
+    if (matchedMember) {
       if (s.direction === 'in') {
-        memberMap[key].topups += (s.amount || 0);
-        memberMap[key].currentBalance += (s.amount || 0);
+        matchedMember.topups += (s.amount || 0);
+        matchedMember.currentBalance += (s.amount || 0);
       } else if (s.direction === 'out') {
-        memberMap[key].borrowed += (s.amount || 0);
-        memberMap[key].currentBalance -= (s.amount || 0);
+        matchedMember.borrowed += (s.amount || 0);
+        matchedMember.currentBalance -= (s.amount || 0);
       }
     }
   });
@@ -598,17 +631,23 @@ function calculateDiningGroup(bills, settlements, members) {
   bills.forEach(b => {
     b.splits.forEach(sp => {
       if (sp.isMe || normalizeKey(sp.personName) === 'toi') return;
-      const rawKey = sp.personKey || normalizeKey(sp.personName);
-      const key = `${b.category || 'work'}_${rawKey}`;
-      if (memberMap[key]) {
-        memberMap[key].eaten += (sp.amount || 0);
-        memberMap[key].mealCount += 1;
-        memberMap[key].currentBalance -= (sp.amount || 0);
+      const spKeys = getMemberLookupKeys(b.category, sp.personKey, sp.personName);
+      let matchedMember = null;
+      for (const k of spKeys) {
+        if (memberKeyMap.has(k)) {
+          matchedMember = memberKeyMap.get(k);
+          break;
+        }
+      }
+      if (matchedMember) {
+        matchedMember.eaten += (sp.amount || 0);
+        matchedMember.mealCount += 1;
+        matchedMember.currentBalance -= (sp.amount || 0);
       }
     });
   });
 
-  const membersList = Object.values(memberMap).sort((a, b) => {
+  const membersList = memberObjList.sort((a, b) => {
     const oA = getMemberSortIndex(a.name, a.group);
     const oB = getMemberSortIndex(b.name, b.group);
     if (oA !== oB) return oA - oB;

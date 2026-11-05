@@ -34,6 +34,26 @@ function normalizeMemberName(name) {
   return name.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
 }
 
+function getMemberLookupKeysClient(group, personKey, name) {
+  const keys = new Set();
+  const g = group || 'work';
+  if (personKey) {
+    const pk = normalizeMemberName(personKey);
+    if (pk) {
+      keys.add(`${g}_${pk}`);
+      keys.add(`${g}_${normalizeMemberName(personKey.replace(/\(.*?\)/g, ''))}`);
+    }
+  }
+  if (name) {
+    const nk = normalizeMemberName(name);
+    if (nk) {
+      keys.add(`${g}_${nk}`);
+      keys.add(`${g}_${normalizeMemberName(name.replace(/\(.*?\)/g, ''))}`);
+    }
+  }
+  return Array.from(keys).filter(k => !k.endsWith('_'));
+}
+
 function getMemberSortIndex(name, group = 'work') {
   if (!name) return 999;
   const norm = normalizeMemberName(name);
@@ -2240,8 +2260,12 @@ function cashFlowApp() {
       this.selectedMemberStatement = member;
       this.memberStatementFilter = 'all';
 
-      const rawKey = member.personKey || normalizeMemberName(member.name);
       const targetGroup = member.group || this.diningCategory || 'work';
+      const mKeys = new Set(getMemberLookupKeysClient(targetGroup, member.personKey, member.name));
+      if (targetGroup === 'all') {
+        getMemberLookupKeysClient('work', member.personKey, member.name).forEach(k => mKeys.add(k));
+        getMemberLookupKeysClient('family', member.personKey, member.name).forEach(k => mKeys.add(k));
+      }
 
       // Lấy danh sách hóa đơn và nạp tiền
       let allBills = [];
@@ -2265,7 +2289,7 @@ function cashFlowApp() {
 
       // 1. Số dư đầu kỳ
       events.push({
-        id: 'opening_' + (member.id || member._id || rawKey),
+        id: 'opening_' + (member.id || member._id || member.name),
         date: 'Đầu kỳ',
         isoDate: '1970-01-01',
         type: 'opening',
@@ -2279,9 +2303,10 @@ function cashFlowApp() {
 
       // 2. Các giao dịch Nạp (+) / Mượn (-) / Cấn trừ (⇄)
       allSettlements.forEach(s => {
-        const sKey = s.personKey || normalizeMemberName(s.personName);
-        const sGroup = s.category || 'work';
-        if (sKey === rawKey && (targetGroup === 'all' || sGroup === targetGroup)) {
+        const sKeys = getMemberLookupKeysClient(s.category || 'work', s.personKey, s.personName);
+        const isMatch = sKeys.some(k => mKeys.has(k)) ||
+          (targetGroup === 'all' && (normalizeMemberName(s.personName) === normalizeMemberName(member.name)));
+        if (isMatch) {
           const isTopup = s.direction === 'in';
           const isTransfer = Boolean(s.transferRef);
           events.push({
@@ -2301,14 +2326,14 @@ function cashFlowApp() {
 
       // 3. Các bữa ăn đã tham gia (Ăn -)
       allBills.forEach(b => {
-        const bGroup = b.category || 'work';
-        if (targetGroup !== 'all' && bGroup !== targetGroup) return;
         (b.splits || []).forEach(sp => {
           if (sp.isMe || normalizeMemberName(sp.personName) === 'toi') return;
-          const spKey = sp.personKey || normalizeMemberName(sp.personName);
-          if (spKey === rawKey && (sp.amount || 0) > 0) {
+          const spKeys = getMemberLookupKeysClient(b.category || 'work', sp.personKey, sp.personName);
+          const isMatch = spKeys.some(k => mKeys.has(k)) ||
+            (targetGroup === 'all' && (normalizeMemberName(sp.personName) === normalizeMemberName(member.name)));
+          if (isMatch && (sp.amount || 0) > 0) {
             events.push({
-              id: b._id + '_' + spKey,
+              id: b._id + '_' + (sp.personKey || sp.personName),
               billId: b._id,
               date: b.date,
               isoDate: b.date || b.createdAt || '1970-01-01',
