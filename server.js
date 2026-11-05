@@ -45,6 +45,74 @@ function normalizeKey(str) {
   return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ');
 }
 
+function escapeRegex(str) {
+  if (!str) return '';
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Tự động gộp các bản ghi nhà cung cấp trùng lặp theo tên/key và chuẩn hóa key
+async function mergeDuplicateSuppliers() {
+  try {
+    if (mongoose.connection.readyState !== 1) return;
+    const SupplierDebt = require('./models/SupplierDebt');
+    const ServiceOrder = require('./models/ServiceOrder');
+    const allSuppliers = await SupplierDebt.find();
+
+    const grouped = {};
+    for (const sup of allSuppliers) {
+      const key = normalizeKey(sup.supplierName);
+      if (!key) continue;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(sup);
+    }
+
+    for (const key of Object.keys(grouped)) {
+      const list = grouped[key];
+      const primary = list[0];
+      let needsSave = false;
+      if (primary.supplierKey !== key) {
+        primary.supplierKey = key;
+        needsSave = true;
+      }
+
+      if (list.length > 1) {
+        console.log(`Đang gộp ${list.length} bản ghi NCC trùng lặp cho: "${primary.supplierName}"...`);
+        for (let i = 1; i < list.length; i++) {
+          const dup = list[i];
+          primary.remainingAmount = (primary.remainingAmount || 0) + (dup.remainingAmount || 0);
+          if (!primary.phone && dup.phone) primary.phone = dup.phone;
+          if (!primary.bankInfo && dup.bankInfo) primary.bankInfo = dup.bankInfo;
+          if (!primary.notes && dup.notes) primary.notes = dup.notes;
+          await SupplierDebt.findByIdAndDelete(dup._id);
+        }
+        needsSave = true;
+      }
+
+      if (needsSave) {
+        await primary.save();
+      }
+
+      // Đảm bảo các đơn hàng liên quan đồng bộ đúng tên và key chuẩn
+      await ServiceOrder.updateMany(
+        { 
+          $or: [
+            { supplierKey: key },
+            { supplierName: { $regex: new RegExp(`^${escapeRegex(primary.supplierName.trim())}$`, 'i') } }
+          ]
+        },
+        { 
+          $set: { 
+            supplierKey: key,
+            supplierName: primary.supplierName 
+          } 
+        }
+      );
+    }
+  } catch (err) {
+    console.error('Lỗi khi gộp NCC trùng lặp:', err.message);
+  }
+}
+
 // Đảm bảo index unique tách biệt giữa group và personKey, dọn dẹp các index rác cũ
 async function ensureCleanIndexes() {
   try {
@@ -82,6 +150,9 @@ async function ensureCleanIndexes() {
         }
       } catch (_) {}
     }
+
+    // 4. Gộp NCC trùng lặp
+    await mergeDuplicateSuppliers();
   } catch (e) {
     // Không làm gián đoạn nếu index đã tồn tại
   }
@@ -1359,14 +1430,34 @@ app.post('/api/supplier-debts', authenticateToken, requirePermission('manageDebt
     if (!supplierName || !supplierName.trim()) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập tên nhà cung cấp' });
     }
-    const sup = await SupplierDebt.create({
-      supplierName: supplierName.trim(),
-      supplierKey: normalizeKey(supplierName),
-      remainingAmount: Number(remainingAmount) || 0,
-      phone: phone || '',
-      bankInfo: bankInfo || '',
-      notes: notes || ''
+    const sName = supplierName.trim();
+    const sKey = normalizeKey(sName);
+    const addAmt = Number(remainingAmount) || 0;
+
+    let sup = await SupplierDebt.findOne({
+      $or: [
+        { supplierKey: sKey },
+        { supplierName: { $regex: new RegExp(`^${escapeRegex(sName)}$`, 'i') } }
+      ]
     });
+
+    if (sup) {
+      sup.remainingAmount = (sup.remainingAmount || 0) + addAmt;
+      if (phone) sup.phone = phone;
+      if (bankInfo) sup.bankInfo = bankInfo;
+      if (notes) sup.notes = notes;
+      sup.supplierKey = sKey;
+      await sup.save();
+    } else {
+      sup = await SupplierDebt.create({
+        supplierName: sName,
+        supplierKey: sKey,
+        remainingAmount: addAmt,
+        phone: phone || '',
+        bankInfo: bankInfo || '',
+        notes: notes || ''
+      });
+    }
     res.json({ success: true, supplier: sup });
   } catch (err) {
     // Tự động xử lý nếu gặp lỗi E11000 do index id_1 rác cũ trên MongoDB Atlas
@@ -1374,16 +1465,7 @@ app.post('/api/supplier-debts', authenticateToken, requirePermission('manageDebt
       try {
         console.log('Phát hiện lỗi E11000 do index id_1 trên supplierdebts, tiến hành dropIndex...');
         await mongoose.connection.db.collection('supplierdebts').dropIndex('id_1');
-        const { supplierName, remainingAmount, phone, bankInfo, notes } = req.body;
-        const sup = await SupplierDebt.create({
-          supplierName: supplierName.trim(),
-          supplierKey: normalizeKey(supplierName),
-          remainingAmount: Number(remainingAmount) || 0,
-          phone: phone || '',
-          bankInfo: bankInfo || '',
-          notes: notes || ''
-        });
-        return res.json({ success: true, supplier: sup });
+        return res.status(400).json({ success: false, error: 'Đã dọn dẹp index, vui lòng thử lại' });
       } catch (retryErr) {
         return res.status(400).json({ success: false, error: retryErr.message });
       }
@@ -1685,16 +1767,25 @@ app.post('/api/service-orders', authenticateToken, requireAnyPermission('manageD
       note: (note || '').trim()
     });
 
-    // Nếu chưa thanh toán cho NCC và có giá vốn > 0 -> tự động cộng vào Hũ tiền nợ NCC
+    // Nếu chưa thanh toán cho NCC và có giá vốn > 0 -> tự động cộng vào Hũ tiền nợ NCC (gộp đúng NCC)
     if (!sPaid && cPrice > 0 && sKey) {
-      await SupplierDebt.findOneAndUpdate(
-        { supplierKey: sKey },
-        { 
-          $inc: { remainingAmount: cPrice },
-          $setOnInsert: { supplierName: sName }
-        },
-        { upsert: true }
-      );
+      let sup = await SupplierDebt.findOne({
+        $or: [
+          { supplierKey: sKey },
+          { supplierName: { $regex: new RegExp(`^${escapeRegex(sName)}$`, 'i') } }
+        ]
+      });
+      if (sup) {
+        sup.remainingAmount = (sup.remainingAmount || 0) + cPrice;
+        sup.supplierKey = sKey;
+        await sup.save();
+      } else {
+        await SupplierDebt.create({
+          supplierName: sName,
+          supplierKey: sKey,
+          remainingAmount: cPrice
+        });
+      }
     }
 
     res.json({ success: true, order, message: 'Đã lưu đơn hàng thành công' });
@@ -1738,16 +1829,25 @@ app.put('/api/service-orders/:id', authenticateToken, requireAnyPermission('mana
     if (note !== undefined) oldOrder.note = (note || '').trim();
     await oldOrder.save();
 
-    // Cộng công nợ NCC mới nếu đơn mới chưa trả NCC
+    // Cộng công nợ NCC mới nếu đơn mới chưa trả NCC (gộp đúng NCC)
     if (!newSPaid && newCPrice > 0 && newSKey) {
-      await SupplierDebt.findOneAndUpdate(
-        { supplierKey: newSKey },
-        { 
-          $inc: { remainingAmount: newCPrice },
-          $setOnInsert: { supplierName: newSName }
-        },
-        { upsert: true }
-      );
+      let sup = await SupplierDebt.findOne({
+        $or: [
+          { supplierKey: newSKey },
+          { supplierName: { $regex: new RegExp(`^${escapeRegex(newSName)}$`, 'i') } }
+        ]
+      });
+      if (sup) {
+        sup.remainingAmount = (sup.remainingAmount || 0) + newCPrice;
+        sup.supplierKey = newSKey;
+        await sup.save();
+      } else {
+        await SupplierDebt.create({
+          supplierName: newSName,
+          supplierKey: newSKey,
+          remainingAmount: newCPrice
+        });
+      }
     }
 
     // Đảm bảo không bị âm nợ NCC

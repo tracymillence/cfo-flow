@@ -334,8 +334,11 @@ function cashFlowApp() {
       changePassword: false,
       correctionRequest: false,
       correctionList: false,
-      memberStatement: false
+      memberStatement: false,
+      supplierHistory: false
     },
+
+    selectedSupplierForHistory: null,
 
     // Sao kê & lịch sử thu chi từng thành viên (Member Statements)
     selectedMemberStatement: null,
@@ -1400,6 +1403,52 @@ function cashFlowApp() {
       } catch (err) {
         alert('Lỗi: ' + err.message);
       }
+    },
+
+    openSupplierHistoryModal(sup) {
+      this.selectedSupplierForHistory = sup;
+      this.modals.supplierHistory = true;
+    },
+
+    normalizeKey(str) {
+      if (!str) return '';
+      return String(str).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+    },
+
+    getSupplierOrders(sup) {
+      if (!sup || !this.dashboard?.allOrders) return [];
+      const supKey = this.normalizeKey(sup.supplierName);
+      return (this.dashboard.allOrders || []).filter(o => {
+        const oKey = this.normalizeKey(o.supplierName || o.supplierKey || '');
+        return oKey && (oKey === supKey || oKey.includes(supKey) || supKey.includes(oKey));
+      });
+    },
+
+    getSupplierOrdersSummary(sup) {
+      const orders = this.getSupplierOrders(sup);
+      const unpaid = orders.filter(o => !o.supplierPaid && (Number(o.costPrice) || 0) > 0);
+      const paid = orders.filter(o => o.supplierPaid);
+      const totalCost = orders.reduce((sum, o) => sum + (Number(o.costPrice) || 0), 0);
+      const totalUnpaidCost = unpaid.reduce((sum, o) => sum + (Number(o.costPrice) || 0), 0);
+      const totalPaidCost = paid.reduce((sum, o) => sum + (Number(o.costPrice) || 0), 0);
+
+      return {
+        totalOrders: orders.length,
+        totalCost,
+        unpaidCount: unpaid.length,
+        totalUnpaidCost,
+        paidCount: paid.length,
+        totalPaidCost
+      };
+    },
+
+    createOrderForSupplier(sup) {
+      this.openServiceOrderModal();
+      if (sup) {
+        this.serviceOrderForm.supplierName = sup.supplierName;
+        this.serviceOrderForm.supplierPaid = false;
+      }
+      this.modals.supplierHistory = false;
     },
 
     // ==================== 3B. ĐƠN DỊCH VỤ / BÁN HÀNG & CÔNG NỢ KHÁCH - NCC ====================
