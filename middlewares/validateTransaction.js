@@ -47,6 +47,21 @@ const transactionSchema = z.object({
 }, {
   message: 'Tài khoản nhận không được trùng với tài khoản nguồn',
   path: ['toAccountName']
+}).refine(data => {
+  // BUG 4 (Zod): Cấm gán nhãn impactsWeeklyLimit = true cho các giao dịch không thuộc Hub 4
+  if (data.hubRole !== 'hub4_personal' && data.impactsWeeklyLimit === true) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Cờ "Trừ hạn mức tuần" (impactsWeeklyLimit) chỉ được phép áp dụng cho Hub 4 (Cá Nhân & Tiết Kiệm)',
+  path: ['impactsWeeklyLimit']
+}).transform(data => {
+  // Tự động ép impactsWeeklyLimit = false nếu không phải Hub 4
+  if (data.hubRole !== 'hub4_personal') {
+    data.impactsWeeklyLimit = false;
+  }
+  return data;
 });
 
 /**
@@ -59,10 +74,11 @@ function validateTransaction(req, res, next) {
     next();
   } catch (err) {
     if (err instanceof z.ZodError) {
+      const issueList = err.issues || err.errors || [];
       return res.status(400).json({
         success: false,
-        message: err.errors.map(e => e.message).join('; '),
-        errors: err.errors.map(e => ({
+        message: issueList.map(e => e.message).join('; '),
+        errors: issueList.map(e => ({
           field: e.path.join('.'),
           message: e.message
         }))

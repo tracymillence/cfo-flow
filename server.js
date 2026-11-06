@@ -191,30 +191,43 @@ app.use('/api', async (req, res, next) => {
 
 // ==================== CORE FINANCIAL ENGINE & GUARDS ====================
 
-// Hỗ trợ Thấu chi nội bộ (Supplier Float): kiểm tra nếu khoản chi vượt quá Tiền Khả Dụng (SpendableCash)
-async function isUsingSupplierFloat(amountToSpend, session = null) {
+// BUG 3 (Financial Isolation): Thấu chi nội bộ (Supplier Float)
+// Cờ usingSupplierFloat CHỈ ÁP DỤNG cho các khoản chi thuộc Hub 1 (Thu Nhập & Kinh Doanh) vì nợ NCC gắn liền với kinh doanh.
+// Dòng tiền Hub 4 (Cá nhân), Hub 2 (Quỹ ăn), Hub 3 (Gia đình) tách biệt hoàn toàn, tuyệt đối không chạm vào vốn NCC.
+async function isUsingSupplierFloat(amountToSpend, hubRole = 'hub1_income', session = null) {
+  if (hubRole !== 'hub1_income') return false;
+
   const parsedAmount = Number(amountToSpend);
   if (isNaN(parsedAmount) || parsedAmount <= 0) return false;
 
-  const [cashResult] = await Account.aggregate([
+  // Lấy số dư thực tế các tài khoản thuộc Hub 1 (hoặc toàn bộ nếu chưa phân bổ)
+  const hub1Accounts = await Account.aggregate([
+    { $match: { hubRole: 'hub1_income' } },
     { $group: { _id: null, totalCash: { $sum: '$balance' } } }
   ]).session(session);
+
+  let hub1Cash = hub1Accounts.length > 0 ? hub1Accounts[0].totalCash : 0;
+  if (!hub1Accounts.length) {
+    const [allCash] = await Account.aggregate([
+      { $group: { _id: null, totalCash: { $sum: '$balance' } } }
+    ]).session(session);
+    hub1Cash = allCash ? allCash.totalCash : 0;
+  }
 
   const [debtResult] = await SupplierDebt.aggregate([
     { $group: { _id: null, totalDebt: { $sum: '$remainingAmount' } } }
   ]).session(session);
 
-  const totalPhysicalCash = cashResult ? cashResult.totalCash : 0;
   const totalSupplierDebt = debtResult ? debtResult.totalDebt : 0;
-  const spendableCash = totalPhysicalCash - totalSupplierDebt;
+  const spendableCashHub1 = hub1Cash - totalSupplierDebt;
 
-  // Trả về true nếu số tiền chi tiêu vượt quá tiền thực khả dụng (đang chiếm dụng vốn nợ NCC)
-  return spendableCash < parsedAmount;
+  // Chỉ báo động thấu chi nếu số dư khả dụng của Hub 1 không đủ chi trả khoản chi kinh doanh này
+  return spendableCashHub1 < parsedAmount;
 }
 
-// Giữ lại hàm tương thích ngược nhưng KHÔNG throw error 400 (chuyển hoàn toàn sang cơ chế Thấu chi nội bộ)
-async function checkSpendableCashBlock(amountToSpend, session = null) {
-  return await isUsingSupplierFloat(amountToSpend, session);
+// Giữ lại hàm tương thích ngược
+async function checkSpendableCashBlock(amountToSpend, hubRole = 'hub1_income', session = null) {
+  return await isUsingSupplierFloat(amountToSpend, hubRole, session);
 }
 
 // ISSUE 4: Atomic Account Balance Update using MongoDB $inc operator (Prevents race conditions)
@@ -1324,6 +1337,7 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
         totalPayable: totalPayableDebt
       },
       allOrders: serviceOrders,
+      projectionHealth: await calculateProjectionHealth('all'),
       currentUser: {
         id: req.user._id,
         username: req.user.username,
@@ -1379,13 +1393,17 @@ app.post('/api/transactions', authenticateToken, requirePermission('manageTransa
     } = req.body;
 
     const numAmount = Number(amount);
+    const resolvedHubRole = hubRole || 'hub4_personal';
 
-    // TÁC VỤ 2: Cơ chế Thấu chi nội bộ (Supplier Float) - Không chặn lỗi 400
-    // Nếu SpendableCash < amountToSpend thì tự động gán usingSupplierFloat = true
+    // BUG 3 (Financial Isolation): Cờ Thấu chi NCC (usingSupplierFloat) CHỈ ĐƯỢC PHÉP kích hoạt nếu thuộc Hub 1 (Kinh doanh)
+    // Hub 4 (Cá nhân), Hub 2 (Quỹ ăn), Hub 3 (Gia đình) tách biệt hoàn toàn
     let usingSupplierFloat = false;
-    if (type === 'expense') {
-      usingSupplierFloat = await isUsingSupplierFloat(numAmount);
+    if (type === 'expense' && resolvedHubRole === 'hub1_income') {
+      usingSupplierFloat = await isUsingSupplierFloat(numAmount, resolvedHubRole);
     }
+
+    // BUG 4: impactsWeeklyLimit chỉ áp dụng cho Hub 4 (Cá nhân)
+    const safeImpactsWeeklyLimit = (resolvedHubRole === 'hub4_personal') ? Boolean(impactsWeeklyLimit) : false;
 
     const tx = await Transaction.create({
       date: date || new Date().toISOString().slice(0, 10),
@@ -1395,8 +1413,8 @@ app.post('/api/transactions', authenticateToken, requirePermission('manageTransa
       accountName: accountName || 'Vietcombank',
       toAccountName: toAccountName || '',
       category: category || 'Chi tiêu',
-      hubRole: hubRole || 'hub4_personal',
-      impactsWeeklyLimit: Boolean(impactsWeeklyLimit),
+      hubRole: resolvedHubRole,
+      impactsWeeklyLimit: safeImpactsWeeklyLimit,
       usingSupplierFloat,
       notes: notes || ''
     });
@@ -1451,11 +1469,15 @@ app.put('/api/transactions/:id', authenticateToken, requirePermission('manageTra
       }
     }
 
-    // TÁC VỤ 2: Thấu chi nội bộ (Supplier Float) khi chỉnh sửa
+    // BUG 3 (Financial Isolation): Thấu chi nội bộ khi cập nhật giao dịch
+    const resolvedHubRole = hubRole || oldTx.hubRole || 'hub4_personal';
     let usingSupplierFloat = false;
-    if (type === 'expense') {
-      usingSupplierFloat = await isUsingSupplierFloat(numAmount);
+    if (type === 'expense' && resolvedHubRole === 'hub1_income') {
+      usingSupplierFloat = await isUsingSupplierFloat(numAmount, resolvedHubRole);
     }
+
+    // BUG 4: impactsWeeklyLimit chỉ áp dụng cho Hub 4 (Cá nhân)
+    const safeImpactsWeeklyLimit = (resolvedHubRole === 'hub4_personal') ? Boolean(impactsWeeklyLimit) : false;
 
     oldTx.date = date || oldTx.date;
     oldTx.title = title.trim();
@@ -1464,8 +1486,8 @@ app.put('/api/transactions/:id', authenticateToken, requirePermission('manageTra
     oldTx.accountName = accountName;
     oldTx.toAccountName = toAccountName || '';
     oldTx.category = category;
-    oldTx.hubRole = hubRole;
-    oldTx.impactsWeeklyLimit = Boolean(impactsWeeklyLimit);
+    oldTx.hubRole = resolvedHubRole;
+    oldTx.impactsWeeklyLimit = safeImpactsWeeklyLimit;
     oldTx.usingSupplierFloat = usingSupplierFloat;
     oldTx.notes = notes || '';
 
@@ -1783,6 +1805,221 @@ app.delete('/api/reminders/:id', authenticateToken, requirePermission('manageTra
     res.json({ success: true, message: 'Đã xóa dòng nhắc dòng tiền' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// ==================== TỔNG HỢP & DỰ BÁO SỨC KHỎE TÀI CHÍNH (UNIFIED PROJECTION HEALTH ENGINE) ====================
+// BUG 1 & BUG 2: Đồng bộ hóa 100% giữa phương trình dự báo (operands) và số tổng (totalHealth)
+// Không để Frontend tự tính nhẩm làm lệch số. Hỗ trợ các bộ lọc thời gian: 'all', '7days', '30days'.
+async function calculateProjectionHealth(range = 'all') {
+  const [
+    accounts,
+    supplierDebts,
+    diningBills,
+    diningMembers,
+    diningSettlements,
+    upcomingTransactions
+  ] = await Promise.all([
+    Account.find().lean(),
+    SupplierDebt.find().lean(),
+    DiningLedger.find().lean(),
+    DiningMember.find().lean(),
+    DiningSettlement.find().lean(),
+    UpcomingTransaction.find().sort({ date: 1, createdAt: 1 }).lean()
+  ]);
+
+  // 1. Tiền mặt thực tế (Tổng số dư tất cả tài khoản ngân hàng & tiền mặt)
+  const totalPhysicalCash = accounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+
+  // Phân bổ số dư cho 4 Hubs
+  const hubs = {
+    hub1_income: { title: 'Hub 1: Thu Nhập & Kinh Doanh', balance: 0 },
+    hub2_dining: { title: 'Hub 2: Quỹ Ứng Tiền Ăn Nhóm', balance: 0 },
+    hub3_family: { title: 'Hub 3: Quỹ Gia Đình (6 người)', balance: 0 },
+    hub4_personal: { title: 'Hub 4: Chi Tiêu Cá Nhân & Tiết Kiệm', balance: 0 }
+  };
+  accounts.forEach(acc => {
+    const role = acc.hubRole && hubs[acc.hubRole] ? acc.hubRole : 'hub1_income';
+    hubs[role].balance += (Number(acc.balance) || 0);
+  });
+
+  // 2. Hũ tiền hàng nợ Nhà Cung Cấp
+  const totalSupplierDebt = supplierDebts.reduce((sum, s) => sum + (Number(s.remainingAmount) || 0), 0);
+
+  // 3. Sổ quỹ ăn nhóm & gia đình
+  const combinedStats = calculateDiningGroup(diningBills, diningSettlements, diningMembers);
+  const diningReceivable = combinedStats.totalDebtReceivable || 0;
+  const diningPayable = combinedStats.totalSurplusFund || 0;
+
+  // 4. Xác định mốc thời gian theo múi giờ Việt Nam (Asia/Ho_Chi_Minh)
+  const now = new Date();
+  const vnDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(now);
+  let maxDateStr = null;
+
+  if (range === '7days') {
+    const [y, m, d] = vnDateStr.split('-').map(Number);
+    const d7 = new Date(Date.UTC(y, m - 1, d + 7));
+    maxDateStr = d7.toISOString().slice(0, 10);
+  } else if (range === '30days') {
+    const [y, m, d] = vnDateStr.split('-').map(Number);
+    const d30 = new Date(Date.UTC(y, m - 1, d + 30));
+    maxDateStr = d30.toISOString().slice(0, 10);
+  }
+
+  // Lọc các khoản dự kiến trong khung thời gian yêu cầu
+  let rangeUpcoming = upcomingTransactions;
+  if (maxDateStr) {
+    rangeUpcoming = rangeUpcoming.filter(it => it.date >= vnDateStr && it.date <= maxDateStr);
+  }
+
+  // 5. Tính toán các khoản Dự Thu / Dự Chi
+  const upcomingIncome = rangeUpcoming
+    .filter(it => it.type === 'income')
+    .reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
+
+  const upcomingExpense = rangeUpcoming
+    .filter(it => it.type === 'expense')
+    .reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
+
+  // 6. CÔNG THỨC CHUẨN KẾ TOÁN HỆ THỐNG:
+  // [Sức khỏe tài chính tổng thể] = [Tiền mặt thực tế] - [Nợ NCC] + [Quỹ ăn nợ tôi] - [Dư quỹ ăn (tôi nợ)] + [Tổng Dự Thu] - [Tổng Dự Chi]
+  const totalHealth = safeMath.subtract(
+    safeMath.add(
+      safeMath.subtract(
+        safeMath.add(
+          safeMath.subtract(totalPhysicalCash, totalSupplierDebt),
+          diningReceivable
+        ),
+        diningPayable
+      ),
+      upcomingIncome
+    ),
+    upcomingExpense
+  );
+
+  // 7. Mô phỏng timeline để tìm ngày xuất hiện thiếu hụt thanh khoản sớm nhất (Running balance)
+  const sortedItems = [...rangeUpcoming].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const baseBalance = totalPhysicalCash - totalSupplierDebt + diningReceivable - diningPayable;
+  let runningBalance = baseBalance;
+  let earliestDeficitDate = null;
+  let earliestDeficitAmount = 0;
+
+  for (const it of sortedItems) {
+    if (it.type === 'income') {
+      runningBalance += (Number(it.amount) || 0);
+    } else {
+      runningBalance -= (Number(it.amount) || 0);
+    }
+    if (runningBalance < 0 && !earliestDeficitDate) {
+      earliestDeficitDate = it.date;
+      earliestDeficitAmount = runningBalance;
+    }
+  }
+
+  if (totalHealth < 0 && !earliestDeficitDate) {
+    earliestDeficitDate = sortedItems.length > 0 ? sortedItems[sortedItems.length - 1].date : vnDateStr;
+    earliestDeficitAmount = totalHealth;
+  }
+
+  // 8. Mô phỏng thanh khoản cho từng Hub trong khung thời gian đã chọn
+  const hubRoles = ['hub1_income', 'hub2_dining', 'hub3_family', 'hub4_personal'];
+  const hubResults = {};
+  const alerts = [];
+
+  const hubNames = {
+    hub1_income: 'Hub 1: Thu Nhập & Kinh Doanh',
+    hub2_dining: 'Hub 2: Quỹ Ứng Ăn Nhóm',
+    hub3_family: 'Hub 3: Quỹ Gia Đình (6 người)',
+    hub4_personal: 'Hub 4: Cá Nhân & Tiết Kiệm'
+  };
+
+  hubRoles.forEach(role => {
+    // Với Hub 1: Bắt đầu từ số dư đã trừ nợ NCC để phản ánh tiền thực khả dụng
+    const curBal = (role === 'hub1_income') ? (hubs[role].balance - totalSupplierDebt) : hubs[role].balance;
+    const hItems = sortedItems.filter(it => it.hubRole === role);
+    const inc = hItems.filter(it => it.type === 'income').reduce((s, it) => s + (Number(it.amount) || 0), 0);
+    const exp = hItems.filter(it => it.type === 'expense').reduce((s, it) => s + (Number(it.amount) || 0), 0);
+    const projBal = curBal + inc - exp;
+
+    let rBal = curBal;
+    let hEarliestDate = null;
+    let hEarliestAmt = 0;
+
+    for (const it of hItems) {
+      if (it.type === 'income') rBal += (Number(it.amount) || 0);
+      else rBal -= (Number(it.amount) || 0);
+
+      if (rBal < 0 && !hEarliestDate) {
+        hEarliestDate = it.date;
+        hEarliestAmt = rBal;
+      }
+    }
+
+    if (projBal < 0 && !hEarliestDate) {
+      hEarliestDate = hItems.length > 0 ? hItems[hItems.length - 1].date : vnDateStr;
+      hEarliestAmt = projBal;
+    }
+
+    const isDeficit = (projBal < 0) || (hEarliestDate !== null);
+
+    hubResults[role] = {
+      hubRole: role,
+      hubName: hubNames[role],
+      currentBalance: curBal,
+      totalIncome: inc,
+      totalExpense: exp,
+      projectedBalance: projBal,
+      isDeficit,
+      earliestDeficitDate: hEarliestDate,
+      earliestDeficitAmount: hEarliestAmt,
+      itemCount: hItems.length
+    };
+
+    if (isDeficit) {
+      alerts.push({
+        hubRole: role,
+        hubName: hubNames[role],
+        currentBalance: curBal,
+        projectedBalance: projBal,
+        earliestDeficitDate: hEarliestDate || (sortedItems.length > 0 ? sortedItems[0].date : vnDateStr),
+        earliestDeficitAmount: hEarliestAmt || projBal
+      });
+    }
+  });
+
+  const isTotalDeficit = (totalHealth < 0) || (earliestDeficitDate !== null);
+
+  return {
+    range,
+    rangeLabel: range === '7days' ? '7 ngày tới' : (range === '30days' ? '30 ngày tới' : 'Toàn bộ thời gian'),
+    startDate: vnDateStr,
+    endDate: maxDateStr,
+    operands: {
+      actualCash: totalPhysicalCash,
+      supplierDebt: totalSupplierDebt,
+      diningReceivable,
+      diningPayable,
+      upcomingIncome,
+      upcomingExpense
+    },
+    totalHealth,
+    projectedBalance: totalHealth,
+    isDeficit: isTotalDeficit,
+    earliestDeficitDate,
+    earliestDeficitAmount,
+    hubs: hubResults,
+    alerts
+  };
+}
+
+// Endpoint trả về kết quả Sức khỏe tài chính tổng thể + Operands đồng bộ cho Frontend
+app.get('/api/projection-health', authenticateToken, async (req, res) => {
+  try {
+    const range = req.query.range || 'all';
+    const health = await calculateProjectionHealth(range);
+    res.json({ success: true, ...health });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

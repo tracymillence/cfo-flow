@@ -46,10 +46,11 @@ function validateSupplierDebt(req, res, next) {
     next();
   } catch (err) {
     if (err instanceof z.ZodError) {
+      const issueList = err.issues || err.errors || [];
       return res.status(400).json({
         success: false,
-        message: err.errors.map(e => e.message).join('; '),
-        errors: err.errors.map(e => ({
+        message: issueList.map(e => e.message).join('; '),
+        errors: issueList.map(e => ({
           field: e.path.join('.'),
           message: e.message
         }))
@@ -64,3 +65,4 @@ module.exports = {
   supplierDebtUpdateSchema,
   validateSupplierDebt
 };
+

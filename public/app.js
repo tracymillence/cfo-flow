@@ -218,6 +218,7 @@ function cashFlowApp() {
     upcomingList: [],
     upcomingLoading: false,
     upcomingFilterRange: 'all', // 'all' | '7days' | '30days'
+    projectionHealth: null,
     upcomingFilterHub: 'all',   // 'all' | 'hub1_income' | 'hub2_dining' | 'hub3_family' | 'hub4_personal'
     upcomingForm: {
       type: 'expense',          // 'income' (Dự Thu) | 'expense' (Dự Chi)
@@ -1143,6 +1144,9 @@ function cashFlowApp() {
             this.personalConfigForm.savingsRate = data.card4_personal_hub.savingsRate || 15;
             this.personalConfigForm.weeklyLimit = data.card4_personal_hub.weeklyLimit || 1500000;
           }
+          if (data.projectionHealth) {
+            this.projectionHealth = data.projectionHealth;
+          }
           this.fetchCorrectionRequests();
           this.fetchUpcomingTransactions();
         } else {
@@ -1211,6 +1215,10 @@ function cashFlowApp() {
 
     async submitTransaction() {
       try {
+        if (this.transactionForm.hubRole !== 'hub4_personal') {
+          this.transactionForm.impactsWeeklyLimit = false;
+        }
+
         const url = this.editingTransactionId ? `/api/transactions/${this.editingTransactionId}` : '/api/transactions';
         const method = this.editingTransactionId ? 'PUT' : 'POST';
 
@@ -2564,6 +2572,26 @@ function cashFlowApp() {
       }
     },
 
+    // BUG 1 & BUG 2: Nạp dữ liệu Sức khỏe tài chính & toán hạng dự báo đồng bộ từ Backend
+    async fetchProjectionHealth(range = null) {
+      try {
+        const chosenRange = range || this.upcomingFilterRange || 'all';
+        const res = await this.authFetch(`/api/projection-health?range=${chosenRange}`);
+        const data = await res.json();
+        if (data.success) {
+          this.projectionHealth = data;
+        }
+      } catch (err) {
+        console.error('Lỗi nạp dự báo sức khỏe tài chính:', err);
+      }
+    },
+
+    // BUG 2: Bộ lọc thời gian đồng bộ lập tức cho Banner, 4 Hubs và danh sách
+    async setTimeFilter(range) {
+      this.upcomingFilterRange = range;
+      await this.fetchProjectionHealth(range);
+    },
+
     async submitUpcomingTransaction() {
       if (!this.upcomingForm.title || !this.upcomingForm.title.trim()) {
         this.notify('⚠️ Vui lòng nhập tên khoản mục dự kiến');
@@ -2599,6 +2627,7 @@ function cashFlowApp() {
           this.upcomingForm.amount = '';
           this.upcomingForm.notes = '';
           await this.fetchUpcomingTransactions();
+          await this.fetchProjectionHealth();
         } else {
           this.notify('❌ ' + (data.message || data.error || 'Lỗi lưu dự báo'));
         }
@@ -2625,6 +2654,7 @@ function cashFlowApp() {
         if (data.success) {
           this.notify(isMarkAsDone ? '✓ Đã hoàn tất khoản dự kiến và gỡ khỏi danh sách!' : '🗑️ Đã xóa khoản dự kiến!');
           await this.fetchUpcomingTransactions();
+          await this.fetchProjectionHealth();
         } else {
           this.notify('❌ ' + (data.message || data.error || 'Lỗi'));
         }
@@ -2644,85 +2674,47 @@ function cashFlowApp() {
     },
 
     // ==================== CÔNG THỨC CHUẨN: SỨC KHỎE TÀI CHÍNH DỰ KIẾN (COMPUTED REAL-TIME) ====================
-    // [SỨC KHỎE TÀI CHÍNH DỰ KIẾN] = 
-    //   [Tổng tiền mặt thực tế đang có] 
-    //   - [Hũ tiền hàng / Nợ Nhà Cung Cấp hiện tại] 
-    //   + [Tổng tiền mọi người đang nợ tôi (lấy từ Sổ quỹ ăn / Sổ nợ 2 chiều)] 
-    //   + [Tổng khoản Dự Thu (từ form mới)] 
-    //   - [Tổng khoản Dự Chi (từ form mới)]
+    // BUG 1 & BUG 2: Đồng bộ 100% từ Backend Projection Health Engine
+    // [Sức khỏe tài chính tổng thể] = [Tiền mặt thực tế] - [Hũ NCC] + [Quỹ nợ tôi] - [Dư quỹ ăn tôi nợ] + [Dự thu] - [Dự chi]
     get overallFinancialHealth() {
-      // 1. Tổng tiền mặt thực tế đang có
-      const totalActualCash = Number(this.dashboard?.card1_cash?.totalCash ?? (this.dashboard?.accounts?.totalCash || 0));
-
-      // 2. Hũ tiền hàng / Nợ NCC hiện tại
-      const supplierDebt = Number(this.dashboard?.supplierPot?.totalAmount ?? (this.dashboard?.card1_cash?.supplierPot || 0));
-
-      // 3. Tổng tiền mọi người đang nợ tôi (Khoản phải thu: Sổ quỹ ăn nợ tôi + Sổ nợ Bạn nợ tôi + Khách nợ tiền hàng chưa thu)
-      const diningReceivable = Number(this.dashboard?.card4_dining?.combined?.totalDebtReceivable ?? (this.dashboard?.card4_dining?.totalDebtReceivable || 0));
-      const debtReceivable = Number(this.dashboard?.debtSummary?.totalReceivable || 0);
-      const ordersReceivable = (this.dashboard?.allOrders || [])
-        .filter(o => !o.customerPaid)
-        .reduce((sum, o) => sum + (Number(o.salePrice) || 0), 0);
-      const totalReceivable = diningReceivable + debtReceivable + ordersReceivable;
-
-      // 4. Tổng tiền tôi đang nợ mọi người (Khoản phải trả: Còn dư quỹ ăn tôi giữ hộ + Sổ nợ Tôi nợ bạn)
-      const diningPayable = Number(this.dashboard?.card4_dining?.combined?.totalSurplusFund ?? (this.dashboard?.card4_dining?.totalSurplusFund || 0));
-      const debtPayable = Number(this.dashboard?.debtSummary?.totalPayable || 0);
-      const totalPayable = diningPayable + debtPayable;
-
-      // 5 & 6. Tổng khoản Dự Thu / Dự Chi (từ module mới)
-      const items = [...(this.upcomingList || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-
-      const totalUpcomingIncome = items
-        .filter(it => it.type === 'income')
-        .reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
-
-      const totalUpcomingExpense = items
-        .filter(it => it.type === 'expense')
-        .reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
-
-      // Công thức tính Sức khỏe tài chính tổng thể chuẩn xác 2 chiều (AP Aging):
-      // Nợ NCC đã được đưa vào danh sách Dự Chi (totalUpcomingExpense) theo ngày đến hạn (dueDate).
-      // Điểm khởi đầu dùng tiền thực tế để tránh trừ đúp nợ NCC (tránh báo động đỏ ảo).
-      const projectedBalance = totalActualCash + totalReceivable - totalPayable + totalUpcomingIncome - totalUpcomingExpense;
-
-      // Quét timeline tìm ngày sớm nhất dòng tiền giả lập rơi xuống dưới 0
-      let runningBalance = totalActualCash + totalReceivable - totalPayable;
-      let earliestDeficitDate = null;
-      let earliestDeficitAmount = 0;
-
-      for (const it of items) {
-        if (it.type === 'income') {
-          runningBalance += (Number(it.amount) || 0);
-        } else {
-          runningBalance -= (Number(it.amount) || 0);
-        }
-        if (runningBalance < 0 && !earliestDeficitDate) {
-          earliestDeficitDate = it.date;
-          earliestDeficitAmount = runningBalance;
-        }
+      if (this.projectionHealth) {
+        return {
+          totalActualCash: this.projectionHealth.operands?.actualCash || 0,
+          supplierDebt: this.projectionHealth.operands?.supplierDebt || 0,
+          diningReceivable: this.projectionHealth.operands?.diningReceivable || 0,
+          diningPayable: this.projectionHealth.operands?.diningPayable || 0,
+          totalUpcomingIncome: this.projectionHealth.operands?.upcomingIncome || 0,
+          totalUpcomingExpense: this.projectionHealth.operands?.upcomingExpense || 0,
+          projectedBalance: this.projectionHealth.totalHealth ?? this.projectionHealth.projectedBalance ?? 0,
+          totalHealth: this.projectionHealth.totalHealth ?? 0,
+          isDeficit: Boolean(this.projectionHealth.isDeficit),
+          earliestDeficitDate: this.projectionHealth.earliestDeficitDate,
+          earliestDeficitAmount: this.projectionHealth.earliestDeficitAmount || 0,
+          range: this.projectionHealth.range || 'all',
+          rangeLabel: this.projectionHealth.rangeLabel || ''
+        };
       }
 
-      if (projectedBalance < 0 && !earliestDeficitDate) {
-        earliestDeficitDate = items.length > 0 ? items[items.length - 1].date : new Date().toISOString().slice(0, 10);
-        earliestDeficitAmount = projectedBalance;
-      }
+      const totalActualCash = Number(this.dashboard?.card1_cash?.totalCash || 0);
+      const supplierDebt = Number(this.dashboard?.supplierPot?.totalAmount || 0);
+      const diningReceivable = Number(this.dashboard?.card4_dining?.combined?.totalDebtReceivable || 0);
+      const diningPayable = Number(this.dashboard?.card4_dining?.combined?.totalSurplusFund || 0);
+      const projectedBalance = totalActualCash - supplierDebt + diningReceivable - diningPayable;
 
       return {
         totalActualCash,
         supplierDebt,
         diningReceivable,
-        debtReceivable,
-        totalReceivable,
         diningPayable,
-        debtPayable,
-        totalPayable,
-        totalUpcomingIncome,
-        totalUpcomingExpense,
+        totalUpcomingIncome: 0,
+        totalUpcomingExpense: 0,
         projectedBalance,
-        isDeficit: (projectedBalance < 0) || (earliestDeficitDate !== null),
-        earliestDeficitDate,
-        earliestDeficitAmount
+        totalHealth: projectedBalance,
+        isDeficit: projectedBalance < 0,
+        earliestDeficitDate: null,
+        earliestDeficitAmount: 0,
+        range: 'all',
+        rangeLabel: 'Toàn bộ thời gian'
       };
     },
 
@@ -2795,61 +2787,31 @@ function cashFlowApp() {
       return this.dashboard?.accounts?.hubs?.[hubRole]?.balance || 0;
     },
 
-    // Hàm read-only tính: [Số dư khả dụng hiện tại của Hub] + [Tổng Dự Thu của Hub đó] - [Tổng Dự Chi của Hub đó]
+    // BUG 1 & BUG 2: Đọc trực tiếp từ Backend Projection Engine (đồng bộ 100% với mốc thời gian lọc)
     getProjectedBalanceForHub(hubRole) {
+      if (this.projectionHealth?.hubs?.[hubRole]) {
+        return this.projectionHealth.hubs[hubRole];
+      }
       const currentBalance = this.getHubCurrentAvailableBalance(hubRole, true);
-      const items = (this.upcomingList || [])
-        .filter(it => it.hubRole === hubRole)
-        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-
-      const totalIncome = items
-        .filter(it => it.type === 'income')
-        .reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
-
-      const totalExpense = items
-        .filter(it => it.type === 'expense')
-        .reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
-
-      const projectedBalance = currentBalance + totalIncome - totalExpense;
-
-      // Tìm ngày đầu tiên xuất hiện thiếu hụt thanh khoản (running balance < 0)
-      let runningBalance = currentBalance;
-      let earliestDeficitDate = null;
-      let earliestDeficitAmount = 0;
-
-      for (const it of items) {
-        if (it.type === 'income') {
-          runningBalance += (Number(it.amount) || 0);
-        } else {
-          runningBalance -= (Number(it.amount) || 0);
-        }
-        if (runningBalance < 0 && !earliestDeficitDate) {
-          earliestDeficitDate = it.date;
-          earliestDeficitAmount = runningBalance;
-        }
-      }
-
-      if (projectedBalance < 0 && !earliestDeficitDate) {
-        earliestDeficitDate = items.length > 0 ? items[items.length - 1].date : new Date().toISOString().slice(0, 10);
-        earliestDeficitAmount = projectedBalance;
-      }
-
       return {
         hubRole,
         hubName: this.getHubDisplayName(hubRole),
         currentBalance,
-        totalIncome,
-        totalExpense,
-        projectedBalance,
-        isDeficit: (projectedBalance < 0) || (earliestDeficitDate !== null),
-        earliestDeficitDate,
-        earliestDeficitAmount,
-        itemCount: items.length
+        totalIncome: 0,
+        totalExpense: 0,
+        projectedBalance: currentBalance,
+        isDeficit: currentBalance < 0,
+        earliestDeficitDate: null,
+        earliestDeficitAmount: 0,
+        itemCount: 0
       };
     },
 
     // Trả về danh sách cảnh báo thiếu hụt thanh khoản cho các Hub bị âm
     getProjectedAlerts() {
+      if (this.projectionHealth?.alerts) {
+        return this.projectionHealth.alerts;
+      }
       const hubs = ['hub1_income', 'hub2_dining', 'hub3_family', 'hub4_personal'];
       return hubs
         .map(h => this.getProjectedBalanceForHub(h))

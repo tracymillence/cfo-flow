@@ -83,14 +83,15 @@ async function calculateWeeklySpeedometerAgg({ referenceDate = new Date() } = {}
     {
       $group: {
         _id: '$txWeekStart',
-        // Outgoing expenses flagged to impact the weekly limit
+        // Outgoing expenses flagged to impact the weekly limit (strictly isolated to Hub 4 Personal)
         grossWeeklySpent: {
           $sum: {
             $cond: [
               {
                 $and: [
                   { $eq: ['$type', 'expense'] },
-                  { $eq: ['$impactsWeeklyLimit', true] }
+                  { $eq: ['$impactsWeeklyLimit', true] },
+                  { $eq: ['$hubRole', 'hub4_personal'] }
                 ]
               },
               '$amount',

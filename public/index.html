@@ -862,17 +862,17 @@
             <div class="flex items-center gap-2">
               <span class="text-xs text-slate-500 font-medium">Lọc mốc thời gian:</span>
               <div class="flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
-                <button type="button" @click="upcomingFilterRange = 'all'"
+                <button type="button" @click="setTimeFilter('all')"
                         class="px-2.5 py-1 rounded-lg transition"
                         :class="upcomingFilterRange === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'">
                   Tất cả
                 </button>
-                <button type="button" @click="upcomingFilterRange = '7days'"
+                <button type="button" @click="setTimeFilter('7days')"
                         class="px-2.5 py-1 rounded-lg transition"
                         :class="upcomingFilterRange === '7days' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'">
                   7 ngày tới
                 </button>
-                <button type="button" @click="upcomingFilterRange = '30days'"
+                <button type="button" @click="setTimeFilter('30days')"
                         class="px-2.5 py-1 rounded-lg transition"
                         :class="upcomingFilterRange === '30days' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'">
                   30 ngày tới
@@ -962,7 +962,7 @@
                     <span>/</span>
                     <span class="text-rose-600" x-text="'-' + formatVND(overallFinancialHealth.totalUpcomingExpense)"></span>
                   </div>
-                  <span class="text-[9px] text-slate-400 block truncate" x-text="'Kế hoạch sắp tới'"></span>
+                  <span class="text-[9px] text-slate-400 block truncate" x-text="overallFinancialHealth.rangeLabel || 'Kế hoạch sắp tới'"></span>
                 </div>
               </div>
             </div>
@@ -970,10 +970,10 @@
             <!-- Dòng công thức diễn giải -->
             <div class="pt-2.5 border-t border-slate-200/60 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
               <span>
-                <strong>Công thức:</strong> [Tổng tiền mặt thực tế] - [Hũ tiền hàng NCC] + [Quỹ ăn nợ tôi] - [Dư quỹ ăn tôi nợ (chuyển trước)] + [Sổ nợ ròng] + [Tổng Dự Thu] - [Tổng Dự Chi]
+                <strong>Công thức kế toán:</strong> [Tổng tiền mặt thực tế] - [Hũ tiền hàng NCC] + [Quỹ ăn nợ tôi] - [Dư quỹ ăn tôi nợ] + [Tổng Dự Thu] - [Tổng Dự Chi]
               </span>
               <span class="font-mono text-[10px] text-slate-500">
-                (Quỹ ăn nợ tôi: <span class="font-bold text-emerald-700" x-text="formatVND(overallFinancialHealth.diningReceivable)"></span> | Dư quỹ ăn tôi nợ: <span class="font-bold text-rose-600" x-text="formatVND(overallFinancialHealth.diningPayable)"></span>)
+                (Đồng bộ 100% từ máy chủ cho mốc: <span class="font-bold text-slate-700" x-text="overallFinancialHealth.rangeLabel || 'Toàn bộ thời gian'"></span>)
               </span>
             </div>
           </div>
@@ -2958,6 +2958,7 @@
           <div>
             <label class="block text-[11px] font-semibold text-slate-500 mb-1">Thuộc Hub nào</label>
             <select x-model="transactionForm.hubRole"
+                    @change="if (transactionForm.hubRole !== 'hub4_personal') transactionForm.impactsWeeklyLimit = false"
                     class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none bg-white">
               <option value="hub1_income">Hub 1: Kinh Doanh</option>
               <option value="hub2_dining">Hub 2: Ăn Nhóm</option>
@@ -2973,8 +2974,8 @@
           </div>
         </div>
 
-        <!-- Trừ hạn mức tuần -->
-        <div x-show="transactionForm.type === 'expense'" class="pt-1">
+        <!-- Trừ hạn mức tuần (Chỉ hiển thị khi chi tiêu thuộc Hub 4) -->
+        <div x-show="transactionForm.type === 'expense' && transactionForm.hubRole === 'hub4_personal'" class="pt-1">
           <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-700 font-medium">
             <input type="checkbox" x-model="transactionForm.impactsWeeklyLimit"
                    class="rounded text-slate-900 focus:ring-slate-900 w-4 h-4">
