@@ -80,7 +80,8 @@ function cashFlowApp() {
       password: '',
       error: '',
       loading: false,
-      showPassword: false
+      showPassword: false,
+      theme: localStorage.getItem('cfo_login_theme') || 'light'
     },
 
     // ==================== RBAC USER MANAGEMENT STATE ====================
@@ -511,6 +512,11 @@ function cashFlowApp() {
       } finally {
         this.loginForm.loading = false;
       }
+    },
+
+    toggleLoginTheme() {
+      this.loginForm.theme = this.loginForm.theme === 'light' ? 'dark' : 'light';
+      localStorage.setItem('cfo_login_theme', this.loginForm.theme);
     },
 
     async logout(callApi = true) {
