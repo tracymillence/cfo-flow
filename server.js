@@ -20,6 +20,7 @@ const User = require('./models/User');
 const CorrectionRequest = require('./models/CorrectionRequest');
 const UpcomingTransaction = require('./models/UpcomingTransaction');
 const { validateTransaction } = require('./middlewares/validateTransaction');
+const { validateSupplierDebt } = require('./middlewares/validateSupplierDebt');
 const safeMath = require('./utils/math.util');
 const { getUnifiedFeed } = require('./services/unifiedFeed.service');
 const { calculateWeeklySpeedometerAgg } = require('./services/speedometer.service');
@@ -1581,15 +1582,16 @@ app.get('/api/supplier-debts', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/supplier-debts', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
+app.post('/api/supplier-debts', authenticateToken, requirePermission('manageDebts'), validateSupplierDebt, async (req, res) => {
   try {
-    const { supplierName, remainingAmount, phone, bankInfo, notes } = req.body;
+    const { supplierName, remainingAmount, totalAmount, paidAmount, phone, bankInfo, notes, dueDate } = req.body;
     if (!supplierName || !supplierName.trim()) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập tên nhà cung cấp' });
     }
     const sName = supplierName.trim();
     const sKey = normalizeKey(sName);
     const addAmt = Number(remainingAmount) || 0;
+    const parsedDueDate = dueDate ? new Date(dueDate) : null;
 
     let sup = await SupplierDebt.findOne({
       $or: [
@@ -1600,16 +1602,22 @@ app.post('/api/supplier-debts', authenticateToken, requirePermission('manageDebt
 
     if (sup) {
       sup.remainingAmount = (sup.remainingAmount || 0) + addAmt;
-      if (phone) sup.phone = phone;
-      if (bankInfo) sup.bankInfo = bankInfo;
-      if (notes) sup.notes = notes;
+      if (totalAmount !== undefined) sup.totalAmount = (sup.totalAmount || 0) + (Number(totalAmount) || addAmt);
+      if (paidAmount !== undefined) sup.paidAmount = (sup.paidAmount || 0) + (Number(paidAmount) || 0);
+      if (phone !== undefined) sup.phone = phone;
+      if (bankInfo !== undefined) sup.bankInfo = bankInfo;
+      if (notes !== undefined) sup.notes = notes;
+      if (dueDate !== undefined) sup.dueDate = parsedDueDate;
       sup.supplierKey = sKey;
       await sup.save();
     } else {
       sup = await SupplierDebt.create({
         supplierName: sName,
         supplierKey: sKey,
+        totalAmount: totalAmount !== undefined ? Number(totalAmount) : addAmt,
+        paidAmount: paidAmount !== undefined ? Number(paidAmount) : 0,
         remainingAmount: addAmt,
+        dueDate: parsedDueDate,
         phone: phone || '',
         bankInfo: bankInfo || '',
         notes: notes || ''
@@ -1631,21 +1639,30 @@ app.post('/api/supplier-debts', authenticateToken, requirePermission('manageDebt
   }
 });
 
-app.put('/api/supplier-debts/:id', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
+app.put('/api/supplier-debts/:id', authenticateToken, requirePermission('manageDebts'), validateSupplierDebt, async (req, res) => {
   try {
-    const { supplierName, remainingAmount, phone, bankInfo, notes } = req.body;
-    const updateData = {};
-    if (supplierName) {
-      updateData.supplierName = supplierName.trim();
-      updateData.supplierKey = normalizeKey(supplierName);
-    }
-    if (remainingAmount !== undefined) updateData.remainingAmount = Math.max(0, Number(remainingAmount));
-    if (phone !== undefined) updateData.phone = phone;
-    if (bankInfo !== undefined) updateData.bankInfo = bankInfo;
-    if (notes !== undefined) updateData.notes = notes;
-
-    const sup = await SupplierDebt.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    const { supplierName, remainingAmount, totalAmount, paidAmount, phone, bankInfo, notes, dueDate } = req.body;
+    const sup = await SupplierDebt.findById(req.params.id);
     if (!sup) return res.status(404).json({ success: false, message: 'Không tìm thấy NCC' });
+
+    if (supplierName) {
+      sup.supplierName = supplierName.trim();
+      sup.supplierKey = normalizeKey(supplierName);
+    }
+    if (totalAmount !== undefined) sup.totalAmount = Math.max(0, Number(totalAmount));
+    if (paidAmount !== undefined) sup.paidAmount = Math.max(0, Number(paidAmount));
+    if (remainingAmount !== undefined) {
+      sup.remainingAmount = Math.max(0, Number(remainingAmount));
+      if (totalAmount === undefined) {
+        sup.totalAmount = sup.remainingAmount + (sup.paidAmount || 0);
+      }
+    }
+    if (phone !== undefined) sup.phone = phone;
+    if (bankInfo !== undefined) sup.bankInfo = bankInfo;
+    if (notes !== undefined) sup.notes = notes;
+    if (dueDate !== undefined) sup.dueDate = dueDate ? new Date(dueDate) : null;
+
+    await sup.save();
     res.json({ success: true, supplier: sup });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -1773,8 +1790,59 @@ app.delete('/api/reminders/:id', authenticateToken, requirePermission('manageTra
 // Collection 'upcoming_transactions' tách biệt 100%, không can thiệp hay merge với sổ giao dịch thực tế
 app.get('/api/upcoming', authenticateToken, async (req, res) => {
   try {
-    const upcoming = await UpcomingTransaction.find().sort({ date: 1, createdAt: 1 });
-    res.json({ success: true, upcoming });
+    const upcoming = await UpcomingTransaction.find().sort({ date: 1, createdAt: 1 }).lean();
+
+    // Accounts Payable Aging: Query các bản ghi SupplierDebt có trạng thái pending hoặc partial (còn nợ NCC)
+    const supplierDebts = await SupplierDebt.find({
+      $or: [
+        { status: { $in: ['pending', 'partial'] } },
+        { remainingAmount: { $gt: 0 } }
+      ]
+    }).lean();
+
+    // Mặc định dueDate nếu trống: Ngày cuối cùng của tháng hiện tại (theo giờ VN/local) dạng YYYY-MM-DD
+    const now = new Date();
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const defaultEndOfMonthStr = `${endOfMonth.getFullYear()}-${String(endOfMonth.getMonth() + 1).padStart(2, '0')}-${String(endOfMonth.getDate()).padStart(2, '0')}`;
+
+    // Ánh xạ nợ NCC sang danh sách "Dự Chi" (Cash Outflow) theo dueDate
+    const supplierOutflowItems = supplierDebts
+      .filter(sup => (Number(sup.remainingAmount) || 0) > 0)
+      .map(sup => {
+        let dateStr = defaultEndOfMonthStr;
+        if (sup.dueDate) {
+          try {
+            dateStr = new Date(sup.dueDate).toISOString().slice(0, 10);
+          } catch (e) {
+            dateStr = defaultEndOfMonthStr;
+          }
+        }
+
+        return {
+          _id: 'supplier_debt_' + sup._id,
+          supplierDebtId: sup._id,
+          title: `Trả nợ NCC: ${sup.supplierName}`,
+          amount: Number(sup.remainingAmount) || 0,
+          type: 'expense',
+          hubRole: 'hub1_income', // Nợ NCC được phân bổ cho Hub 1: Kinh doanh
+          date: dateStr,
+          dueDate: sup.dueDate || null,
+          notes: sup.notes ? `[Hạn nợ NCC] ${sup.notes}` : `[Hạn nợ NCC: ${dateStr}]`,
+          source: 'supplier_debt',
+          isSupplierDebt: true,
+          status: sup.status || 'pending',
+          createdAt: sup.createdAt || new Date()
+        };
+      });
+
+    // Kết hợp và sắp xếp theo ngày tăng dần
+    const combined = [...upcoming, ...supplierOutflowItems].sort((a, b) => {
+      const cmp = (a.date || '').localeCompare(b.date || '');
+      if (cmp !== 0) return cmp;
+      return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+    });
+
+    res.json({ success: true, upcoming: combined });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1815,6 +1883,12 @@ app.post('/api/upcoming', authenticateToken, requirePermission('manageTransactio
 
 app.delete('/api/upcoming/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
+    if (String(req.params.id).startsWith('supplier_debt_')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Khoản nợ NCC này được liên kết tự động từ Danh mục Nhà cung cấp theo ngày đến hạn (dueDate). Vui lòng thanh toán hoặc cập nhật tại mục Quản lý NCC!'
+      });
+    }
     const item = await UpcomingTransaction.findByIdAndDelete(req.params.id);
     if (!item) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy khoản dự kiến' });

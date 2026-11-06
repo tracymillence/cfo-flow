@@ -199,6 +199,7 @@ function cashFlowApp() {
     supplierForm: {
       supplierName: '',
       remainingAmount: '',
+      dueDate: '',
       phone: '',
       bankInfo: '',
       notes: ''
@@ -1341,6 +1342,7 @@ function cashFlowApp() {
         this.supplierForm = {
           supplierName: sup.supplierName,
           remainingAmount: sup.remainingAmount,
+          dueDate: sup.dueDate ? new Date(sup.dueDate).toISOString().slice(0, 10) : '',
           phone: sup.phone || '',
           bankInfo: sup.bankInfo || '',
           notes: sup.notes || ''
@@ -1350,11 +1352,13 @@ function cashFlowApp() {
         this.supplierForm = {
           supplierName: '',
           remainingAmount: '',
+          dueDate: '',
           phone: '',
           bankInfo: '',
           notes: ''
         };
       }
+      this.formData = this.supplierForm;
       this.modals.supplier = true;
     },
 
@@ -2604,6 +2608,10 @@ function cashFlowApp() {
     },
 
     async deleteUpcomingTransaction(id, isMarkAsDone = true) {
+      if (String(id).startsWith('supplier_debt_')) {
+        alert('Khoản nợ NCC này được đồng bộ tự động từ danh sách Nhà Cung Cấp theo ngày đến hạn (dueDate).\n\nĐể tất toán hoặc điều chỉnh, vui lòng sử dụng nút "Trả nợ" hoặc "Sửa" trong mục Hũ Tiền Hàng Nợ Từng NCC.');
+        return;
+      }
       const confirmText = isMarkAsDone
         ? 'Xác nhận khoản này "Đã hoàn tất"?\n\nKhoản mục sẽ được xóa khỏi danh sách dự kiến (Bạn có thể tự ghi nhận vào sổ giao dịch thực tế nếu cần).'
         : 'Bạn có chắc chắn muốn xóa khoản dự kiến này khỏi danh sách?';
@@ -2622,6 +2630,16 @@ function cashFlowApp() {
         }
       } catch (err) {
         this.notify('❌ Lỗi hệ thống: ' + err.message);
+      }
+    },
+
+    paySupplierDebtFromTimeline(item) {
+      const sup = (this.dashboard?.supplierPot?.suppliers || []).find(s => String(s._id) === String(item.supplierDebtId));
+      if (sup) {
+        this.paySupplierPrompt(sup);
+      } else {
+        alert('Không tìm thấy NCC này trong bộ nhớ tạm, hệ thống đang đồng bộ lại dữ liệu...');
+        this.fetchDashboard();
       }
     },
 
@@ -2663,12 +2681,13 @@ function cashFlowApp() {
         .filter(it => it.type === 'expense')
         .reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
 
-      // Công thức tính Sức khỏe tài chính tổng thể chuẩn xác 2 chiều:
-      // = [Tiền mặt thực tế] - [Nợ NCC] + [Mọi người nợ tôi] - [Tôi nợ mọi người] + [Dự Thu] - [Dự Chi]
-      const projectedBalance = totalActualCash - supplierDebt + totalReceivable - totalPayable + totalUpcomingIncome - totalUpcomingExpense;
+      // Công thức tính Sức khỏe tài chính tổng thể chuẩn xác 2 chiều (AP Aging):
+      // Nợ NCC đã được đưa vào danh sách Dự Chi (totalUpcomingExpense) theo ngày đến hạn (dueDate).
+      // Điểm khởi đầu dùng tiền thực tế để tránh trừ đúp nợ NCC (tránh báo động đỏ ảo).
+      const projectedBalance = totalActualCash + totalReceivable - totalPayable + totalUpcomingIncome - totalUpcomingExpense;
 
       // Quét timeline tìm ngày sớm nhất dòng tiền giả lập rơi xuống dưới 0
-      let runningBalance = totalActualCash - supplierDebt + totalReceivable - totalPayable;
+      let runningBalance = totalActualCash + totalReceivable - totalPayable;
       let earliestDeficitDate = null;
       let earliestDeficitAmount = 0;
 
@@ -2760,9 +2779,15 @@ function cashFlowApp() {
       return map[hubRole] || hubRole;
     },
 
-    getHubCurrentAvailableBalance(hubRole) {
+    getHubCurrentAvailableBalance(hubRole, forProjection = false) {
       if (hubRole === 'hub1_income') {
-        // Tiền thật sự khả dụng của Hub 1 (đã trừ nợ NCC)
+        if (forProjection) {
+          // Khi chạy Timeline Dự báo Dòng tiền tương lai (Accounts Payable Aging):
+          // Khởi đầu từ số dư tiền thực tế hiện tại của Hub 1.
+          // Các khoản nợ NCC sẽ tự động được trừ đi khi mốc thời gian trượt qua ngày dueDate!
+          return this.dashboard?.accounts?.hubs?.hub1_income?.balance || 0;
+        }
+        // Tiền thật sự khả dụng của Hub 1 (đã trừ nợ NCC tức thì)
         return (this.dashboard?.card1_cash?.spendableCash !== undefined)
           ? this.dashboard.card1_cash.spendableCash
           : (this.dashboard?.accounts?.hubs?.hub1_income?.balance || 0);
@@ -2772,7 +2797,7 @@ function cashFlowApp() {
 
     // Hàm read-only tính: [Số dư khả dụng hiện tại của Hub] + [Tổng Dự Thu của Hub đó] - [Tổng Dự Chi của Hub đó]
     getProjectedBalanceForHub(hubRole) {
-      const currentBalance = this.getHubCurrentAvailableBalance(hubRole);
+      const currentBalance = this.getHubCurrentAvailableBalance(hubRole, true);
       const items = (this.upcomingList || [])
         .filter(it => it.hubRole === hubRole)
         .sort((a, b) => (a.date || '').localeCompare(b.date || ''));

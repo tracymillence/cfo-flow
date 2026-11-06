@@ -1267,22 +1267,22 @@
                   <div class="p-3.5 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
                        :class="item.type === 'income' 
                          ? 'bg-emerald-50/40 border-emerald-200 hover:border-emerald-300' 
-                         : 'bg-rose-50/40 border-rose-200 hover:border-rose-300'">
+                         : (item.isSupplierDebt ? 'bg-amber-50/50 border-amber-300 hover:border-amber-400' : 'bg-rose-50/40 border-rose-200 hover:border-rose-300')">
                     
                     <!-- Left: Icon, Date, Title, Hub -->
                     <div class="flex items-start gap-3 min-w-0 flex-1">
                       
                       <!-- Icon Badge -->
                       <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-sm mt-0.5"
-                           :class="item.type === 'income' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'">
-                        <i :class="item.type === 'income' ? 'fa-solid fa-arrow-down-left' : 'fa-solid fa-arrow-up-right'"></i>
+                           :class="item.type === 'income' ? 'bg-emerald-100 text-emerald-700' : (item.isSupplierDebt ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700')">
+                        <i :class="item.isSupplierDebt ? 'fa-solid fa-truck-ramp-box' : (item.type === 'income' ? 'fa-solid fa-arrow-down-left' : 'fa-solid fa-arrow-up-right')"></i>
                       </div>
 
                       <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-1.5">
                           <span class="px-2 py-0.5 rounded text-[10px] font-bold"
-                                :class="item.type === 'income' ? 'bg-emerald-200/70 text-emerald-800' : 'bg-rose-200/70 text-rose-800'"
-                                x-text="item.type === 'income' ? 'DỰ THU' : 'DỰ CHI'"></span>
+                                :class="item.type === 'income' ? 'bg-emerald-200/70 text-emerald-800' : (item.isSupplierDebt ? 'bg-amber-200/80 text-amber-900 border border-amber-300' : 'bg-rose-200/70 text-rose-800')"
+                                x-text="item.isSupplierDebt ? 'HẠN NỢ NCC' : (item.type === 'income' ? 'DỰ THU' : 'DỰ CHI')"></span>
 
                           <span class="px-2 py-0.5 rounded text-[10px] font-medium"
                                 :class="{
@@ -1294,7 +1294,7 @@
                                 x-text="item.hubRole === 'hub1_income' ? 'Hub 1' : (item.hubRole === 'hub2_dining' ? 'Hub 2' : (item.hubRole === 'hub3_family' ? 'Hub 3' : 'Hub 4'))"></span>
 
                           <span class="text-[11px] font-mono text-slate-500 font-semibold flex items-center gap-1">
-                            <i class="fa-regular fa-calendar text-[10px]"></i>
+                            <i class="fa-regular fa-calendar text-[10px]" :class="item.isSupplierDebt ? 'text-amber-600' : ''"></i>
                             <span x-text="formatDate(item.date)"></span>
                           </span>
                         </div>
@@ -1315,26 +1315,39 @@
                       <!-- Amount -->
                       <div class="text-right">
                         <div class="font-mono font-extrabold text-sm sm:text-base"
-                             :class="item.type === 'income' ? 'text-emerald-700' : 'text-rose-600'"
+                             :class="item.type === 'income' ? 'text-emerald-700' : (item.isSupplierDebt ? 'text-amber-700' : 'text-rose-600')"
                              x-text="(item.type === 'income' ? '+' : '-') + formatVND(item.amount)"></div>
                       </div>
 
                       <!-- Action Buttons -->
                       <div class="flex items-center gap-1.5 pl-2">
-                        <!-- Mark as Done Button -->
-                        <button type="button" @click="deleteUpcomingTransaction(item._id, true)"
-                                title="Đã hoàn tất (Gỡ khỏi danh sách dự kiến)"
-                                class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1 shadow-sm">
-                          <i class="fa-solid fa-check text-[10px]"></i>
-                          <span class="hidden sm:inline">Hoàn tất</span>
-                        </button>
+                        <!-- Nợ NCC: Nút Trả nợ NCC -->
+                        <template x-if="item.isSupplierDebt">
+                          <button type="button" @click="paySupplierDebtFromTimeline(item)"
+                                  title="Thanh toán nợ cho nhà cung cấp này"
+                                  class="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition flex items-center gap-1 shadow-sm">
+                            <i class="fa-solid fa-credit-card text-[10px]"></i>
+                            <span class="hidden sm:inline">Trả nợ NCC</span>
+                          </button>
+                        </template>
 
-                        <!-- Delete Button -->
-                        <button type="button" @click="deleteUpcomingTransaction(item._id, false)"
-                                title="Xóa khoản dự kiến này"
-                                class="w-8 h-8 rounded-lg border border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-slate-400 transition flex items-center justify-center text-xs">
-                          <i class="fa-solid fa-trash-can"></i>
-                        </button>
+                        <!-- Khoản dự kiến thông thường -->
+                        <template x-if="!item.isSupplierDebt">
+                          <div class="flex items-center gap-1.5">
+                            <button type="button" @click="deleteUpcomingTransaction(item._id, true)"
+                                    title="Đã hoàn tất (Gỡ khỏi danh sách dự kiến)"
+                                    class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1 shadow-sm">
+                              <i class="fa-solid fa-check text-[10px]"></i>
+                              <span class="hidden sm:inline">Hoàn tất</span>
+                            </button>
+
+                            <button type="button" @click="deleteUpcomingTransaction(item._id, false)"
+                                    title="Xóa khoản dự kiến này"
+                                    class="w-8 h-8 rounded-lg border border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-slate-400 transition flex items-center justify-center text-xs">
+                              <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                          </div>
+                        </template>
                       </div>
 
                     </div>
@@ -2170,7 +2183,11 @@
               <template x-for="s in dashboard.supplierPot.suppliers" :key="s._id">
                 <div class="p-3.5 rounded-xl border border-slate-200/70 bg-white hover:border-slate-300 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                   <div class="min-w-0 flex-1">
-                    <strong class="text-xs font-bold text-slate-900 block truncate" x-text="s.supplierName"></strong>
+                    <div class="flex items-center gap-2">
+                      <strong class="text-xs font-bold text-slate-900 truncate" x-text="s.supplierName"></strong>
+                      <span x-show="s.dueDate" class="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-50 text-amber-800 border border-amber-200"
+                            x-text="'Hạn: ' + formatDate(s.dueDate)"></span>
+                    </div>
                     <p class="text-[10px] text-slate-400 mt-0.5 truncate" x-text="s.notes || s.bankInfo || 'Chờ thanh toán vốn'"></p>
                   </div>
 
@@ -3537,6 +3554,15 @@
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Thông tin chuyển khoản / SĐT</label>
           <input type="text" x-model="supplierForm.bankInfo" placeholder="VD: STK 123456 - VCB"
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none">
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">
+            <i class="fa-regular fa-calendar text-amber-600 mr-1"></i>Hạn thanh toán nợ (DueDate)
+          </label>
+          <input type="date" x-model="supplierForm.dueDate"
+                 class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none">
+          <p class="text-[10px] text-slate-400 mt-0.5">Nếu để trống, hệ thống tự động gán là ngày cuối tháng hiện tại để dự báo dòng tiền</p>
         </div>
 
         <div>

@@ -304,3 +304,4 @@ erDiagram
    - Các form nhập tiền tệ đều khai báo thuộc tính `novalidate` và `step="any"` để cho phép nhập số lẻ chính xác đến từng đồng (ví dụ: `4.421.355đ`), triệt tiêu hoàn toàn các thông báo lỗi popup phiền hà của trình duyệt.
 3. **Bảo Toàn Lịch Sử Giao Dịch (Audit & Reversal Guarantee)**:
    - Bất kỳ thao tác sửa đổi hay xóa bỏ bản ghi nào đều tự động hoàn tác đúng lượng chênh lệch ngân hàng cũ (`revertDelta`) bằng toán tử `$inc` trước khi áp dụng lượng biến động mới, loại bỏ nguy cơ lệch sổ kép.
+

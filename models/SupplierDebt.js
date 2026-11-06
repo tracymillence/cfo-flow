@@ -18,7 +18,10 @@ const supplierDebtSchema = new mongoose.Schema({
 
   phone: { type: String, default: '', trim: true },
   bankInfo: { type: String, default: '', trim: true },
-  notes: { type: String, default: '', trim: true }
+  notes: { type: String, default: '', trim: true },
+
+  // Accounts Payable Aging: Ngày đến hạn thanh toán công nợ
+  dueDate: { type: Date, required: false, default: null, index: true }
 }, { timestamps: true });
 
 // Pre-save lifecycle hook: automated calculation for installment debt tracking
