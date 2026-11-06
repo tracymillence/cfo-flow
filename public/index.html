@@ -193,14 +193,6 @@
             :class="loginForm.theme === 'dark' ? 'bg-gradient-to-r from-amber-100 via-amber-300 to-yellow-400 bg-clip-text text-transparent' : 'text-slate-800'">
           CFO Flow
         </h2>
-        <p class="text-[11px] font-bold tracking-widest uppercase mt-1"
-           :class="loginForm.theme === 'dark' ? 'text-amber-400/90' : 'text-amber-700'">
-          Khế Ước Bàn Thạch • Nham Vương
-        </p>
-        <p class="text-[10px] mt-1 italic tracking-wide"
-           :class="loginForm.theme === 'dark' ? 'text-stone-400' : 'text-slate-500'">
-          "Mọi khế ước tài chính đều vững vàng như thạch trụ"
-        </p>
       </div>
 
       <!-- Error Alert -->
@@ -262,18 +254,6 @@
             <i x-show="!loginForm.loading" class="fa-solid fa-gem text-xs"></i>
             <span x-text="loginForm.loading ? 'Đang Thẩm Định...' : 'Ký Kết Khế Ước (Đăng Nhập)'"></span>
           </button>
-        </div>
-
-        <!-- Footer Caption (Matching Reference Image) -->
-        <div class="pt-2 text-center">
-          <p class="text-[11px] font-medium"
-             :class="loginForm.theme === 'dark' ? 'text-stone-400' : 'text-slate-400'">
-            Bảo mật khế ước <span class="font-bold" :class="loginForm.theme === 'dark' ? 'text-amber-400/90' : 'text-amber-700'">•</span> Quản lý dòng tiền
-          </p>
-          <p class="text-[10px] mt-0.5 opacity-60"
-             :class="loginForm.theme === 'dark' ? 'text-stone-500' : 'text-slate-400'">
-            Tài khoản mặc định: admin / 123456
-          </p>
         </div>
 
       </form>
