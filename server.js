@@ -475,10 +475,9 @@ async function seedDefaultData(force = false) {
       ]);
     }
 
-    // 9. Debts (2 khoản nợ 2 chiều giữ nguyên)
-    const debtsCount = await Debt.countDocuments();
-    if (debtsCount === 0 || force) {
-      if (force) await Debt.deleteMany({});
+    // 9. Debts (Không tự động tạo nợ mẫu khi danh sách rỗng để tránh tái sinh nợ ảo)
+    if (force) {
+      await Debt.deleteMany({});
       await Debt.create([
         { personName: 'Chị Lan', amount: 500000, type: 'receivable', dueDate: '2026-11-05', note: 'Chị Lan vay tiền mặt', status: 'pending' },
         { personName: 'Bạn Tuấn', amount: 200000, type: 'payable', dueDate: '2026-11-07', note: 'Nợ tiền mua hộ đồ Shopee', status: 'pending' }
