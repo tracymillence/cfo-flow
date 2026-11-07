@@ -2306,38 +2306,64 @@
             </button>
 
             <!-- Suppliers List -->
-            <div class="space-y-2 pt-2 border-t border-slate-100">
+            <div class="space-y-3 pt-2 border-t border-slate-100">
               <template x-for="s in dashboard.supplierPot.suppliers" :key="s._id">
-                <div class="p-3.5 rounded-xl border border-slate-200/70 bg-white hover:border-slate-300 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  <div class="min-w-0 flex-1">
-                    <div class="flex items-center gap-2">
-                      <strong class="text-xs font-bold text-slate-900 truncate" x-text="s.supplierName"></strong>
-                      <span x-show="s.dueDate" class="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-50 text-amber-800 border border-amber-200"
-                            x-text="'Hạn: ' + formatDate(s.dueDate)"></span>
+                <div class="p-3.5 sm:p-4 rounded-xl border border-slate-200/80 bg-white hover:border-amber-300 hover:shadow-xs transition space-y-2.5">
+                  <!-- Hàng 1: Tên NCC + Hạn thanh toán + Số tiền nợ -->
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div class="flex flex-wrap items-center gap-2 min-w-0">
+                      <strong class="text-xs sm:text-sm font-bold text-slate-900 break-words" x-text="s.supplierName"></strong>
+                      <span x-show="s.dueDate"
+                            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200/80 shrink-0">
+                        <i class="fa-regular fa-calendar-check text-[10px] text-amber-600"></i>
+                        <span>Hạn: <span class="font-extrabold" x-text="formatDate(s.dueDate)"></span></span>
+                      </span>
+                      <span x-show="!s.dueDate"
+                            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono text-slate-400 bg-slate-50 border border-slate-200/60 shrink-0">
+                        Cuối tháng
+                      </span>
                     </div>
-                    <p class="text-[10px] text-slate-400 mt-0.5 truncate" x-text="s.notes || s.bankInfo || 'Chờ thanh toán vốn'"></p>
+
+                    <div class="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                      <span class="text-[11px] text-slate-400 sm:hidden">Còn nợ:</span>
+                      <strong class="font-mono text-sm sm:text-base font-extrabold text-amber-600" x-text="formatVND(s.remainingAmount)"></strong>
+                    </div>
                   </div>
 
-                  <div class="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
-                    <strong class="font-mono text-sm font-bold text-amber-600" x-text="formatVND(s.remainingAmount)"></strong>
+                  <!-- Hàng 2: STK ngân hàng / SĐT & Ghi chú -->
+                  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 pt-1 border-t border-slate-100/80">
+                    <span x-show="s.bankInfo" class="inline-flex items-center gap-1 text-slate-600 font-medium">
+                      <i class="fa-solid fa-building-columns text-[10px] text-slate-400"></i>
+                      <span x-text="s.bankInfo"></span>
+                    </span>
+                    <span x-show="s.notes" class="inline-flex items-center gap-1 text-slate-500">
+                      <i class="fa-regular fa-note-sticky text-[10px] text-slate-400"></i>
+                      <span x-text="s.notes"></span>
+                    </span>
+                    <span x-show="!s.bankInfo && !s.notes" class="text-slate-400 italic text-[11px]">Chờ thanh toán vốn</span>
+                  </div>
 
-                    <div class="flex items-center gap-1 border-l border-slate-100 pl-2">
-                      <button type="button" @click="openSupplierHistoryModal(s)" title="Xem các đơn hàng lẻ của NCC này"
-                              class="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1 cursor-pointer transition">
-                        <i class="fa-solid fa-clock-rotate-left text-[10px]"></i>
-                        <span>Lịch sử (<span x-text="getSupplierOrders(s).length"></span>)</span>
+                  <!-- Hàng 3: Thanh nút thao tác (Tương thích Desktop & Mobile) -->
+                  <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                    <button type="button" @click="openSupplierHistoryModal(s)" title="Xem các đơn hàng lẻ của NCC này"
+                            class="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition border border-blue-200/60">
+                      <i class="fa-solid fa-clock-rotate-left text-[11px]"></i>
+                      <span>Lịch sử (<span x-text="getSupplierOrders(s).length"></span>)</span>
+                    </button>
+
+                    <div class="flex items-center gap-1.5 ml-auto">
+                      <button type="button" @click="paySupplierPrompt(s)" title="Trả nợ nhà cung cấp"
+                              class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition">
+                        <i class="fa-solid fa-money-bill-wave text-[11px]"></i>
+                        <span>Trả nợ</span>
                       </button>
-                      <button type="button" @click="paySupplierPrompt(s)" title="Trả nợ"
-                              class="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold cursor-pointer">
-                        Trả nợ
+                      <button type="button" @click="openSupplierModal(s)" title="Sửa thông tin NCC"
+                              class="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200/80 text-xs cursor-pointer transition">
+                        <i class="fa-solid fa-pen text-[11px]"></i>
                       </button>
-                      <button type="button" @click="openSupplierModal(s)" title="Sửa"
-                              class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 text-xs cursor-pointer">
-                        <i class="fa-solid fa-pen"></i>
-                      </button>
-                      <button type="button" @click="deleteSupplier(s._id, s.supplierName)" title="Xoá"
-                              class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs cursor-pointer">
-                        <i class="fa-solid fa-trash-can"></i>
+                      <button type="button" @click="deleteSupplier(s._id, s.supplierName)" title="Xoá NCC"
+                              class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200/80 text-xs cursor-pointer transition">
+                        <i class="fa-solid fa-trash-can text-[11px]"></i>
                       </button>
                     </div>
                   </div>

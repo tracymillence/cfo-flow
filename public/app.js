@@ -955,9 +955,20 @@ function cashFlowApp() {
 
     formatDate(str) {
       if (!str) return '';
-      const parts = str.split('-');
-      if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
-      return str;
+      try {
+        if (typeof str === 'string') {
+          const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          if (m) {
+            return `${m[3]}/${m[2]}/${m[1]}`;
+          }
+        }
+        const d = (str instanceof Date) ? str : new Date(str);
+        if (isNaN(d.getTime())) return String(str);
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+      } catch (e) {
+        return String(str);
+      }
     },
 
     formatDateTime(str) {
