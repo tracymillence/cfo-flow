@@ -10,6 +10,24 @@ const Transaction = require('../models/Transaction');
 const VIETNAM_TZ = 'Asia/Ho_Chi_Minh';
 
 /**
+ * Returns { startStr: 'YYYY-MM-DD', endStr: 'YYYY-MM-DD' } for current Vietnam calendar week (Monday to Sunday).
+ */
+function getVietnamWeekRange(referenceDate = new Date()) {
+  const d = new Date(referenceDate);
+  const vnDateStr = d.toLocaleDateString('en-CA', { timeZone: VIETNAM_TZ });
+  const [year, month, day] = vnDateStr.split('-').map(Number);
+  const vnMidday = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const dayOfWeek = vnMidday.getUTCDay();
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const mondayDate = new Date(Date.UTC(year, month - 1, day + diffToMonday));
+  const sundayDate = new Date(Date.UTC(year, month - 1, day + diffToMonday + 6));
+  return {
+    startStr: mondayDate.toISOString().slice(0, 10),
+    endStr: sundayDate.toISOString().slice(0, 10)
+  };
+}
+
+/**
  * Calculates current week spend net of Hub 4 inflows/refunds using native MongoDB Timezone operators.
  *
  * @param {Object} options
@@ -83,15 +101,26 @@ async function calculateWeeklySpeedometerAgg({ referenceDate = new Date() } = {}
     {
       $group: {
         _id: '$txWeekStart',
-        // Outgoing expenses flagged to impact the weekly limit (strictly isolated to Hub 4 Personal)
+        // Outgoing personal expenses in Hub 4:
+        // Counts transactions flagged with impactsWeeklyLimit: true, OR personal dining/living expenses (excluding debt payments)
         grossWeeklySpent: {
           $sum: {
             $cond: [
               {
                 $and: [
                   { $eq: ['$type', 'expense'] },
-                  { $eq: ['$impactsWeeklyLimit', true] },
-                  { $eq: ['$hubRole', 'hub4_personal'] }
+                  { $eq: ['$hubRole', 'hub4_personal'] },
+                  {
+                    $or: [
+                      { $eq: ['$impactsWeeklyLimit', true] },
+                      {
+                        $and: [
+                          { $regexMatch: { input: '$category', regex: /ăn uống|chi tiêu|sinh hoạt|ăn ngoài|cafe|cà phê|tiêu dùng/i } },
+                          { $not: { $regexMatch: { input: '$title', regex: /trả nợ|công nợ|tiền xưởng|nhà cung cấp/i } } }
+                        ]
+                      }
+                    ]
+                  }
                 ]
               },
               '$amount',
@@ -99,14 +128,21 @@ async function calculateWeeklySpeedometerAgg({ referenceDate = new Date() } = {}
             ]
           }
         },
-        // Inflows, refunds or cashbacks credited to Hub 4 in the current week
+        // Inflows: ONLY true refunds, cashbacks, or reimbursements credited back to Hub 4.
+        // Salaries, gifts, personal incomes, or debt recoveries are regular income and MUST NOT wipe out spending budget!
         hub4WeeklyRefunds: {
           $sum: {
             $cond: [
               {
                 $and: [
                   { $eq: ['$type', 'income'] },
-                  { $eq: ['$hubRole', 'hub4_personal'] }
+                  { $eq: ['$hubRole', 'hub4_personal'] },
+                  {
+                    $or: [
+                      { $regexMatch: { input: '$category', regex: /hoàn tiền|refund|cashback|bồi hoàn|trả lại/i } },
+                      { $regexMatch: { input: '$title', regex: /hoàn tiền|refund|cashback|bồi hoàn|trả lại/i } }
+                    ]
+                  }
                 ]
               },
               '$amount',
@@ -147,5 +183,5 @@ async function calculateWeeklySpeedometerAgg({ referenceDate = new Date() } = {}
   };
 }
 
-module.exports = { calculateWeeklySpeedometerAgg };
+module.exports = { calculateWeeklySpeedometerAgg, getVietnamWeekRange };
 

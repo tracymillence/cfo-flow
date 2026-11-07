@@ -1636,7 +1636,7 @@
                               'bg-purple-50 text-purple-700': t.hubRole === 'hub4_personal'
                             }"
                             x-text="t.hubRole === 'hub1_income' ? 'Hub 1' : (t.hubRole === 'hub2_dining' ? 'Hub 2' : (t.hubRole === 'hub3_family' ? 'Hub 3' : 'Hub 4'))"></span>
-                      <span x-show="t.impactsWeeklyLimit" class="px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 text-[10px] font-bold">
+                      <span x-show="isTransactionWeeklyImpact(t)" class="px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 text-[10px] font-bold">
                         Trừ Hạn Mức Tuần
                       </span>
                       <span x-show="t.usingSupplierFloat && t.hubRole === 'hub1_income'" class="px-1.5 py-0.2 rounded bg-amber-500 text-white text-[10px] font-bold shadow-xs">
@@ -2982,7 +2982,7 @@
                       <div class="flex items-center gap-2">
                         <strong class="text-xs font-bold text-slate-900" x-text="t.title"></strong>
                         <span class="px-1.5 py-0.2 rounded text-[10px] font-mono bg-slate-100 text-slate-600" x-text="t.accountName"></span>
-                        <span x-show="t.impactsWeeklyLimit" class="px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 text-[10px] font-bold">Trừ hạn mức tuần</span>
+                        <span x-show="isTransactionWeeklyImpact(t)" class="px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 text-[10px] font-bold">Trừ hạn mức tuần</span>
                       </div>
                       <p class="text-[11px] text-slate-400 mt-0.5" x-text="formatDate(t.date) + (t.notes ? ' • ' + t.notes : '')"></p>
                     </div>
@@ -3151,7 +3151,7 @@
           <div>
             <label class="block text-[11px] font-semibold text-slate-500 mb-1">Thuộc Hub nào</label>
             <select x-model="transactionForm.hubRole"
-                    @change="if (transactionForm.hubRole !== 'hub4_personal') transactionForm.impactsWeeklyLimit = false"
+                    @change="if (transactionForm.hubRole === 'hub4_personal') { if (transactionForm.type === 'expense') transactionForm.impactsWeeklyLimit = true; } else { transactionForm.impactsWeeklyLimit = false; }"
                     class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none bg-white">
               <option value="hub1_income">Hub 1: Kinh Doanh</option>
               <option value="hub2_dining">Hub 2: Ăn Nhóm</option>

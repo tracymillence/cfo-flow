@@ -1186,6 +1186,17 @@ function cashFlowApp() {
       return this.personalHub.savingsList || [];
     },
 
+    isTransactionWeeklyImpact(t) {
+      if (!t || t.type !== 'expense') return false;
+      if (t.impactsWeeklyLimit) return true;
+      if (t.hubRole === 'hub4_personal') {
+        const isDebt = /trả nợ|công nợ|tiền xưởng|nhà cung cấp/i.test(t.title || '');
+        const isLiving = /ăn uống|chi tiêu|sinh hoạt|ăn ngoài|cafe|cà phê|tiêu dùng/i.test(t.category || '');
+        return isLiving && !isDebt;
+      }
+      return false;
+    },
+
     get personalFlexibleExpenses() {
       return (this.dashboard.transactions || []).filter(t => t.hubRole === 'hub4_personal' && t.type === 'expense');
     },
@@ -1224,34 +1235,37 @@ function cashFlowApp() {
     },
 
     // ==================== 1. SỔ GIAO DỊCH THU / CHI / CHUYỂN KHOẢN (REQUEST 1) ====================
-    openTransactionModal(tx = null) {
-      if (tx) {
+    openTransactionModal(tx = null, defaultCategory = null, defaultHub = null) {
+      if (tx && typeof tx === 'object' && tx._id) {
         this.editingTransactionId = tx._id;
         this.transactionForm = {
           date: tx.date || new Date().toISOString().slice(0, 10),
-          title: tx.title,
-          amount: tx.amount,
+          title: tx.title || '',
+          amount: tx.amount || '',
           type: tx.type || 'expense',
           accountName: tx.accountName || 'Vietcombank',
           toAccountName: tx.toAccountName || '',
           category: tx.category || 'Chi tiêu',
           hubRole: tx.hubRole || 'hub4_personal',
-          impactsWeeklyLimit: Boolean(tx.impactsWeeklyLimit),
+          impactsWeeklyLimit: tx.impactsWeeklyLimit !== undefined ? Boolean(tx.impactsWeeklyLimit) : (tx.hubRole === 'hub4_personal' && tx.type === 'expense'),
           notes: tx.notes || ''
         };
       } else {
         this.editingTransactionId = null;
         const defaultAcc = (this.dashboard.accounts.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
+        const initialType = (typeof tx === 'string') ? tx : 'expense';
+        const initialCategory = defaultCategory || 'Ăn uống cá nhân';
+        const initialHub = defaultHub || 'hub4_personal';
         this.transactionForm = {
           date: new Date().toISOString().slice(0, 10),
           title: '',
           amount: '',
-          type: 'expense',
+          type: initialType,
           accountName: defaultAcc,
           toAccountName: '',
-          category: 'Ăn uống cá nhân',
-          hubRole: 'hub4_personal',
-          impactsWeeklyLimit: true,
+          category: initialCategory,
+          hubRole: initialHub,
+          impactsWeeklyLimit: initialType === 'expense' && initialHub === 'hub4_personal',
           notes: ''
         };
       }
@@ -1262,14 +1276,14 @@ function cashFlowApp() {
       this.editingTransactionId = null;
       this.transactionForm = {
         date: new Date().toISOString().slice(0, 10),
-        title: tx.title + ' (Bản sao)',
+        title: tx.title ? tx.title + ' (Bản sao)' : '',
         amount: tx.amount,
         type: tx.type || 'expense',
         accountName: tx.accountName || 'Vietcombank',
         toAccountName: tx.toAccountName || '',
         category: tx.category || 'Chi tiêu',
         hubRole: tx.hubRole || 'hub4_personal',
-        impactsWeeklyLimit: Boolean(tx.impactsWeeklyLimit),
+        impactsWeeklyLimit: tx.impactsWeeklyLimit !== undefined ? Boolean(tx.impactsWeeklyLimit) : (tx.hubRole === 'hub4_personal' && tx.type === 'expense'),
         notes: tx.notes || ''
       };
       this.modals.transaction = true;

@@ -19,7 +19,7 @@ const transactionSchema = new mongoose.Schema({
     enum: ['hub1_income', 'hub2_dining', 'hub3_family', 'hub4_personal'], 
     default: 'hub4_personal' 
   },
-  impactsWeeklyLimit: { type: Boolean, default: false },
+  impactsWeeklyLimit: { type: Boolean, default: true },
   usingSupplierFloat: { type: Boolean, default: false },
   relatedBillId: { type: String, default: '' },
   notes: { type: String, default: '' }

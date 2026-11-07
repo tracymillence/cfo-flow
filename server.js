@@ -23,7 +23,7 @@ const { validateTransaction } = require('./middlewares/validateTransaction');
 const { validateSupplierDebt } = require('./middlewares/validateSupplierDebt');
 const safeMath = require('./utils/math.util');
 const { getUnifiedFeed } = require('./services/unifiedFeed.service');
-const { calculateWeeklySpeedometerAgg } = require('./services/speedometer.service');
+const { calculateWeeklySpeedometerAgg, getVietnamWeekRange } = require('./services/speedometer.service');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -1218,18 +1218,20 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
     const spendableCash = totalPhysicalCash - totalSupplierDebt;
 
     // --- 4. HẠN MỨC TIÊU TUẦN ---
-    // Phần ăn cá nhân của tôi có deductWeeklyLimit !== false
+    const { startStr: currentWeekStartStr, endStr: currentWeekEndStr } = getVietnamWeekRange();
+
+    // Phần ăn cá nhân của tôi trong tuần này có deductWeeklyLimit !== false
     const myDiningShareWeekly = diningBills
-      .filter(b => b.deductWeeklyLimit !== false)
+      .filter(b => b.deductWeeklyLimit !== false && b.date >= currentWeekStartStr && b.date <= currentWeekEndStr)
       .reduce((sum, b) => sum + (b.myShare || 0), 0);
 
-    // ISSUE 2: Tính toán chi tiêu và hoàn tiền theo múi giờ Việt Nam (Asia/Ho_Chi_Minh) qua MongoDB aggregation
+    // Tính toán chi tiêu cá nhân Hub 4 và hoàn tiền theo múi giờ Việt Nam (Asia/Ho_Chi_Minh) qua MongoDB aggregation
     const speedometerData = await calculateWeeklySpeedometerAgg();
     const transactionsWeeklySpent = speedometerData.grossWeeklySpent;
     const hub4WeeklyRefunds = speedometerData.hub4WeeklyRefunds;
 
     const weeklyPaidDebts = debts
-      .filter(d => d.type === 'payable' && d.status === 'paid')
+      .filter(d => d.type === 'payable' && d.status === 'paid' && d.paidDate >= currentWeekStartStr && d.paidDate <= currentWeekEndStr)
       .reduce((sum, d) => sum + (d.amount || 0), 0);
 
     const grossWeeklySpent = safeMath.add(safeMath.add(myDiningShareWeekly, transactionsWeeklySpent), weeklyPaidDebts);
@@ -1416,7 +1418,9 @@ app.post('/api/transactions', authenticateToken, requirePermission('manageTransa
     }
 
     // BUG 4: impactsWeeklyLimit chỉ áp dụng cho Hub 4 (Cá nhân)
-    const safeImpactsWeeklyLimit = (resolvedHubRole === 'hub4_personal') ? Boolean(impactsWeeklyLimit) : false;
+    const safeImpactsWeeklyLimit = (resolvedHubRole === 'hub4_personal')
+      ? (impactsWeeklyLimit !== undefined ? Boolean(impactsWeeklyLimit) : (type === 'expense'))
+      : false;
 
     const tx = await Transaction.create({
       date: date || new Date().toISOString().slice(0, 10),
@@ -1490,7 +1494,9 @@ app.put('/api/transactions/:id', authenticateToken, requirePermission('manageTra
     }
 
     // BUG 4: impactsWeeklyLimit chỉ áp dụng cho Hub 4 (Cá nhân)
-    const safeImpactsWeeklyLimit = (resolvedHubRole === 'hub4_personal') ? Boolean(impactsWeeklyLimit) : false;
+    const safeImpactsWeeklyLimit = (resolvedHubRole === 'hub4_personal')
+      ? (impactsWeeklyLimit !== undefined ? Boolean(impactsWeeklyLimit) : (type === 'expense'))
+      : false;
 
     oldTx.date = date || oldTx.date;
     oldTx.title = title.trim();
