@@ -465,6 +465,32 @@ function cashFlowApp() {
       }
     },
 
+    hasPermission(perm) {
+      if (!this.currentUser) return false;
+      if (this.currentUser.isAdmin) return true;
+      if (this.currentUser.permissions && this.currentUser.permissions[perm]) return true;
+      return false;
+    },
+
+    get canManageDining() {
+      if (!this.currentUser) return false;
+      if (this.currentUser.isAdmin) return true;
+      return Boolean(this.currentUser.permissions?.manageDiningWork || this.currentUser.permissions?.manageDiningFamily);
+    },
+
+    canManageRequest(req) {
+      if (!this.currentUser) return false;
+      if (this.currentUser.isAdmin) return true;
+      if (!req) return this.canManageDining;
+      if (req.category === 'family') {
+        return Boolean(this.currentUser.permissions?.manageDiningFamily);
+      }
+      if (req.category === 'work') {
+        return Boolean(this.currentUser.permissions?.manageDiningWork);
+      }
+      return this.canManageDining;
+    },
+
     async authFetch(url, options = {}) {
       const headers = options.headers ? { ...options.headers } : {};
       if (!headers['Content-Type'] && options.body && typeof options.body === 'string') {
@@ -899,9 +925,15 @@ function cashFlowApp() {
     },
 
     async updateCorrectionStatus(reqItem, status) {
-      const defaultNote = status === 'approved' ? 'Đã kiểm tra và cập nhật sổ đúng thực tế' : 'Số liệu đã đối chiếu chính xác, không cần sửa đổi';
-      const note = prompt(`Nhập ghi chú phản hồi cho ${reqItem.creatorName} (Tùy chọn):`, defaultNote);
+      const isApproved = status === 'approved';
+      const defaultNote = isApproved ? 'Đã kiểm tra và cập nhật sổ đúng thực tế' : 'Số liệu đã đối chiếu chính xác, không cần sửa đổi';
+      const promptTitle = isApproved
+        ? `Xác nhận DUYỆT yêu cầu báo sai của "${reqItem.creatorName}"?\nNhập ghi chú phản hồi người gửi (Tùy chọn):`
+        : `Xác nhận TỪ CHỐI yêu cầu báo sai của "${reqItem.creatorName}"?\nNhập lý do từ chối phản hồi người gửi (Tùy chọn):`;
+
+      const note = prompt(promptTitle, defaultNote);
       if (note === null) return;
+
       try {
         const res = await this.authFetch(`/api/dining/requests/${reqItem._id}/status`, {
           method: 'PATCH',
@@ -911,15 +943,33 @@ function cashFlowApp() {
         if (data.success) {
           reqItem.status = status;
           reqItem.adminNote = note;
-          reqItem.handledBy = this.currentUser?.fullName || 'Admin';
+          reqItem.handledBy = this.currentUser?.fullName || 'Quản lý';
           reqItem.handledAt = new Date().toISOString();
-          this.notify(`Đã cập nhật trạng thái yêu cầu của ${reqItem.creatorName}`);
+          this.notify(`✓ Đã ${isApproved ? 'duyệt' : 'từ chối'} yêu cầu của ${reqItem.creatorName}!`);
           await this.fetchCorrectionRequests();
         } else {
-          this.notify(data.message || 'Lỗi cập nhật');
+          alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
-        this.notify(err.message);
+        alert('Lỗi hệ thống: ' + err.message);
+      }
+    },
+
+    async deleteCorrectionRequest(reqItem) {
+      if (!confirm(`Xóa yêu cầu chỉnh sửa "${reqItem.targetTitle || reqItem.reason}"?`)) return;
+      try {
+        const res = await this.authFetch(`/api/dining/requests/${reqItem._id}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify('🗑️ ' + (data.message || 'Đã xóa yêu cầu!'));
+          await this.fetchCorrectionRequests();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi hệ thống: ' + err.message);
       }
     },
 

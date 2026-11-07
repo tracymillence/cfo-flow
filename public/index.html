@@ -4850,11 +4850,11 @@
             <span class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm shadow-xs">
               <i class="fa-solid fa-clipboard-list"></i>
             </span>
-            <span x-text="(hasPermission('manageDiningWork') || hasPermission('manageDiningFamily')) ? 'Quản Lý Yêu Cầu Chỉnh Sửa Sổ' : 'Yêu Cầu Chỉnh Sửa Sổ Của Bạn'"></span>
+            <span x-text="canManageDining ? 'Quản Lý Yêu Cầu Chỉnh Sửa Sổ' : 'Yêu Cầu Chỉnh Sửa Sổ Của Bạn'"></span>
           </h3>
           <p class="text-xs text-slate-500 mt-0.5">
-            <span x-show="hasPermission('manageDiningWork') || hasPermission('manageDiningFamily')">Kiểm tra phản ánh từ khách/thành viên để đối soát và cập nhật số dư.</span>
-            <span x-show="!(hasPermission('manageDiningWork') || hasPermission('manageDiningFamily'))">Theo dõi tiến độ xử lý các sai sót bạn đã báo cáo.</span>
+            <span x-show="canManageDining">Kiểm tra phản ánh từ khách/thành viên để đối soát, phê duyệt hoặc từ chối chỉnh sửa.</span>
+            <span x-show="!canManageDining">Theo dõi tiến độ xử lý các sai sót bạn đã báo cáo.</span>
           </p>
         </div>
         <div class="flex items-center gap-2">
@@ -4910,7 +4910,7 @@
                 <span class="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700"
                       x-text="req.targetType === 'bill' ? '🧾 Hóa đơn' : (req.targetType === 'balance' ? '💰 Số dư' : (req.targetType === 'settlement' ? '⚖️ Quyết toán' : '📌 Khác'))"></span>
                 <span class="font-bold text-slate-900" x-text="req.targetTitle"></span>
-                <span x-show="req.amount > 0" class="font-mono font-bold text-rose-600" x-text="'(' + formatMoney(req.amount) + ')'"></span>
+                <span x-show="req.amount > 0" class="font-mono font-bold text-rose-600" x-text="'(' + formatVND(req.amount) + ')'"></span>
               </div>
 
               <!-- Status Badge -->
@@ -4921,7 +4921,7 @@
                       'bg-slate-200 text-slate-700': req.status === 'rejected'
                     }">
                 <span x-show="req.status === 'pending'">⏳ Đang chờ duyệt</span>
-                <span x-show="req.status === 'approved'">✅ Đã cập nhật sổ</span>
+                <span x-show="req.status === 'approved'">✅ Đã duyệt & xử lý</span>
                 <span x-show="req.status === 'rejected'">❌ Đã từ chối</span>
               </span>
             </div>
@@ -4933,23 +4933,48 @@
             </div>
 
             <!-- Submitter info & handler feedback -->
-            <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100/60">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-slate-500 pt-2 border-t border-slate-100/80">
               <div>
                 <span>Người gửi: <strong class="text-slate-800 font-semibold" x-text="req.creatorName"></strong> (@<span x-text="req.creatorUsername"></span>)</span>
                 <span class="mx-1">•</span>
                 <span x-text="formatDateTime(req.createdAt)"></span>
               </div>
 
-              <!-- Manager Actions for Pending Requests -->
-              <div x-show="(hasPermission('manageDiningWork') || hasPermission('manageDiningFamily')) && req.status === 'pending'" class="flex items-center gap-1.5">
-                <button @click="updateCorrectionStatus(req, 'approved')"
-                        class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-2xs transition flex items-center gap-1">
-                  <i class="fa-solid fa-check"></i> Duyệt & Báo Xong
-                </button>
-                <button @click="updateCorrectionStatus(req, 'rejected')"
-                        class="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-[11px] transition flex items-center gap-1">
-                  <i class="fa-solid fa-xmark"></i> Từ chối
-                </button>
+              <!-- Manager Actions (Chỉ người có quyền quản lý sổ tương ứng mới được duyệt hoặc từ chối) -->
+              <div class="flex items-center gap-1.5 ml-auto">
+                <!-- Duyệt & Từ chối khi đang chờ -->
+                <template x-if="canManageRequest(req) && req.status === 'pending'">
+                  <div class="flex items-center gap-1.5">
+                    <button type="button" @click="updateCorrectionStatus(req, 'approved')"
+                            class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1 cursor-pointer">
+                      <i class="fa-solid fa-check"></i>
+                      <span>Duyệt</span>
+                    </button>
+                    <button type="button" @click="updateCorrectionStatus(req, 'rejected')"
+                            class="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold text-xs transition flex items-center gap-1 cursor-pointer">
+                      <i class="fa-solid fa-xmark"></i>
+                      <span>Từ chối</span>
+                    </button>
+                  </div>
+                </template>
+
+                <!-- Đổi trạng thái nếu đã xử lý (Duyệt lại / Từ chối lại) -->
+                <template x-if="canManageRequest(req) && req.status !== 'pending'">
+                  <button type="button" @click="updateCorrectionStatus(req, req.status === 'approved' ? 'rejected' : 'approved')"
+                          class="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] font-semibold transition flex items-center gap-1 cursor-pointer"
+                          :title="req.status === 'approved' ? 'Chuyển sang Từ chối' : 'Chuyển sang Đã duyệt'">
+                    <i class="fa-solid fa-rotate text-[10px]"></i>
+                    <span x-text="req.status === 'approved' ? 'Từ chối lại' : 'Duyệt lại'"></span>
+                  </button>
+                </template>
+
+                <!-- Nút Xóa yêu cầu -->
+                <template x-if="canManageRequest(req) || (currentUser && String(currentUser.id || currentUser._id) === String(req.creatorId))">
+                  <button type="button" @click="deleteCorrectionRequest(req)" title="Xoá yêu cầu này"
+                          class="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs transition cursor-pointer">
+                    <i class="fa-solid fa-trash-can text-[11px]"></i>
+                  </button>
+                </template>
               </div>
             </div>
 

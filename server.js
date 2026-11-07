@@ -3063,9 +3063,12 @@ app.post('/api/dining/requests', authenticateToken, async (req, res) => {
 // Quản trị viên / Người quản lý xử lý yêu cầu (Duyệt hoặc Từ chối)
 app.patch('/api/dining/requests/:id/status', authenticateToken, async (req, res) => {
   try {
-    const isManager = req.user.isAdmin || (req.user.permissions && (req.user.permissions.manageDiningWork || req.user.permissions.manageDiningFamily));
+    const canManageWork = req.user.isAdmin || Boolean(req.user.permissions?.manageDiningWork);
+    const canManageFamily = req.user.isAdmin || Boolean(req.user.permissions?.manageDiningFamily);
+    const isManager = canManageWork || canManageFamily;
+
     if (!isManager) {
-      return res.status(403).json({ success: false, message: 'Bạn không có quyền xử lý yêu cầu chỉnh sửa sổ' });
+      return res.status(403).json({ success: false, message: 'Chỉ người có quyền chỉnh sửa sổ ăn uống mới được duyệt hoặc từ chối yêu cầu' });
     }
 
     const { status, adminNote } = req.body;
@@ -3076,6 +3079,16 @@ app.patch('/api/dining/requests/:id/status', authenticateToken, async (req, res)
     const item = await CorrectionRequest.findById(req.params.id);
     if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu' });
 
+    // Kiểm tra phân quyền chi tiết theo danh mục sổ
+    if (!req.user.isAdmin) {
+      if (item.category === 'family' && !canManageFamily) {
+        return res.status(403).json({ success: false, message: 'Bạn không có quyền quản lý Sổ Gia Đình (Hub 3)' });
+      }
+      if (item.category === 'work' && !canManageWork) {
+        return res.status(403).json({ success: false, message: 'Bạn không có quyền quản lý Sổ Ăn Đồng Nghiệp (Hub 2)' });
+      }
+    }
+
     item.status = status;
     if (adminNote !== undefined) item.adminNote = adminNote.trim();
     item.handledBy = req.user.fullName || req.user.username;
@@ -3084,9 +3097,28 @@ app.patch('/api/dining/requests/:id/status', authenticateToken, async (req, res)
 
     res.json({
       success: true,
-      message: `Đã cập nhật trạng thái yêu cầu thành [${status === 'approved' ? 'Đã xử lý' : (status === 'rejected' ? 'Từ chối' : 'Chờ xử lý')}]`,
+      message: `Đã cập nhật trạng thái yêu cầu thành [${status === 'approved' ? 'Đã duyệt' : (status === 'rejected' ? 'Từ chối' : 'Chờ xử lý')}]`,
       request: item
     });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Xóa yêu cầu chỉnh sửa (Dành cho Quản lý hoặc chính người gửi)
+app.delete('/api/dining/requests/:id', authenticateToken, async (req, res) => {
+  try {
+    const isManager = req.user.isAdmin || (req.user.permissions && (req.user.permissions.manageDiningWork || req.user.permissions.manageDiningFamily));
+    const item = await CorrectionRequest.findById(req.params.id);
+    if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu' });
+
+    const isOwner = String(item.creatorId) === String(req.user._id);
+    if (!isManager && !isOwner) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền xóa yêu cầu này' });
+    }
+
+    await item.deleteOne();
+    res.json({ success: true, message: 'Đã xóa yêu cầu chỉnh sửa' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
