@@ -2828,10 +2828,14 @@ function cashFlowApp() {
       if (this.projectionHealth?.hubs?.[hubRole]) {
         return this.projectionHealth.hubs[hubRole];
       }
-      const currentBalance = this.getHubCurrentAvailableBalance(hubRole, true);
+      const rawCash = this.dashboard?.accounts?.hubs?.[hubRole]?.balance || 0;
+      const supplierDebt = (hubRole === 'hub1_income') ? Number(this.dashboard?.supplierPot?.totalAmount || 0) : 0;
+      const currentBalance = (hubRole === 'hub1_income') ? (rawCash - supplierDebt) : rawCash;
       return {
         hubRole,
         hubName: this.getHubDisplayName(hubRole),
+        rawCash,
+        supplierDebt,
         currentBalance,
         totalIncome: 0,
         totalExpense: 0,

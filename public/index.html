@@ -981,149 +981,244 @@
 
           <!-- PHẦN 3: THANH CẢNH BÁO SỨC KHỎE DÒNG TIỀN (Projected Balance 4 Hubs Cards) -->
           <div class="space-y-3">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 pb-1">
               <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <i class="fa-solid fa-gauge-high text-indigo-500"></i>
                 <span>Sức Khỏe Thanh Khoản Giả Lập Theo 4 Hubs</span>
               </h4>
-              <span class="text-[11px] text-slate-400">Công thức: [Số dư khả dụng] + [Tổng Dự Thu] - [Tổng Dự Chi]</span>
+              <div class="text-[11px] text-slate-500 bg-white/90 px-2.5 py-1 rounded-lg border border-slate-200/70 shadow-2xs">
+                <span><strong>Công thức chung:</strong> [Số dư khả dụng] + [Tổng Dự Thu] - [Tổng Dự Chi]</span>
+              </div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               
               <!-- Card Hub 1 -->
-              <div class="p-4 rounded-xl border transition-all space-y-2.5"
+              <div class="p-4 rounded-xl border transition-all space-y-2.5 flex flex-col justify-between"
                    :class="getProjectedBalanceForHub('hub1_income').isDeficit ? 'bg-rose-50/70 border-rose-300 ring-1 ring-rose-200' : 'bg-slate-50/70 border-slate-200/80 hover:border-indigo-300'">
-                <div class="flex items-center justify-between">
-                  <span class="text-xs font-bold text-indigo-700 flex items-center gap-1.5 truncate">
-                    <i class="fa-solid fa-briefcase"></i>
-                    <span>1. Hub Kinh Doanh</span>
-                  </span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
-                        :class="getProjectedBalanceForHub('hub1_income').isDeficit ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'"
-                        x-text="getProjectedBalanceForHub('hub1_income').isDeficit ? 'Thiếu hụt' : 'An toàn'"></span>
+                <div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-indigo-700 flex items-center gap-1.5 truncate">
+                      <i class="fa-solid fa-briefcase"></i>
+                      <span>1. Hub Kinh Doanh</span>
+                    </span>
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
+                          :class="getProjectedBalanceForHub('hub1_income').isDeficit ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'"
+                          x-text="getProjectedBalanceForHub('hub1_income').isDeficit ? 'Thiếu hụt' : 'An toàn'"></span>
+                  </div>
+                  <div class="space-y-1 text-xs mt-2.5">
+                    <div class="flex justify-between text-slate-500">
+                      <span>Số dư khả dụng:</span>
+                      <strong class="font-mono text-slate-800" x-text="formatVND(getProjectedBalanceForHub('hub1_income').currentBalance)"></strong>
+                    </div>
+                    <!-- Chi tiết số dư khả dụng Hub 1 khi có nợ NCC -->
+                    <div x-show="getProjectedBalanceForHub('hub1_income').supplierDebt > 0" class="text-[10px] text-amber-700 bg-amber-50/90 px-2 py-0.5 rounded border border-amber-200/70 leading-tight">
+                      <span class="font-semibold">Nguồn gốc:</span>
+                      <span class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub1_income').rawCash) + ' (tiền mặt) - ' + formatVND(getProjectedBalanceForHub('hub1_income').supplierDebt) + ' (nợ NCC)'"></span>
+                    </div>
+                    <div class="flex justify-between text-emerald-600">
+                      <span>+ Tổng dự thu:</span>
+                      <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub1_income').totalIncome)"></strong>
+                    </div>
+                    <div class="flex justify-between text-rose-600">
+                      <span>- Tổng dự chi:</span>
+                      <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub1_income').totalExpense)"></strong>
+                    </div>
+                  </div>
                 </div>
-                <div class="space-y-1 text-xs">
-                  <div class="flex justify-between text-slate-500">
-                    <span>Số dư khả dụng:</span>
-                    <strong class="font-mono text-slate-800" x-text="formatVND(getProjectedBalanceForHub('hub1_income').currentBalance)"></strong>
+
+                <div class="pt-2 border-t border-slate-200/60 space-y-2">
+                  <div>
+                    <div class="text-[10px] text-slate-500 font-medium">Số dư giả lập sau dự kiến:</div>
+                    <div class="font-mono text-base font-extrabold mt-0.5"
+                         :class="getProjectedBalanceForHub('hub1_income').projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'"
+                         x-text="formatVND(getProjectedBalanceForHub('hub1_income').projectedBalance)"></div>
                   </div>
-                  <div class="flex justify-between text-emerald-600">
-                    <span>+ Tổng dự thu:</span>
-                    <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub1_income').totalIncome)"></strong>
+
+                  <!-- Khối công thức tính toán chi tiết -->
+                  <div class="text-[10px] bg-white/80 rounded-lg p-2 border border-slate-200/70 space-y-1">
+                    <div class="flex items-center justify-between text-[9px] uppercase font-bold text-slate-400">
+                      <span class="flex items-center gap-1 text-indigo-600">
+                        <i class="fa-solid fa-calculator text-[9px]"></i>
+                        <span>Công thức Hub 1:</span>
+                      </span>
+                      <span class="font-mono font-normal normal-case text-slate-400">Kinh doanh</span>
+                    </div>
+                    <div class="text-[10px] text-slate-600 font-medium leading-tight">
+                      [Tiền mặt] - [Nợ NCC] + [Dự thu] - [Dự chi]
+                    </div>
+                    <div class="font-mono text-[10px] text-indigo-900 font-bold bg-indigo-50/50 px-1.5 py-0.5 rounded truncate"
+                         :title="formatVND(getProjectedBalanceForHub('hub1_income').rawCash) + ' - ' + formatVND(getProjectedBalanceForHub('hub1_income').supplierDebt) + ' + ' + formatVND(getProjectedBalanceForHub('hub1_income').totalIncome) + ' - ' + formatVND(getProjectedBalanceForHub('hub1_income').totalExpense) + ' = ' + formatVND(getProjectedBalanceForHub('hub1_income').projectedBalance)"
+                         x-text="formatVND(getProjectedBalanceForHub('hub1_income').rawCash) + ' - ' + formatVND(getProjectedBalanceForHub('hub1_income').supplierDebt) + ' + ' + formatVND(getProjectedBalanceForHub('hub1_income').totalIncome) + ' - ' + formatVND(getProjectedBalanceForHub('hub1_income').totalExpense)"></div>
                   </div>
-                  <div class="flex justify-between text-rose-600">
-                    <span>- Tổng dự chi:</span>
-                    <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub1_income').totalExpense)"></strong>
-                  </div>
-                </div>
-                <div class="pt-2 border-t border-slate-200/60">
-                  <div class="text-[10px] text-slate-500 font-medium">Số dư giả lập sau các khoản dự kiến:</div>
-                  <div class="font-mono text-base font-extrabold mt-0.5"
-                       :class="getProjectedBalanceForHub('hub1_income').projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'"
-                       x-text="formatVND(getProjectedBalanceForHub('hub1_income').projectedBalance)"></div>
                 </div>
               </div>
 
               <!-- Card Hub 2 -->
-              <div class="p-4 rounded-xl border transition-all space-y-2.5"
+              <div class="p-4 rounded-xl border transition-all space-y-2.5 flex flex-col justify-between"
                    :class="getProjectedBalanceForHub('hub2_dining').isDeficit ? 'bg-rose-50/70 border-rose-300 ring-1 ring-rose-200' : 'bg-slate-50/70 border-slate-200/80 hover:border-emerald-300'">
-                <div class="flex items-center justify-between">
-                  <span class="text-xs font-bold text-emerald-700 flex items-center gap-1.5 truncate">
-                    <i class="fa-solid fa-utensils"></i>
-                    <span>2. Quỹ Ứng Ăn Nhóm</span>
-                  </span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
-                        :class="getProjectedBalanceForHub('hub2_dining').isDeficit ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'"
-                        x-text="getProjectedBalanceForHub('hub2_dining').isDeficit ? 'Thiếu hụt' : 'An toàn'"></span>
+                <div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-emerald-700 flex items-center gap-1.5 truncate">
+                      <i class="fa-solid fa-utensils"></i>
+                      <span>2. Quỹ Ứng Ăn Nhóm</span>
+                    </span>
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
+                          :class="getProjectedBalanceForHub('hub2_dining').isDeficit ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'"
+                          x-text="getProjectedBalanceForHub('hub2_dining').isDeficit ? 'Thiếu hụt' : 'An toàn'"></span>
+                  </div>
+                  <div class="space-y-1 text-xs mt-2.5">
+                    <div class="flex justify-between text-slate-500">
+                      <span>Số dư khả dụng:</span>
+                      <strong class="font-mono text-slate-800" x-text="formatVND(getProjectedBalanceForHub('hub2_dining').currentBalance)"></strong>
+                    </div>
+                    <div class="flex justify-between text-emerald-600">
+                      <span>+ Tổng dự thu:</span>
+                      <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub2_dining').totalIncome)"></strong>
+                    </div>
+                    <div class="flex justify-between text-rose-600">
+                      <span>- Tổng dự chi:</span>
+                      <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub2_dining').totalExpense)"></strong>
+                    </div>
+                  </div>
                 </div>
-                <div class="space-y-1 text-xs">
-                  <div class="flex justify-between text-slate-500">
-                    <span>Số dư khả dụng:</span>
-                    <strong class="font-mono text-slate-800" x-text="formatVND(getProjectedBalanceForHub('hub2_dining').currentBalance)"></strong>
+
+                <div class="pt-2 border-t border-slate-200/60 space-y-2">
+                  <div>
+                    <div class="text-[10px] text-slate-500 font-medium">Số dư giả lập sau dự kiến:</div>
+                    <div class="font-mono text-base font-extrabold mt-0.5"
+                         :class="getProjectedBalanceForHub('hub2_dining').projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'"
+                         x-text="formatVND(getProjectedBalanceForHub('hub2_dining').projectedBalance)"></div>
                   </div>
-                  <div class="flex justify-between text-emerald-600">
-                    <span>+ Tổng dự thu:</span>
-                    <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub2_dining').totalIncome)"></strong>
+
+                  <!-- Khối công thức tính toán chi tiết -->
+                  <div class="text-[10px] bg-white/80 rounded-lg p-2 border border-slate-200/70 space-y-1">
+                    <div class="flex items-center justify-between text-[9px] uppercase font-bold text-slate-400">
+                      <span class="flex items-center gap-1 text-emerald-600">
+                        <i class="fa-solid fa-calculator text-[9px]"></i>
+                        <span>Công thức Hub 2:</span>
+                      </span>
+                      <span class="font-mono font-normal normal-case text-slate-400">Quỹ ăn</span>
+                    </div>
+                    <div class="text-[10px] text-slate-600 font-medium leading-tight">
+                      [Số dư khả dụng] + [Dự thu] - [Dự chi]
+                    </div>
+                    <div class="font-mono text-[10px] text-emerald-900 font-bold bg-emerald-50/50 px-1.5 py-0.5 rounded truncate"
+                         :title="formatVND(getProjectedBalanceForHub('hub2_dining').currentBalance) + ' + ' + formatVND(getProjectedBalanceForHub('hub2_dining').totalIncome) + ' - ' + formatVND(getProjectedBalanceForHub('hub2_dining').totalExpense) + ' = ' + formatVND(getProjectedBalanceForHub('hub2_dining').projectedBalance)"
+                         x-text="formatVND(getProjectedBalanceForHub('hub2_dining').currentBalance) + ' + ' + formatVND(getProjectedBalanceForHub('hub2_dining').totalIncome) + ' - ' + formatVND(getProjectedBalanceForHub('hub2_dining').totalExpense)"></div>
                   </div>
-                  <div class="flex justify-between text-rose-600">
-                    <span>- Tổng dự chi:</span>
-                    <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub2_dining').totalExpense)"></strong>
-                  </div>
-                </div>
-                <div class="pt-2 border-t border-slate-200/60">
-                  <div class="text-[10px] text-slate-500 font-medium">Số dư giả lập sau các khoản dự kiến:</div>
-                  <div class="font-mono text-base font-extrabold mt-0.5"
-                       :class="getProjectedBalanceForHub('hub2_dining').projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'"
-                       x-text="formatVND(getProjectedBalanceForHub('hub2_dining').projectedBalance)"></div>
                 </div>
               </div>
 
               <!-- Card Hub 3 -->
-              <div class="p-4 rounded-xl border transition-all space-y-2.5"
+              <div class="p-4 rounded-xl border transition-all space-y-2.5 flex flex-col justify-between"
                    :class="getProjectedBalanceForHub('hub3_family').isDeficit ? 'bg-rose-50/70 border-rose-300 ring-1 ring-rose-200' : 'bg-slate-50/70 border-slate-200/80 hover:border-amber-300'">
-                <div class="flex items-center justify-between">
-                  <span class="text-xs font-bold text-amber-700 flex items-center gap-1.5 truncate">
-                    <i class="fa-solid fa-house-chimney"></i>
-                    <span>3. Quỹ Gia Đình</span>
-                  </span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
-                        :class="getProjectedBalanceForHub('hub3_family').isDeficit ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'"
-                        x-text="getProjectedBalanceForHub('hub3_family').isDeficit ? 'Thiếu hụt' : 'An toàn'"></span>
+                <div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-amber-700 flex items-center gap-1.5 truncate">
+                      <i class="fa-solid fa-house-chimney"></i>
+                      <span>3. Quỹ Gia Đình</span>
+                    </span>
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
+                          :class="getProjectedBalanceForHub('hub3_family').isDeficit ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'"
+                          x-text="getProjectedBalanceForHub('hub3_family').isDeficit ? 'Thiếu hụt' : 'An toàn'"></span>
+                  </div>
+                  <div class="space-y-1 text-xs mt-2.5">
+                    <div class="flex justify-between text-slate-500">
+                      <span>Số dư khả dụng:</span>
+                      <strong class="font-mono text-slate-800" x-text="formatVND(getProjectedBalanceForHub('hub3_family').currentBalance)"></strong>
+                    </div>
+                    <div class="flex justify-between text-emerald-600">
+                      <span>+ Tổng dự thu:</span>
+                      <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub3_family').totalIncome)"></strong>
+                    </div>
+                    <div class="flex justify-between text-rose-600">
+                      <span>- Tổng dự chi:</span>
+                      <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub3_family').totalExpense)"></strong>
+                    </div>
+                  </div>
                 </div>
-                <div class="space-y-1 text-xs">
-                  <div class="flex justify-between text-slate-500">
-                    <span>Số dư khả dụng:</span>
-                    <strong class="font-mono text-slate-800" x-text="formatVND(getProjectedBalanceForHub('hub3_family').currentBalance)"></strong>
+
+                <div class="pt-2 border-t border-slate-200/60 space-y-2">
+                  <div>
+                    <div class="text-[10px] text-slate-500 font-medium">Số dư giả lập sau dự kiến:</div>
+                    <div class="font-mono text-base font-extrabold mt-0.5"
+                         :class="getProjectedBalanceForHub('hub3_family').projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'"
+                         x-text="formatVND(getProjectedBalanceForHub('hub3_family').projectedBalance)"></div>
                   </div>
-                  <div class="flex justify-between text-emerald-600">
-                    <span>+ Tổng dự thu:</span>
-                    <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub3_family').totalIncome)"></strong>
+
+                  <!-- Khối công thức tính toán chi tiết -->
+                  <div class="text-[10px] bg-white/80 rounded-lg p-2 border border-slate-200/70 space-y-1">
+                    <div class="flex items-center justify-between text-[9px] uppercase font-bold text-slate-400">
+                      <span class="flex items-center gap-1 text-amber-600">
+                        <i class="fa-solid fa-calculator text-[9px]"></i>
+                        <span>Công thức Hub 3:</span>
+                      </span>
+                      <span class="font-mono font-normal normal-case text-slate-400">Gia đình</span>
+                    </div>
+                    <div class="text-[10px] text-slate-600 font-medium leading-tight">
+                      [Số dư khả dụng] + [Dự thu] - [Dự chi]
+                    </div>
+                    <div class="font-mono text-[10px] text-amber-900 font-bold bg-amber-50/50 px-1.5 py-0.5 rounded truncate"
+                         :title="formatVND(getProjectedBalanceForHub('hub3_family').currentBalance) + ' + ' + formatVND(getProjectedBalanceForHub('hub3_family').totalIncome) + ' - ' + formatVND(getProjectedBalanceForHub('hub3_family').totalExpense) + ' = ' + formatVND(getProjectedBalanceForHub('hub3_family').projectedBalance)"
+                         x-text="formatVND(getProjectedBalanceForHub('hub3_family').currentBalance) + ' + ' + formatVND(getProjectedBalanceForHub('hub3_family').totalIncome) + ' - ' + formatVND(getProjectedBalanceForHub('hub3_family').totalExpense)"></div>
                   </div>
-                  <div class="flex justify-between text-rose-600">
-                    <span>- Tổng dự chi:</span>
-                    <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub3_family').totalExpense)"></strong>
-                  </div>
-                </div>
-                <div class="pt-2 border-t border-slate-200/60">
-                  <div class="text-[10px] text-slate-500 font-medium">Số dư giả lập sau các khoản dự kiến:</div>
-                  <div class="font-mono text-base font-extrabold mt-0.5"
-                       :class="getProjectedBalanceForHub('hub3_family').projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'"
-                       x-text="formatVND(getProjectedBalanceForHub('hub3_family').projectedBalance)"></div>
                 </div>
               </div>
 
               <!-- Card Hub 4 -->
-              <div class="p-4 rounded-xl border transition-all space-y-2.5"
+              <div class="p-4 rounded-xl border transition-all space-y-2.5 flex flex-col justify-between"
                    :class="getProjectedBalanceForHub('hub4_personal').isDeficit ? 'bg-rose-50/70 border-rose-300 ring-1 ring-rose-200' : 'bg-slate-50/70 border-slate-200/80 hover:border-purple-300'">
-                <div class="flex items-center justify-between">
-                  <span class="text-xs font-bold text-purple-700 flex items-center gap-1.5 truncate">
-                    <i class="fa-solid fa-wallet"></i>
-                    <span>4. Cá Nhân &amp; Tiết Kiệm</span>
-                  </span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
-                        :class="getProjectedBalanceForHub('hub4_personal').isDeficit ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'"
-                        x-text="getProjectedBalanceForHub('hub4_personal').isDeficit ? 'Thiếu hụt' : 'An toàn'"></span>
+                <div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-purple-700 flex items-center gap-1.5 truncate">
+                      <i class="fa-solid fa-wallet"></i>
+                      <span>4. Cá Nhân &amp; Tiết Kiệm</span>
+                    </span>
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
+                          :class="getProjectedBalanceForHub('hub4_personal').isDeficit ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'"
+                          x-text="getProjectedBalanceForHub('hub4_personal').isDeficit ? 'Thiếu hụt' : 'An toàn'"></span>
+                  </div>
+                  <div class="space-y-1 text-xs mt-2.5">
+                    <div class="flex justify-between text-slate-500">
+                      <span>Số dư khả dụng:</span>
+                      <strong class="font-mono text-slate-800" x-text="formatVND(getProjectedBalanceForHub('hub4_personal').currentBalance)"></strong>
+                    </div>
+                    <div class="flex justify-between text-emerald-600">
+                      <span>+ Tổng dự thu:</span>
+                      <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub4_personal').totalIncome)"></strong>
+                    </div>
+                    <div class="flex justify-between text-rose-600">
+                      <span>- Tổng dự chi:</span>
+                      <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub4_personal').totalExpense)"></strong>
+                    </div>
+                  </div>
                 </div>
-                <div class="space-y-1 text-xs">
-                  <div class="flex justify-between text-slate-500">
-                    <span>Số dư khả dụng:</span>
-                    <strong class="font-mono text-slate-800" x-text="formatVND(getProjectedBalanceForHub('hub4_personal').currentBalance)"></strong>
+
+                <div class="pt-2 border-t border-slate-200/60 space-y-2">
+                  <div>
+                    <div class="text-[10px] text-slate-500 font-medium">Số dư giả lập sau dự kiến:</div>
+                    <div class="font-mono text-base font-extrabold mt-0.5"
+                         :class="getProjectedBalanceForHub('hub4_personal').projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'"
+                         x-text="formatVND(getProjectedBalanceForHub('hub4_personal').projectedBalance)"></div>
                   </div>
-                  <div class="flex justify-between text-emerald-600">
-                    <span>+ Tổng dự thu:</span>
-                    <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub4_personal').totalIncome)"></strong>
+
+                  <!-- Khối công thức tính toán chi tiết -->
+                  <div class="text-[10px] bg-white/80 rounded-lg p-2 border border-slate-200/70 space-y-1">
+                    <div class="flex items-center justify-between text-[9px] uppercase font-bold text-slate-400">
+                      <span class="flex items-center gap-1 text-purple-600">
+                        <i class="fa-solid fa-calculator text-[9px]"></i>
+                        <span>Công thức Hub 4:</span>
+                      </span>
+                      <span class="font-mono font-normal normal-case text-slate-400">Cá nhân</span>
+                    </div>
+                    <div class="text-[10px] text-slate-600 font-medium leading-tight">
+                      [Số dư khả dụng] + [Dự thu] - [Dự chi]
+                    </div>
+                    <div class="font-mono text-[10px] text-purple-900 font-bold bg-purple-50/50 px-1.5 py-0.5 rounded truncate"
+                         :title="formatVND(getProjectedBalanceForHub('hub4_personal').currentBalance) + ' + ' + formatVND(getProjectedBalanceForHub('hub4_personal').totalIncome) + ' - ' + formatVND(getProjectedBalanceForHub('hub4_personal').totalExpense) + ' = ' + formatVND(getProjectedBalanceForHub('hub4_personal').projectedBalance)"
+                         x-text="formatVND(getProjectedBalanceForHub('hub4_personal').currentBalance) + ' + ' + formatVND(getProjectedBalanceForHub('hub4_personal').totalIncome) + ' - ' + formatVND(getProjectedBalanceForHub('hub4_personal').totalExpense)"></div>
                   </div>
-                  <div class="flex justify-between text-rose-600">
-                    <span>- Tổng dự chi:</span>
-                    <strong class="font-mono" x-text="formatVND(getProjectedBalanceForHub('hub4_personal').totalExpense)"></strong>
-                  </div>
-                </div>
-                <div class="pt-2 border-t border-slate-200/60">
-                  <div class="text-[10px] text-slate-500 font-medium">Số dư giả lập sau các khoản dự kiến:</div>
-                  <div class="font-mono text-base font-extrabold mt-0.5"
-                       :class="getProjectedBalanceForHub('hub4_personal').projectedBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'"
-                       x-text="formatVND(getProjectedBalanceForHub('hub4_personal').projectedBalance)"></div>
                 </div>
               </div>
 

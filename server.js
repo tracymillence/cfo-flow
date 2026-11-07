@@ -1956,7 +1956,9 @@ async function calculateProjectionHealth(range = 'all') {
 
   hubRoles.forEach(role => {
     // Với Hub 1: Bắt đầu từ số dư đã trừ nợ NCC để phản ánh tiền thực khả dụng
-    const curBal = (role === 'hub1_income') ? (hubs[role].balance - totalSupplierDebt) : hubs[role].balance;
+    const rawCash = hubs[role].balance || 0;
+    const supDebt = (role === 'hub1_income') ? totalSupplierDebt : 0;
+    const curBal = (role === 'hub1_income') ? (rawCash - supDebt) : rawCash;
     const hItems = sortedItems.filter(it => it.hubRole === role);
     const inc = hItems.filter(it => it.type === 'income').reduce((s, it) => s + (Number(it.amount) || 0), 0);
     const exp = hItems.filter(it => it.type === 'expense').reduce((s, it) => s + (Number(it.amount) || 0), 0);
@@ -1986,6 +1988,8 @@ async function calculateProjectionHealth(range = 'all') {
     hubResults[role] = {
       hubRole: role,
       hubName: hubNames[role],
+      rawCash,
+      supplierDebt: supDebt,
       currentBalance: curBal,
       totalIncome: inc,
       totalExpense: exp,
