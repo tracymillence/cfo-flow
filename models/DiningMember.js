@@ -5,6 +5,7 @@ const diningMemberSchema = new mongoose.Schema({
   name: { type: String, required: true },
   group: { type: String, enum: ['work', 'family'], default: 'work' },
   openingBalance: { type: Number, default: 0 },
+  isBadDebt: { type: Boolean, default: false }, // Đánh dấu nợ dài hạn / khó đòi
   phone: { type: String, default: '' },
   note: { type: String, default: '' }
 }, { timestamps: true });

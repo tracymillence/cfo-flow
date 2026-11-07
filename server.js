@@ -689,6 +689,9 @@ function calculateDiningGroup(bills, settlements, members) {
       name: m.name,
       group: m.group || 'work',
       openingBalance: m.openingBalance || 0,
+      isBadDebt: Boolean(m.isBadDebt), // Nợ dài hạn / khó đòi
+      phone: m.phone || '',
+      note: m.note || '',
       topups: 0,
       borrowed: 0,
       eaten: 0,
@@ -766,6 +769,12 @@ function calculateDiningGroup(bills, settlements, members) {
   const totalSurplusFund = surplusMembers.reduce((sum, m) => sum + m.currentBalance, 0);
   const totalDebtReceivable = Math.abs(debtMembers.reduce((sum, m) => sum + m.currentBalance, 0));
 
+  // Phân loại nợ dài hạn / khó đòi vs Nợ thu hồi được (cho Hub 2)
+  const badDebtMembers = debtMembers.filter(m => m.isBadDebt);
+  const collectibleDebtMembers = debtMembers.filter(m => !m.isBadDebt);
+  const totalBadDebtReceivable = Math.abs(badDebtMembers.reduce((sum, m) => sum + m.currentBalance, 0));
+  const totalCollectibleDebtReceivable = Math.abs(collectibleDebtMembers.reduce((sum, m) => sum + m.currentBalance, 0));
+
   return {
     billPaidTotal,
     billCount: bills.length,
@@ -778,6 +787,10 @@ function calculateDiningGroup(bills, settlements, members) {
     surplusCount: surplusMembers.length,
     totalDebtReceivable,
     debtCount: debtMembers.length,
+    totalBadDebtReceivable,
+    badDebtCount: badDebtMembers.length,
+    totalCollectibleDebtReceivable,
+    collectibleDebtCount: collectibleDebtMembers.length,
     members: membersList,
     bills,
     settlements
@@ -1848,8 +1861,16 @@ async function calculateProjectionHealth(range = 'all') {
 
   // 3. Sổ quỹ ăn nhóm & gia đình
   const combinedStats = calculateDiningGroup(diningBills, diningSettlements, diningMembers);
-  const diningReceivable = combinedStats.totalDebtReceivable || 0;
+  const totalDebtReceivable = combinedStats.totalDebtReceivable || 0;
+  const badDebtReceivable = combinedStats.totalBadDebtReceivable || 0;
+  const collectibleDebtReceivable = combinedStats.totalCollectibleDebtReceivable || 0;
   const diningPayable = combinedStats.totalSurplusFund || 0;
+
+  // TÍNH NĂNG: Đánh dấu nợ dài hạn / khó đòi cho Quỹ ăn nợ tôi (Hub 2)
+  // Trong filter 7 ngày hoặc 30 ngày: loại trừ (trừ ra) các khoản nợ dài hạn/khó đòi khỏi phương trình thanh khoản ngắn hạn!
+  const isShortTermFilter = (range === '7days' || range === '30days');
+  const diningReceivable = isShortTermFilter ? collectibleDebtReceivable : totalDebtReceivable;
+  const badDebtExcluded = isShortTermFilter ? badDebtReceivable : 0;
 
   // 4. Xác định mốc thời gian theo múi giờ Việt Nam (Asia/Ho_Chi_Minh)
   const now = new Date();
@@ -2000,7 +2021,12 @@ async function calculateProjectionHealth(range = 'all') {
       diningReceivable,
       diningPayable,
       upcomingIncome,
-      upcomingExpense
+      upcomingExpense,
+      badDebtExcluded,
+      totalDebtReceivable,
+      collectibleDebtReceivable,
+      badDebtReceivable,
+      badDebtCount: combinedStats.badDebtCount || 0
     },
     totalHealth,
     projectedBalance: totalHealth,
@@ -2840,7 +2866,7 @@ app.post('/api/dining/transfer-balance', authenticateToken, async (req, res) => 
 // ==================== 8. THÀNH VIÊN SỔ ĂN & GIA ĐÌNH ====================
 app.post('/api/dining/member', authenticateToken, async (req, res) => {
   try {
-    const { name, openingBalance, group, phone, note } = req.body;
+    const { name, openingBalance, group, phone, note, isBadDebt } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'Thiếu tên người' });
     const targetGroup = group === 'family' ? 'family' : 'work';
     const reqPerm = targetGroup === 'family' ? 'manageDiningFamily' : 'manageDiningWork';
@@ -2857,6 +2883,7 @@ app.post('/api/dining/member', authenticateToken, async (req, res) => {
       name: name.trim(),
       group: targetGroup,
       openingBalance: Number(openingBalance) || 0,
+      isBadDebt: Boolean(isBadDebt),
       phone: phone || '',
       note: note || ''
     });
@@ -2868,7 +2895,7 @@ app.post('/api/dining/member', authenticateToken, async (req, res) => {
 
 app.put('/api/dining/member/:id', authenticateToken, async (req, res) => {
   try {
-    const { name, openingBalance, group, phone, note } = req.body;
+    const { name, openingBalance, group, phone, note, isBadDebt } = req.body;
     const member = await DiningMember.findById(req.params.id);
     if (!member) return res.status(404).json({ success: false, message: 'Không tìm thấy người này' });
 
@@ -2895,11 +2922,39 @@ app.put('/api/dining/member/:id', authenticateToken, async (req, res) => {
     member.personKey = targetKey;
     member.group = targetGroup;
     if (openingBalance !== undefined) member.openingBalance = Number(openingBalance) || 0;
+    if (isBadDebt !== undefined) member.isBadDebt = Boolean(isBadDebt);
     if (phone !== undefined) member.phone = phone;
     if (note !== undefined) member.note = note;
 
     await member.save();
     res.json({ success: true, member });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint nhanh để đánh dấu / bỏ đánh dấu nợ dài hạn, khó đòi
+app.patch('/api/dining/member/:id/toggle-bad-debt', authenticateToken, async (req, res) => {
+  try {
+    const member = await DiningMember.findById(req.params.id);
+    if (!member) return res.status(404).json({ success: false, message: 'Không tìm thấy thành viên' });
+
+    const reqPerm = member.group === 'family' ? 'manageDiningFamily' : 'manageDiningWork';
+    if (!req.user.isAdmin && !(req.user.permissions && req.user.permissions[reqPerm])) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền quản lý thành viên này' });
+    }
+
+    member.isBadDebt = !member.isBadDebt;
+    await member.save();
+
+    res.json({
+      success: true,
+      member,
+      isBadDebt: member.isBadDebt,
+      message: member.isBadDebt
+        ? `Đã đánh dấu "${member.name}" là nợ dài hạn/khó đòi (loại trừ khỏi dòng tiền ngắn hạn 7/30 ngày)`
+        : `Đã bỏ đánh dấu nợ khó đòi cho "${member.name}" (thu hồi vào dòng tiền ngắn hạn)`
+    });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }

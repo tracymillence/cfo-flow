@@ -949,6 +949,7 @@
                   <span class="text-[10px] text-emerald-600 font-semibold block uppercase">+ QUỸ ĂN NỢ TÔI:</span>
                   <span class="font-mono font-bold text-emerald-700" x-text="'+' + formatVND(overallFinancialHealth.diningReceivable)"></span>
                   <span class="text-[9px] text-slate-400 block truncate" x-text="(dashboard.card4_dining?.debtCount || 6) + ' người ăn âm quỹ'"></span>
+                  <span x-show="overallFinancialHealth.badDebtExcluded > 0" class="text-[9px] font-semibold text-amber-600 block truncate" x-text="'(Đã trừ ' + formatVND(overallFinancialHealth.badDebtExcluded) + ' nợ khó đòi)'"></span>
                 </div>
                 <div class="space-y-0.5">
                   <span class="text-[10px] text-rose-600 font-semibold block uppercase">- DƯ QUỸ ĂN (TÔI NỢ):</span>
@@ -1844,10 +1845,10 @@
                       <!-- Trạng Thái -->
                       <td class="py-2.5 px-3 text-center border-r border-slate-200 whitespace-nowrap">
                         <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
-                              :class="m.currentBalance > 0 ? 'bg-emerald-100 text-emerald-800' : (m.currentBalance < 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-600')">
+                              :class="m.currentBalance > 0 ? 'bg-emerald-100 text-emerald-800' : (m.currentBalance < 0 ? (m.isBadDebt ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-rose-100 text-rose-800') : 'bg-slate-100 text-slate-600')">
                           <span class="w-1.5 h-1.5 rounded-full"
-                                :class="m.currentBalance > 0 ? 'bg-emerald-500' : (m.currentBalance < 0 ? 'bg-rose-500' : 'bg-slate-400')"></span>
-                          <span x-text="m.currentBalance > 0 ? 'Còn quỹ' : (m.currentBalance < 0 ? 'Đang nợ' : 'Hòa')"></span>
+                                :class="m.currentBalance > 0 ? 'bg-emerald-500' : (m.currentBalance < 0 ? (m.isBadDebt ? 'bg-amber-500' : 'bg-rose-500') : 'bg-slate-400')"></span>
+                          <span x-text="m.currentBalance > 0 ? 'Còn quỹ' : (m.currentBalance < 0 ? (m.isBadDebt ? 'Nợ khó đòi' : 'Đang nợ') : 'Hòa')"></span>
                         </span>
                       </td>
 
@@ -1865,6 +1866,15 @@
                           <!-- Quản lý (Admin, Staff) -->
                           <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
                                class="inline-flex items-center gap-1">
+                            <!-- Toggle nợ khó đòi -->
+                            <button type="button" x-show="m.currentBalance < 0"
+                                    @click="toggleBadDebt(m)"
+                                    :title="m.isBadDebt ? 'Bỏ đánh dấu nợ khó đòi' : 'Đánh dấu nợ dài hạn / khó đòi'"
+                                    class="px-2 py-0.5 rounded text-[11px] font-semibold transition border flex items-center gap-1"
+                                    :class="m.isBadDebt ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300' : 'bg-slate-50 hover:bg-amber-50 text-slate-600 hover:text-amber-800 border-slate-200'">
+                              <i class="fa-solid fa-flag text-[10px]" :class="m.isBadDebt ? 'text-amber-600' : 'text-slate-400'"></i>
+                              <span x-text="m.isBadDebt ? 'Khó đòi' : 'Gắn cờ'"></span>
+                            </button>
                             <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'in'; modals.settlement = true"
                                     title="Nạp thêm tiền vào quỹ"
                                     class="px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold transition border border-emerald-200">
@@ -1944,11 +1954,15 @@
                             :class="m.group === 'family' ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700'"
                             x-text="m.group === 'family' ? 'Gia đình' : 'Đồng nghiệp'"></span>
                     </div>
-                    <div class="flex items-center gap-1.5 mt-1 cursor-pointer" @click="openMemberStatement(m)">
-                      <span class="w-2 h-2 rounded-full shrink-0" :class="m.currentBalance >= 0 ? 'bg-emerald-500' : 'bg-rose-500'"></span>
+                    <div class="flex items-center gap-1.5 mt-1 cursor-pointer flex-wrap" @click="openMemberStatement(m)">
+                      <span class="w-2 h-2 rounded-full shrink-0" :class="m.currentBalance >= 0 ? 'bg-emerald-500' : (m.isBadDebt ? 'bg-amber-500' : 'bg-rose-500')"></span>
                       <strong class="text-xs font-bold"
-                              :class="m.currentBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'"
-                              x-text="(m.currentBalance >= 0 ? 'Còn quỹ: ' : 'Đang nợ: ') + formatVND(Math.abs(m.currentBalance))"></strong>
+                              :class="m.currentBalance >= 0 ? 'text-emerald-700' : (m.isBadDebt ? 'text-amber-700' : 'text-rose-600')"
+                              x-text="(m.currentBalance >= 0 ? 'Còn quỹ: ' : (m.isBadDebt ? 'Nợ khó đòi: ' : 'Đang nợ: ')) + formatVND(Math.abs(m.currentBalance))"></strong>
+                      <span x-show="m.currentBalance < 0 && m.isBadDebt"
+                            class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                        Nợ khó đòi
+                      </span>
                     </div>
                   </div>
 
@@ -1962,6 +1976,15 @@
                     <!-- Quản lý (Admin, Staff) -->
                     <div x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
                          class="flex flex-wrap items-center gap-1">
+                      <!-- Toggle nợ khó đòi -->
+                      <button type="button" x-show="m.currentBalance < 0"
+                              @click="toggleBadDebt(m)"
+                              :title="m.isBadDebt ? 'Bỏ đánh dấu nợ khó đòi' : 'Đánh dấu nợ dài hạn / khó đòi'"
+                              class="px-2 py-1 rounded-md text-xs font-semibold transition border flex items-center gap-1"
+                              :class="m.isBadDebt ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-slate-50 hover:bg-amber-50 text-slate-600 hover:text-amber-800 border-slate-200'">
+                        <i class="fa-solid fa-flag text-[10px]" :class="m.isBadDebt ? 'text-amber-600' : 'text-slate-400'"></i>
+                        <span x-text="m.isBadDebt ? 'Khó đòi' : 'Gắn cờ'"></span>
+                      </button>
                       <button type="button" @click="settlementForm.personName = m.name; settlementForm.direction = 'in'; modals.settlement = true" title="Nạp tiền"
                               class="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition">
                         + Nạp
@@ -3449,6 +3472,19 @@
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ghi chú / Số điện thoại</label>
           <input type="text" x-model="memberForm.note" placeholder="VD: SĐT, STK..."
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none">
+        </div>
+
+        <div class="p-3 bg-amber-50/70 rounded-xl border border-amber-200">
+          <label class="flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" x-model="memberForm.isBadDebt"
+                   class="mt-0.5 rounded text-amber-600 focus:ring-amber-500 w-4 h-4 border-slate-300">
+            <div>
+              <span class="text-xs font-bold text-amber-900 block">Đánh dấu Nợ dài hạn / Khó đòi</span>
+              <span class="text-[11px] text-amber-700 block leading-tight">
+                Khoản nợ của người này sẽ bị loại trừ (trừ ra) khỏi phương trình Sức khỏe tài chính tổng thể trong bộ lọc ngắn hạn (7 ngày và 30 ngày).
+              </span>
+            </div>
+          </label>
         </div>
 
         <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">

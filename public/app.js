@@ -2222,6 +2222,7 @@ function cashFlowApp() {
           name: m.name,
           group: m.group || 'work',
           openingBalance: m.openingBalance || 0,
+          isBadDebt: Boolean(m.isBadDebt),
           phone: m.phone || '',
           note: m.note || ''
         };
@@ -2231,6 +2232,7 @@ function cashFlowApp() {
           name: '',
           group: this.diningCategory === 'family' ? 'family' : 'work',
           openingBalance: 0,
+          isBadDebt: false,
           phone: '',
           note: ''
         };
@@ -2252,7 +2254,37 @@ function cashFlowApp() {
         if (data.success) {
           this.notify(this.editingMemberId ? '✓ Đã cập nhật thành viên!' : '✓ Đã thêm thành viên mới!');
           this.modals.member = false;
-          this.fetchDashboard();
+          await this.fetchDashboard();
+          await this.fetchProjectionHealth();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    // Đánh dấu / Bỏ đánh dấu nợ dài hạn, khó đòi cho thành viên
+    async toggleBadDebt(member) {
+      const memberId = member.id || member._id;
+      if (!memberId) return;
+
+      const willBeBadDebt = !member.isBadDebt;
+      const confirmMsg = willBeBadDebt
+        ? `Đánh dấu khoản nợ của "${member.name}" là nợ dài hạn / khó đòi?\n\nKhoản nợ này sẽ bị loại trừ (trừ ra) khỏi phương trình Sức khỏe tài chính tổng thể trong bộ lọc 7 ngày và 30 ngày!`
+        : `Bỏ đánh dấu nợ khó đòi cho "${member.name}"?\n\nKhoản nợ này sẽ được tính lại vào dòng tiền thu hồi ngắn hạn.`;
+
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        const res = await this.authFetch(`/api/dining/member/${memberId}/toggle-bad-debt`, {
+          method: 'PATCH'
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.notify(data.message || '✓ Đã cập nhật trạng thái nợ thành viên!');
+          await this.fetchDashboard();
+          await this.fetchProjectionHealth();
         } else {
           alert('Lỗi: ' + (data.message || data.error));
         }
@@ -2685,6 +2717,10 @@ function cashFlowApp() {
           diningPayable: this.projectionHealth.operands?.diningPayable || 0,
           totalUpcomingIncome: this.projectionHealth.operands?.upcomingIncome || 0,
           totalUpcomingExpense: this.projectionHealth.operands?.upcomingExpense || 0,
+          badDebtExcluded: this.projectionHealth.operands?.badDebtExcluded || 0,
+          totalDebtReceivable: this.projectionHealth.operands?.totalDebtReceivable || 0,
+          collectibleDebtReceivable: this.projectionHealth.operands?.collectibleDebtReceivable || 0,
+          badDebtCount: this.projectionHealth.operands?.badDebtCount || 0,
           projectedBalance: this.projectionHealth.totalHealth ?? this.projectionHealth.projectedBalance ?? 0,
           totalHealth: this.projectionHealth.totalHealth ?? 0,
           isDeficit: Boolean(this.projectionHealth.isDeficit),
