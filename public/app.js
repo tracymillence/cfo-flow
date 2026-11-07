@@ -1256,6 +1256,25 @@ function cashFlowApp() {
       }
     },
 
+    // Xóa bất kỳ giao dịch nào từ Unified Transaction Feed (tự động điều hướng đúng sổ dữ liệu)
+    async deleteUnifiedTransaction(t) {
+      if (!t) return;
+      const src = t.source || 'direct';
+      const id = t.sourceId || t._id;
+      const title = t.title || 'giao dịch';
+
+      if (src === 'dining_ledger' || src === 'dining_bill') {
+        return this.deleteDiningBill(id, title);
+      }
+      if (src === 'dining_settlement') {
+        return this.deleteSettlement(id, title);
+      }
+      if (src === 'personal_expense') {
+        return this.deletePersonalExpense(id, title);
+      }
+      return this.deleteTransaction(id, title);
+    },
+
     // ==================== 2. TÀI KHOẢN NGÂN HÀNG & TIỀN MẶT (CRUD) ====================
     openAccountModal(acc = null) {
       if (acc) {

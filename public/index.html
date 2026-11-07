@@ -1599,17 +1599,17 @@
                       <span x-show="t.impactsWeeklyLimit" class="px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 text-[10px] font-bold">
                         Trừ Hạn Mức Tuần
                       </span>
-                      <span x-show="t.usingSupplierFloat" class="px-1.5 py-0.2 rounded bg-amber-500 text-white text-[10px] font-bold shadow-xs">
+                      <span x-show="t.usingSupplierFloat && t.hubRole === 'hub1_income'" class="px-1.5 py-0.2 rounded bg-amber-500 text-white text-[10px] font-bold shadow-xs">
                         ⚠️ Thấu chi NCC
                       </span>
-                      <span x-show="t.source && t.source !== 'direct'"
+                      <span x-show="t.source && t.source !== 'direct' && t.source !== 'transaction'"
                             class="px-1.5 py-0.2 rounded text-[10px] font-bold border"
                             :class="{
-                              'bg-amber-50 text-amber-800 border-amber-200': t.source === 'dining_bill',
+                              'bg-amber-50 text-amber-800 border-amber-200': t.source === 'dining_bill' || t.source === 'dining_ledger',
                               'bg-teal-50 text-teal-800 border-teal-200': t.source === 'dining_settlement',
                               'bg-purple-50 text-purple-800 border-purple-200': t.source === 'personal_expense'
                             }"
-                            x-text="t.source === 'dining_bill' ? 'Hóa đơn Sổ Quỹ' : (t.source === 'dining_settlement' ? 'Nạp/Mượn Quỹ' : 'Sổ Cá Nhân')">
+                            x-text="(t.source === 'dining_bill' || t.source === 'dining_ledger') ? 'Hóa đơn Sổ Quỹ' : (t.source === 'dining_settlement' ? 'Nạp/Mượn Quỹ' : 'Sổ Cá Nhân')">
                       </span>
                     </div>
 
@@ -1627,28 +1627,37 @@
                           }"
                           x-text="(t.type === 'expense' ? '-' : (t.type === 'income' ? '+' : '⇄ ')) + formatVND(t.amount)"></strong>
 
-                  <div x-show="!t.source || t.source === 'direct'" class="flex items-center gap-1 border-l border-slate-100 pl-2">
+                  <!-- Thao tác cho Giao dịch trực tiếp (Sửa, Copy, Xoá) -->
+                  <div x-show="!t.source || t.source === 'direct' || t.source === 'transaction'" class="flex items-center gap-1 border-l border-slate-100 pl-2">
                     <button type="button" @click="openTransactionModal(t)" title="Sửa giao dịch"
-                            class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition text-xs">
+                            class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition text-xs flex items-center gap-1">
                       <i class="fa-solid fa-pen text-[10px]"></i>
+                      <span class="text-[11px] hidden sm:inline">Sửa</span>
                     </button>
                     <button type="button" @click="copyTransaction(t)" title="Copy giao dịch"
                             class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-indigo-600 transition text-xs">
                       <i class="fa-solid fa-copy text-[10px]"></i>
                     </button>
-                    <button type="button" @click="deleteTransaction(t._id, t.title)" title="Xoá giao dịch"
-                            class="p-1.5 rounded-lg border border-slate-200 hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition text-xs">
+                    <button type="button" @click="deleteUnifiedTransaction(t)" title="Xoá giao dịch"
+                            class="p-1.5 rounded-lg border border-slate-200 hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition text-xs flex items-center gap-1">
                       <i class="fa-solid fa-trash-can text-[10px]"></i>
+                      <span class="text-[11px] hidden sm:inline">Xóa</span>
                     </button>
                   </div>
 
-                  <div x-show="t.source && t.source !== 'direct'" class="flex items-center gap-1 border-l border-slate-100 pl-2">
+                  <!-- Thao tác cho Giao dịch đồng bộ từ Sổ Ăn / Sổ Cá Nhân (Xem chi tiết + Nút Xóa) -->
+                  <div x-show="t.source && t.source !== 'direct' && t.source !== 'transaction'" class="flex items-center gap-1 border-l border-slate-100 pl-2">
                     <button type="button"
                             @click="t.source === 'personal_expense' ? activeTab = 'personal' : activeTab = 'dining'"
                             class="px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 hover:text-slate-900 transition text-[11px] font-semibold flex items-center gap-1.5 shadow-2xs"
                             title="Chuyển đến sổ gốc quản lý khoản này">
                       <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-slate-400"></i>
                       <span x-text="t.source === 'personal_expense' ? 'Sổ Cá Nhân' : 'Sổ Quỹ Ăn/GĐ'"></span>
+                    </button>
+                    <button type="button" @click="deleteUnifiedTransaction(t)" title="Xoá khoản này khỏi sổ gốc"
+                            class="p-1.5 rounded-lg border border-slate-200 hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition text-xs flex items-center gap-1">
+                      <i class="fa-solid fa-trash-can text-[10px]"></i>
+                      <span class="text-[11px] hidden sm:inline">Xóa</span>
                     </button>
                   </div>
                 </div>

@@ -42,9 +42,15 @@ async function getUnifiedFeed(page = 1, limit = 50, filters = {}) {
         category: 1,
         hubRole: 1,
         impactsWeeklyLimit: 1,
-        usingSupplierFloat: { $ifNull: ['$usingSupplierFloat', false] },
+        usingSupplierFloat: {
+          $cond: [
+            { $and: [{ $eq: ['$hubRole', 'hub1_income'] }, { $eq: ['$usingSupplierFloat', true] }] },
+            true,
+            false
+          ]
+        },
         notes: 1,
-        source: { $literal: 'transaction' },
+        source: { $literal: 'direct' },
         sourceId: '$_id',
         createdAt: 1
       }
