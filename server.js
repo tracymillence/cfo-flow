@@ -1824,7 +1824,7 @@ app.delete('/api/reminders/:id', authenticateToken, requirePermission('manageTra
 // ==================== TỔNG HỢP & DỰ BÁO SỨC KHỎE TÀI CHÍNH (UNIFIED PROJECTION HEALTH ENGINE) ====================
 // BUG 1 & BUG 2: Đồng bộ hóa 100% giữa phương trình dự báo (operands) và số tổng (totalHealth)
 // Không để Frontend tự tính nhẩm làm lệch số. Hỗ trợ các bộ lọc thời gian: 'all', '7days', '30days'.
-async function calculateProjectionHealth(range = 'all') {
+async function calculateProjectionHealth(range = 'all', customStart = null, customEnd = null) {
   const [
     accounts,
     supplierDebts,
@@ -1866,15 +1866,10 @@ async function calculateProjectionHealth(range = 'all') {
   const collectibleDebtReceivable = combinedStats.totalCollectibleDebtReceivable || 0;
   const diningPayable = combinedStats.totalSurplusFund || 0;
 
-  // TÍNH NĂNG: Đánh dấu nợ dài hạn / khó đòi cho Quỹ ăn nợ tôi (Hub 2)
-  // Trong filter 7 ngày hoặc 30 ngày: loại trừ (trừ ra) các khoản nợ dài hạn/khó đòi khỏi phương trình thanh khoản ngắn hạn!
-  const isShortTermFilter = (range === '7days' || range === '30days');
-  const diningReceivable = isShortTermFilter ? collectibleDebtReceivable : totalDebtReceivable;
-  const badDebtExcluded = isShortTermFilter ? badDebtReceivable : 0;
-
   // 4. Xác định mốc thời gian theo múi giờ Việt Nam (Asia/Ho_Chi_Minh)
   const now = new Date();
   const vnDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(now);
+  let minDateStr = vnDateStr;
   let maxDateStr = null;
 
   if (range === '7days') {
@@ -1885,11 +1880,34 @@ async function calculateProjectionHealth(range = 'all') {
     const [y, m, d] = vnDateStr.split('-').map(Number);
     const d30 = new Date(Date.UTC(y, m - 1, d + 30));
     maxDateStr = d30.toISOString().slice(0, 10);
+  } else if (range === 'custom') {
+    minDateStr = customStart || vnDateStr;
+    maxDateStr = customEnd || null;
   }
+
+  // TÍNH NĂNG: Đánh dấu nợ dài hạn / khó đòi cho Quỹ ăn nợ tôi (Hub 2)
+  // Trong filter 7 ngày, 30 ngày hoặc custom <= 30 ngày: loại trừ (trừ ra) các khoản nợ dài hạn/khó đòi khỏi phương trình thanh khoản ngắn hạn!
+  let isShortTermFilter = (range === '7days' || range === '30days');
+  if (range === 'custom' && maxDateStr) {
+    const endD = new Date(maxDateStr);
+    const startD = new Date(minDateStr);
+    const diffDays = Math.round((endD - startD) / (1000 * 60 * 60 * 24));
+    if (diffDays >= 0 && diffDays <= 30) {
+      isShortTermFilter = true;
+    }
+  }
+  const diningReceivable = isShortTermFilter ? collectibleDebtReceivable : totalDebtReceivable;
+  const badDebtExcluded = isShortTermFilter ? badDebtReceivable : 0;
 
   // Lọc các khoản dự kiến trong khung thời gian yêu cầu
   let rangeUpcoming = upcomingTransactions;
-  if (maxDateStr) {
+  if (range === 'custom') {
+    rangeUpcoming = rangeUpcoming.filter(it => {
+      if (minDateStr && it.date < minDateStr) return false;
+      if (maxDateStr && it.date > maxDateStr) return false;
+      return true;
+    });
+  } else if (maxDateStr) {
     rangeUpcoming = rangeUpcoming.filter(it => it.date >= vnDateStr && it.date <= maxDateStr);
   }
 
@@ -2014,10 +2032,21 @@ async function calculateProjectionHealth(range = 'all') {
 
   const isTotalDeficit = (totalHealth < 0) || (earliestDeficitDate !== null);
 
+  let rangeLabel = 'Toàn bộ thời gian';
+  if (range === '7days') rangeLabel = '7 ngày tới';
+  else if (range === '30days') rangeLabel = '30 ngày tới';
+  else if (range === 'custom') {
+    const formatVn = (s) => {
+      const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+    };
+    rangeLabel = `${formatVn(minDateStr)} ➔ ${maxDateStr ? formatVn(maxDateStr) : 'nay'}`;
+  }
+
   return {
     range,
-    rangeLabel: range === '7days' ? '7 ngày tới' : (range === '30days' ? '30 ngày tới' : 'Toàn bộ thời gian'),
-    startDate: vnDateStr,
+    rangeLabel,
+    startDate: minDateStr,
     endDate: maxDateStr,
     operands: {
       actualCash: totalPhysicalCash,
@@ -2046,7 +2075,9 @@ async function calculateProjectionHealth(range = 'all') {
 app.get('/api/projection-health', authenticateToken, async (req, res) => {
   try {
     const range = req.query.range || 'all';
-    const health = await calculateProjectionHealth(range);
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+    const health = await calculateProjectionHealth(range, startDate, endDate);
     res.json({ success: true, ...health });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

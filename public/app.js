@@ -217,7 +217,9 @@ function cashFlowApp() {
     // ==================== DỰ BÁO DÒNG TIỀN TƯƠNG LAI (UPCOMING CASH FLOW) ====================
     upcomingList: [],
     upcomingLoading: false,
-    upcomingFilterRange: 'all', // 'all' | '7days' | '30days'
+    upcomingFilterRange: 'all', // 'all' | '7days' | '30days' | 'custom'
+    upcomingCustomStart: '',
+    upcomingCustomEnd: '',
     projectionHealth: null,
     upcomingFilterHub: 'all',   // 'all' | 'hub1_income' | 'hub2_dining' | 'hub3_family' | 'hub4_personal'
     upcomingForm: {
@@ -2635,10 +2637,17 @@ function cashFlowApp() {
     },
 
     // BUG 1 & BUG 2: Nạp dữ liệu Sức khỏe tài chính & toán hạng dự báo đồng bộ từ Backend
-    async fetchProjectionHealth(range = null) {
+    async fetchProjectionHealth(range = null, customStart = null, customEnd = null) {
       try {
         const chosenRange = range || this.upcomingFilterRange || 'all';
-        const res = await this.authFetch(`/api/projection-health?range=${chosenRange}`);
+        let url = `/api/projection-health?range=${chosenRange}`;
+        if (chosenRange === 'custom') {
+          const s = customStart || this.upcomingCustomStart;
+          const e = customEnd || this.upcomingCustomEnd;
+          if (s) url += `&startDate=${encodeURIComponent(s)}`;
+          if (e) url += `&endDate=${encodeURIComponent(e)}`;
+        }
+        const res = await this.authFetch(url);
         const data = await res.json();
         if (data.success) {
           this.projectionHealth = data;
@@ -2648,10 +2657,33 @@ function cashFlowApp() {
       }
     },
 
-    // BUG 2: Bộ lọc thời gian đồng bộ lập tức cho Banner, 4 Hubs và danh sách
+    // Bộ lọc thời gian đồng bộ lập tức cho Banner, 4 Hubs và danh sách
     async setTimeFilter(range) {
       this.upcomingFilterRange = range;
-      await this.fetchProjectionHealth(range);
+      if (range === 'custom') {
+        if (!this.upcomingCustomStart) {
+          this.upcomingCustomStart = new Date().toISOString().slice(0, 10);
+        }
+        if (!this.upcomingCustomEnd) {
+          const d = new Date();
+          d.setDate(d.getDate() + 14);
+          this.upcomingCustomEnd = d.toISOString().slice(0, 10);
+        }
+      }
+      await this.fetchProjectionHealth(range, this.upcomingCustomStart, this.upcomingCustomEnd);
+    },
+
+    async applyCustomDateFilter() {
+      if (!this.upcomingCustomStart && !this.upcomingCustomEnd) {
+        this.notify('⚠️ Vui lòng chọn mốc ngày cần lọc');
+        return;
+      }
+      if (this.upcomingCustomStart && this.upcomingCustomEnd && this.upcomingCustomStart > this.upcomingCustomEnd) {
+        this.notify('⚠️ Ngày bắt đầu không thể sau ngày kết thúc');
+        return;
+      }
+      this.upcomingFilterRange = 'custom';
+      await this.fetchProjectionHealth('custom', this.upcomingCustomStart, this.upcomingCustomEnd);
     },
 
     async submitUpcomingTransaction() {
@@ -2910,6 +2942,16 @@ function cashFlowApp() {
         d30.setDate(d30.getDate() + 30);
         const d30Str = d30.toISOString().slice(0, 10);
         list = list.filter(it => it.date >= todayStr && it.date <= d30Str);
+      } else if (this.upcomingFilterRange === 'custom') {
+        const s = this.upcomingCustomStart;
+        const e = this.upcomingCustomEnd;
+        if (s && e) {
+          list = list.filter(it => it.date >= s && it.date <= e);
+        } else if (s) {
+          list = list.filter(it => it.date >= s);
+        } else if (e) {
+          list = list.filter(it => it.date <= e);
+        }
       }
 
       return list.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
