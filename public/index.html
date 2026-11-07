@@ -984,6 +984,7 @@
                 <div class="space-y-0.5">
                   <span class="text-[10px] text-amber-600 font-semibold block uppercase">- NỢ NCC / TIỀN HÀNG:</span>
                   <span class="font-mono font-bold text-amber-700" x-text="'-' + formatVND(overallFinancialHealth.supplierDebt)"></span>
+                  <span x-show="overallFinancialHealth.futureSupplierDebt > 0" class="text-[9px] font-semibold text-amber-600 block truncate" x-text="'(' + formatVND(overallFinancialHealth.futureSupplierDebt) + ' chưa đến hạn)'"></span>
                 </div>
                 <div class="space-y-0.5">
                   <span class="text-[10px] text-emerald-600 font-semibold block uppercase">+ QUỸ ĂN NỢ TÔI:</span>
@@ -1011,7 +1012,7 @@
             <!-- Dòng công thức diễn giải -->
             <div class="pt-2.5 border-t border-slate-200/60 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
               <span>
-                <strong>Công thức kế toán:</strong> [Tổng tiền mặt thực tế] - [Hũ tiền hàng NCC] + [Quỹ ăn nợ tôi] - [Dư quỹ ăn tôi nợ] + [Tổng Dự Thu] - [Tổng Dự Chi]
+                <strong>Công thức kế toán:</strong> [Tổng tiền mặt thực tế] - [Hũ tiền hàng NCC (đến hạn)] + [Quỹ ăn nợ tôi] - [Dư quỹ ăn tôi nợ] + [Tổng Dự Thu] - [Tổng Dự Chi]
               </span>
               <span class="font-mono text-[10px] text-slate-500">
                 (Đồng bộ 100% từ máy chủ cho mốc: <span class="font-bold text-slate-700" x-text="overallFinancialHealth.rangeLabel || 'Toàn bộ thời gian'"></span>)

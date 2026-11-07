@@ -1863,7 +1863,7 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
   });
 
   // 2. Hũ tiền hàng nợ Nhà Cung Cấp
-  const totalSupplierDebt = supplierDebts.reduce((sum, s) => sum + (Number(s.remainingAmount) || 0), 0);
+  const totalAllSupplierDebt = supplierDebts.reduce((sum, s) => sum + (Number(s.remainingAmount) || 0), 0);
 
   // 3. Sổ quỹ ăn nhóm & gia đình
   const combinedStats = calculateDiningGroup(diningBills, diningSettlements, diningMembers);
@@ -1890,6 +1890,34 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
     minDateStr = customStart || vnDateStr;
     maxDateStr = customEnd || null;
   }
+
+  // Mặc định dueDate nếu trống: Ngày cuối cùng của tháng hiện tại (theo giờ VN/local) dạng YYYY-MM-DD
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const defaultEndOfMonthStr = `${endOfMonth.getFullYear()}-${String(endOfMonth.getMonth() + 1).padStart(2, '0')}-${String(endOfMonth.getDate()).padStart(2, '0')}`;
+
+  const getSupplierDueDateStr = (sup) => {
+    if (sup.dueDate) {
+      try {
+        return new Date(sup.dueDate).toISOString().slice(0, 10);
+      } catch (e) {
+        return defaultEndOfMonthStr;
+      }
+    }
+    return defaultEndOfMonthStr;
+  };
+
+  // TÍNH NĂNG: Lọc nợ NCC theo đúng ngày đến hạn (dueDate):
+  // Chỉ trừ các khoản nợ NCC đến hạn trong khung thời gian lọc (dueDate <= maxDateStr, hoặc toàn bộ nếu không giới hạn ngày).
+  const dueSupplierDebts = supplierDebts.filter(sup => {
+    const rem = Number(sup.remainingAmount) || 0;
+    if (rem <= 0) return false;
+    if (!maxDateStr) return true;
+    const dueStr = getSupplierDueDateStr(sup);
+    return dueStr <= maxDateStr;
+  });
+
+  const dueSupplierDebt = dueSupplierDebts.reduce((sum, s) => sum + (Number(s.remainingAmount) || 0), 0);
+  const futureSupplierDebt = Math.max(0, totalAllSupplierDebt - dueSupplierDebt);
 
   // TÍNH NĂNG: Đánh dấu nợ dài hạn / khó đòi cho Quỹ ăn nợ tôi (Hub 2)
   // Trong filter 7 ngày, 30 ngày hoặc custom <= 30 ngày: loại trừ (trừ ra) các khoản nợ dài hạn/khó đòi khỏi phương trình thanh khoản ngắn hạn!
@@ -1927,12 +1955,12 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
     .reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
 
   // 6. CÔNG THỨC CHUẨN KẾ TOÁN HỆ THỐNG:
-  // [Sức khỏe tài chính tổng thể] = [Tiền mặt thực tế] - [Nợ NCC] + [Quỹ ăn nợ tôi] - [Dư quỹ ăn (tôi nợ)] + [Tổng Dự Thu] - [Tổng Dự Chi]
+  // [Sức khỏe tài chính tổng thể] = [Tiền mặt thực tế] - [Nợ NCC đến hạn] + [Quỹ ăn nợ tôi] - [Dư quỹ ăn (tôi nợ)] + [Tổng Dự Thu] - [Tổng Dự Chi]
   const totalHealth = safeMath.subtract(
     safeMath.add(
       safeMath.subtract(
         safeMath.add(
-          safeMath.subtract(totalPhysicalCash, totalSupplierDebt),
+          safeMath.subtract(totalPhysicalCash, dueSupplierDebt),
           diningReceivable
         ),
         diningPayable
@@ -1944,7 +1972,7 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
 
   // 7. Mô phỏng timeline để tìm ngày xuất hiện thiếu hụt thanh khoản sớm nhất (Running balance)
   const sortedItems = [...rangeUpcoming].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  const baseBalance = totalPhysicalCash - totalSupplierDebt + diningReceivable - diningPayable;
+  const baseBalance = totalPhysicalCash - dueSupplierDebt + diningReceivable - diningPayable;
   let runningBalance = baseBalance;
   let earliestDeficitDate = null;
   let earliestDeficitAmount = 0;
@@ -1979,9 +2007,9 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
   };
 
   hubRoles.forEach(role => {
-    // Với Hub 1: Bắt đầu từ số dư đã trừ nợ NCC để phản ánh tiền thực khả dụng
+    // Với Hub 1: Bắt đầu từ số dư đã trừ nợ NCC đến hạn trong kỳ để phản ánh tiền thực khả dụng
     const rawCash = hubs[role].balance || 0;
-    const supDebt = (role === 'hub1_income') ? totalSupplierDebt : 0;
+    const supDebt = (role === 'hub1_income') ? dueSupplierDebt : 0;
     const curBal = (role === 'hub1_income') ? (rawCash - supDebt) : rawCash;
     const hItems = sortedItems.filter(it => it.hubRole === role);
     const inc = hItems.filter(it => it.type === 'income').reduce((s, it) => s + (Number(it.amount) || 0), 0);
@@ -2056,7 +2084,9 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
     endDate: maxDateStr,
     operands: {
       actualCash: totalPhysicalCash,
-      supplierDebt: totalSupplierDebt,
+      supplierDebt: dueSupplierDebt,
+      totalAllSupplierDebt,
+      futureSupplierDebt,
       diningReceivable,
       diningPayable,
       upcomingIncome,

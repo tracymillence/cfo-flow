@@ -2839,6 +2839,8 @@ function cashFlowApp() {
         return {
           totalActualCash: this.projectionHealth.operands?.actualCash || 0,
           supplierDebt: this.projectionHealth.operands?.supplierDebt || 0,
+          futureSupplierDebt: this.projectionHealth.operands?.futureSupplierDebt || 0,
+          totalAllSupplierDebt: this.projectionHealth.operands?.totalAllSupplierDebt || 0,
           diningReceivable: this.projectionHealth.operands?.diningReceivable || 0,
           diningPayable: this.projectionHealth.operands?.diningPayable || 0,
           totalUpcomingIncome: this.projectionHealth.operands?.upcomingIncome || 0,
