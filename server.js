@@ -3306,9 +3306,32 @@ app.get('*', (req, res) => {
 });
 
 // Start Server
+const https = require('https');
+
+function startKeepAliveCron() {
+  const urls = [
+    'https://tracymillence.xyz/api/health',
+    process.env.RENDER_EXTERNAL_URL ? `${process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '')}/api/health` : 'https://cfo-flow.onrender.com/api/health'
+  ];
+
+  // Ping mỗi 10 phút (600,000 ms) để ngăn Render Free Tier ngủ đông sau 15 phút
+  setInterval(() => {
+    urls.forEach(url => {
+      try {
+        const req = https.get(url, { timeout: 10000 }, (res) => {
+          res.resume(); // Tiêu thụ dữ liệu để giải phóng bộ nhớ
+        });
+        req.on('error', () => {});
+        req.on('timeout', () => req.destroy());
+      } catch (_) {}
+    });
+  }, 10 * 60 * 1000);
+}
+
 app.listen(PORT, async () => {
   console.log(`===============================================`);
   console.log(`🚀 CFO Flow Server running on http://localhost:${PORT}`);
   console.log(`===============================================`);
   await ensureMongoConnected();
+  startKeepAliveCron();
 });
