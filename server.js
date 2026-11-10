@@ -3637,6 +3637,41 @@ app.delete('/api/dining/requests/:id', authenticateToken, async (req, res) => {
 });
 
 // ==================== 8.5. SỔ CHI TIÊU CÁ NHÂN & TIẾT KIỆM (HUB 4 CRUD) ====================
+async function syncPersonalExpenseAccountBalance(item, prevState = null) {
+  const wasDeducted = Boolean(
+    prevState &&
+    prevState.status === 'paid' &&
+    (prevState.accountSynced || prevState.deductFromAccount) &&
+    prevState.paidAccount &&
+    Number(prevState.amount) > 0
+  );
+
+  const shouldDeduct = Boolean(
+    item.status === 'paid' &&
+    item.deductFromAccount !== false &&
+    item.paidAccount &&
+    Number(item.amount) > 0
+  );
+
+  if (wasDeducted) {
+    await adjustAccountBalance(prevState.paidAccount, Number(prevState.amount));
+  }
+
+  if (shouldDeduct) {
+    await adjustAccountBalance(item.paidAccount, -Number(item.amount));
+    item.deductFromAccount = true;
+    item.accountSynced = true;
+    if (!item.paidDate) {
+      item.paidDate = new Date().toISOString().slice(0, 10);
+    }
+  } else {
+    item.accountSynced = false;
+    if (item.status !== 'paid') {
+      item.paidDate = '';
+    }
+  }
+}
+
 app.post('/api/personal/expense', authenticateToken, requirePermission('managePersonalHub'), async (req, res) => {
   try {
     const { title, category, type, amount, cycle, dueDay, status, paidAccount, deductFromAccount, notes, paidDate } = req.body;
@@ -3644,23 +3679,25 @@ app.post('/api/personal/expense', authenticateToken, requirePermission('managePe
     const numAmount = Number(amount);
     if (!numAmount || numAmount <= 0) return res.status(400).json({ success: false, message: 'Số tiền phải lớn hơn 0đ' });
 
-    const item = await PersonalExpense.create({
+    const resolvedStatus = status || 'pending';
+    const shouldDeduct = deductFromAccount !== undefined ? Boolean(deductFromAccount) : true;
+
+    const item = new PersonalExpense({
       title: title.trim(),
       category: category || 'streaming_tech',
       type: type || 'fixed_bill',
       amount: numAmount,
       cycle: cycle || 'monthly',
       dueDay: Number(dueDay) || 5,
-      status: status || 'pending',
+      status: resolvedStatus,
       paidAccount: paidAccount || 'Vietcombank',
-      deductFromAccount: deductFromAccount === true,
-      paidDate: status === 'paid' ? (paidDate || new Date().toISOString().slice(0, 10)) : '',
+      deductFromAccount: shouldDeduct,
+      paidDate: resolvedStatus === 'paid' ? (paidDate || new Date().toISOString().slice(0, 10)) : '',
       notes: notes || ''
     });
 
-    if (status === 'paid' && deductFromAccount === true && item.paidAccount) {
-      await adjustAccountBalance(item.paidAccount, -numAmount);
-    }
+    await syncPersonalExpenseAccountBalance(item, null);
+    await item.save();
 
     res.json({ success: true, item });
   } catch (err) {
@@ -3673,6 +3710,14 @@ app.put('/api/personal/expense/:id', authenticateToken, requirePermission('manag
     const item = await PersonalExpense.findById(req.params.id);
     if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản chi cá nhân' });
 
+    const prevState = {
+      status: item.status,
+      amount: item.amount,
+      paidAccount: item.paidAccount,
+      deductFromAccount: item.deductFromAccount,
+      accountSynced: item.accountSynced
+    };
+
     const { title, category, type, amount, cycle, dueDay, status, paidAccount, deductFromAccount, notes, paidDate } = req.body;
     if (title !== undefined) item.title = title.trim();
     if (category !== undefined) item.category = category;
@@ -3682,17 +3727,19 @@ app.put('/api/personal/expense/:id', authenticateToken, requirePermission('manag
     if (dueDay !== undefined) item.dueDay = Number(dueDay) || item.dueDay;
     if (paidAccount !== undefined) item.paidAccount = paidAccount;
     if (notes !== undefined) item.notes = notes;
-    if (deductFromAccount !== undefined) item.deductFromAccount = deductFromAccount;
+    if (deductFromAccount !== undefined) item.deductFromAccount = Boolean(deductFromAccount);
 
     if (status !== undefined) {
       item.status = status;
-      if (status === 'paid' && !item.paidDate) {
-        item.paidDate = paidDate || new Date().toISOString().slice(0, 10);
+      if (status === 'paid') {
+        if (!item.paidDate) item.paidDate = paidDate || new Date().toISOString().slice(0, 10);
+        if (deductFromAccount === undefined) item.deductFromAccount = true;
       } else if (status === 'pending') {
         item.paidDate = '';
       }
     }
 
+    await syncPersonalExpenseAccountBalance(item, prevState);
     await item.save();
     res.json({ success: true, item });
   } catch (err) {
@@ -3705,20 +3752,28 @@ app.put('/api/personal/expense/:id/toggle', authenticateToken, requirePermission
     const item = await PersonalExpense.findById(req.params.id);
     if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản chi' });
 
+    const prevState = {
+      status: item.status,
+      amount: item.amount,
+      paidAccount: item.paidAccount,
+      deductFromAccount: item.deductFromAccount,
+      accountSynced: item.accountSynced
+    };
+
     const newStatus = item.status === 'paid' ? 'pending' : 'paid';
     item.status = newStatus;
+    if (req.body && req.body.paidAccount) {
+      item.paidAccount = req.body.paidAccount;
+    }
+
     if (newStatus === 'paid') {
       item.paidDate = new Date().toISOString().slice(0, 10);
-      if (item.deductFromAccount && item.paidAccount) {
-        await adjustAccountBalance(item.paidAccount, -item.amount);
-      }
+      item.deductFromAccount = req.body?.deductFromAccount !== undefined ? Boolean(req.body.deductFromAccount) : true;
     } else {
-      if (item.deductFromAccount && item.paidAccount) {
-        await adjustAccountBalance(item.paidAccount, item.amount);
-      }
       item.paidDate = '';
     }
 
+    await syncPersonalExpenseAccountBalance(item, prevState);
     await item.save();
     res.json({ success: true, item });
   } catch (err) {
@@ -3731,8 +3786,8 @@ app.delete('/api/personal/expense/:id', authenticateToken, requirePermission('ma
     const item = await PersonalExpense.findById(req.params.id);
     if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản chi' });
 
-    if (item.status === 'paid' && item.deductFromAccount && item.paidAccount) {
-      await adjustAccountBalance(item.paidAccount, item.amount);
+    if (item.status === 'paid' && (item.accountSynced || item.deductFromAccount) && item.paidAccount) {
+      await adjustAccountBalance(item.paidAccount, Number(item.amount) || 0);
     }
     await item.deleteOne();
     res.json({ success: true, message: 'Đã xóa khoản chi cá nhân' });

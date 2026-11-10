@@ -135,23 +135,39 @@ async function getUnifiedFeed(page = 1, limit = 50, filters = {}) {
       $unionWith: {
         coll: 'personalexpenses',
         pipeline: [
-          { $match: { status: 'paid', deductFromAccount: true } },
+          { $match: { status: 'paid', deductFromAccount: { $ne: false } } },
           {
             $project: {
               _id: 1,
-              date: { $ifNull: ['$paidDate', '$date'] },
+              date: {
+                $cond: [
+                  { $gt: [{ $strLenCP: { $ifNull: ['$paidDate', ''] } }, 0] },
+                  '$paidDate',
+                  { $dateToString: { format: '%Y-%m-%d', date: { $ifNull: ['$updatedAt', '$createdAt'] } } }
+                ]
+              },
               title: '$title',
               amount: '$amount',
               type: { $literal: 'expense' },
-              accountName: { $ifNull: ['$paidAccount', 'Timo tiền lời'] },
+              accountName: { $ifNull: ['$paidAccount', 'Vietcombank'] },
               toAccountName: { $literal: '' },
-              category: { $ifNull: ['$category', 'Chi phí cá nhân'] },
+              category: {
+                $switch: {
+                  branches: [
+                    { case: { $eq: ['$category', 'health_fitness'] }, then: 'Sức khỏe & Gym (Cố định)' },
+                    { case: { $eq: ['$category', 'streaming_tech'] }, then: 'Streaming & Giải trí (Cố định)' },
+                    { case: { $eq: ['$category', 'living_utility'] }, then: 'Tiện ích sống (Cố định)' },
+                    { case: { $eq: ['$category', 'savings'] }, then: 'Tiết kiệm tích lũy (Hub 4)' }
+                  ],
+                  default: { $ifNull: ['$category', 'Chi phí cá nhân'] }
+                }
+              },
               hubRole: { $literal: 'hub4_personal' },
               impactsWeeklyLimit: { $ifNull: ['$impactsWeeklyLimit', false] },
               notes: {
                 $cond: [
-                  { $gt: [{ $strLenCP: { $ifNull: ['$note', ''] } }, 0] },
-                  { $concat: ['$note', ' • [Đồng bộ Sổ Cá Nhân]'] },
+                  { $gt: [{ $strLenCP: { $ifNull: ['$notes', ''] } }, 0] },
+                  { $concat: ['$notes', ' • [Đồng bộ Sổ Cá Nhân]'] },
                   '[Đồng bộ Sổ Cá Nhân]'
                 ]
               },
@@ -163,6 +179,9 @@ async function getUnifiedFeed(page = 1, limit = 50, filters = {}) {
         ]
       }
     },
+
+    // Apply global filters across all unified collections
+    ...(Object.keys(txMatch).length > 0 ? [{ $match: txMatch }] : []),
 
     // 5. Global facet sorting and memory-efficient pagination
     { $sort: { date: -1, createdAt: -1 } },

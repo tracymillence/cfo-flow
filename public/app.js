@@ -369,7 +369,7 @@ function cashFlowApp() {
       dueDay: 5,
       status: 'pending',
       paidAccount: 'Vietcombank',
-      deductFromAccount: false,
+      deductFromAccount: true,
       notes: ''
     },
 
@@ -3027,6 +3027,7 @@ function cashFlowApp() {
     },
     // ==================== 10. SỔ CHI TIÊU CÁ NHÂN & TIẾT KIỆM (HUB 4) ====================
     openPersonalExpenseModal(item = null, defaultType = 'fixed_bill') {
+      const defaultAcc = this.defaultBankAccountName();
       if (item) {
         this.editingPersonalId = item._id || item.id;
         this.personalExpenseForm = {
@@ -3037,8 +3038,8 @@ function cashFlowApp() {
           cycle: item.cycle || 'monthly',
           dueDay: item.dueDay || 5,
           status: item.status || 'pending',
-          paidAccount: item.paidAccount || 'Vietcombank',
-          deductFromAccount: item.deductFromAccount === true,
+          paidAccount: item.paidAccount || defaultAcc,
+          deductFromAccount: item.deductFromAccount !== false,
           notes: item.notes || ''
         };
       } else {
@@ -3051,8 +3052,8 @@ function cashFlowApp() {
           cycle: 'monthly',
           dueDay: 5,
           status: defaultType === 'savings_deposit' ? 'paid' : 'pending',
-          paidAccount: 'Vietcombank',
-          deductFromAccount: false,
+          paidAccount: defaultAcc,
+          deductFromAccount: true,
           notes: ''
         };
       }
@@ -3082,9 +3083,10 @@ function cashFlowApp() {
         const data = await res.json();
         if (!data.success) throw new Error(data.message || data.error);
 
-        this.notify('✓ ' + (this.editingPersonalId ? 'Đã cập nhật khoản chi!' : 'Đã thêm khoản chi cá nhân mới!'));
+        this.notify('✓ ' + (this.editingPersonalId ? 'Đã cập nhật khoản chi & đồng bộ ngân hàng!' : 'Đã thêm khoản chi cá nhân mới!'));
         this.modals.personalExpense = false;
         await this.fetchDashboard();
+        await this.fetchProjectionHealth();
       } catch (err) {
         console.error('Lỗi lưu chi phí cá nhân:', err);
         alert('Lỗi: ' + err.message);
@@ -3094,26 +3096,59 @@ function cashFlowApp() {
     async togglePersonalExpenseStatus(item) {
       try {
         const res = await this.authFetch(`/api/personal/expense/${item._id || item.id}/toggle`, {
-          method: 'PUT'
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            paidAccount: item.paidAccount || this.defaultBankAccountName(),
+            deductFromAccount: true
+          })
         });
         const data = await res.json();
         if (!data.success) throw new Error(data.message || data.error);
 
-        this.notify(`✓ Đã đổi trạng thái "${item.title}" sang: ${data.item.status === 'paid' ? 'Đã Thanh Toán' : 'Chờ Thanh Toán'}`);
+        if (data.item.status === 'paid') {
+          this.notify(`✓ Đã thanh toán "${item.title}" (-${this.formatVND(item.amount)} từ ${data.item.paidAccount}) & ghi Sổ Giao Dịch!`);
+        } else {
+          this.notify(`↩️ Đã hoàn tác "${item.title}" về Chờ Thanh Toán (+${this.formatVND(item.amount)} hoàn lại ${data.item.paidAccount})!`);
+        }
         await this.fetchDashboard();
+        await this.fetchProjectionHealth();
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async changePersonalExpenseAccount(item, newAccount) {
+      if (!item || !newAccount) return;
+      try {
+        const res = await this.authFetch(`/api/personal/expense/${item._id || item.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            paidAccount: newAccount,
+            deductFromAccount: true
+          })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || data.error);
+
+        this.notify(`✓ Đã chuyển nguồn thanh toán "${item.title}" sang ${newAccount}!`);
+        await this.fetchDashboard();
+        await this.fetchProjectionHealth();
       } catch (err) {
         alert('Lỗi: ' + err.message);
       }
     },
 
     async deletePersonalExpense(id, title) {
-      if (!confirm(`Xóa khoản chi "${title}" khỏi Sổ Cá Nhân?`)) return;
+      if (!confirm(`Xóa khoản chi "${title}" khỏi Sổ Cá Nhân?\n(Nếu khoản chi đã thanh toán, số tiền sẽ tự động hoàn lại vào tài khoản ngân hàng)`)) return;
       try {
         const res = await this.authFetch(`/api/personal/expense/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           this.notify('🗑️ ' + (data.message || 'Đã xóa khoản chi cá nhân!'));
           await this.fetchDashboard();
+          await this.fetchProjectionHealth();
         } else {
           alert('Lỗi: ' + (data.message || data.error));
         }

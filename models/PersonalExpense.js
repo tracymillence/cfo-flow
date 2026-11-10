@@ -18,7 +18,8 @@ const personalExpenseSchema = new mongoose.Schema({
   status: { type: String, enum: ['pending', 'paid'], default: 'pending' },
   paidDate: { type: String, default: '' },
   paidAccount: { type: String, default: 'Vietcombank' },
-  deductFromAccount: { type: Boolean, default: false },
+  deductFromAccount: { type: Boolean, default: true },
+  accountSynced: { type: Boolean, default: false },
   notes: { type: String, default: '' }
 }, { timestamps: true });
 
