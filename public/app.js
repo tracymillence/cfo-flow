@@ -236,7 +236,24 @@ function cashFlowApp() {
       personName: '',
       amount: '',
       dueDate: new Date().toISOString().slice(0, 10),
+      status: 'pending',
+      settledAccount: 'Vietcombank',
+      syncToAccount: true,
       note: ''
+    },
+    selectedDebtIds: [],
+    debtSettlementForm: {
+      debtIds: [],
+      action: 'paid', // 'paid' | 'pending'
+      accountName: 'Vietcombank',
+      syncToAccount: true,
+      date: new Date().toISOString().slice(0, 10),
+      loading: false,
+      summaryTitle: '',
+      receivableAmount: 0,
+      payableAmount: 0,
+      receivableCount: 0,
+      payableCount: 0
     },
 
     serviceOrderForm: {
@@ -248,11 +265,33 @@ function cashFlowApp() {
       supplierName: '',
       customerPaid: false,
       supplierPaid: false,
+      receivedAccount: 'Vietcombank',
+      supplierPaidAccount: 'Vietcombank',
+      syncCustomerAccount: true,
+      syncSupplierAccount: true,
       date: new Date().toISOString().slice(0, 10),
       note: ''
     },
     serviceOrderFilter: 'all', // 'all' | 'unpaid_customer' | 'unpaid_supplier' | 'completed'
     serviceOrderSearch: '',
+    selectedOrderIds: [],
+    orderSettlementForm: {
+      orderIds: [],
+      action: 'customer_paid', // 'customer_paid' | 'customer_unpaid' | 'supplier_paid' | 'supplier_unpaid' | 'both_paid'
+      accountName: 'Vietcombank',
+      supplierAccountName: 'Vietcombank',
+      syncToAccount: true,
+      date: new Date().toISOString().slice(0, 10),
+      loading: false,
+      summaryTitle: '',
+      totalCustomerAmount: 0,
+      totalSupplierAmount: 0,
+      customerCount: 0,
+      supplierCount: 0
+    },
+
+    quickMemberName: '',
+    quickMemberLoading: false,
 
     // Sổ Giao Dịch Thu / Chi (Request 1)
     transactionForm: {
@@ -360,7 +399,9 @@ function cashFlowApp() {
       correctionRequest: false,
       correctionList: false,
       memberStatement: false,
-      supplierHistory: false
+      supplierHistory: false,
+      orderSettlement: false,
+      debtSettlement: false
     },
 
     selectedSupplierForHistory: null,
@@ -1592,6 +1633,7 @@ function cashFlowApp() {
 
     // ==================== 3B. ĐƠN DỊCH VỤ / BÁN HÀNG & CÔNG NỢ KHÁCH - NCC ====================
     openServiceOrderModal(order = null) {
+      const defaultAcc = (this.dashboard?.accounts?.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
       if (order) {
         this.serviceOrderForm = {
           _id: order._id,
@@ -1602,6 +1644,10 @@ function cashFlowApp() {
           supplierName: order.supplierName || '',
           customerPaid: Boolean(order.customerPaid),
           supplierPaid: Boolean(order.supplierPaid),
+          receivedAccount: order.receivedAccount || defaultAcc,
+          supplierPaidAccount: order.supplierPaidAccount || order.receivedAccount || defaultAcc,
+          syncCustomerAccount: order.customerPaid ? Boolean(order.customerAccountSynced) : true,
+          syncSupplierAccount: order.supplierPaid ? Boolean(order.supplierAccountSynced) : true,
           date: order.date || new Date().toISOString().slice(0, 10),
           note: order.note || ''
         };
@@ -1615,6 +1661,10 @@ function cashFlowApp() {
           supplierName: '',
           customerPaid: false,
           supplierPaid: false,
+          receivedAccount: defaultAcc,
+          supplierPaidAccount: defaultAcc,
+          syncCustomerAccount: true,
+          syncSupplierAccount: true,
           date: new Date().toISOString().slice(0, 10),
           note: ''
         };
@@ -1642,6 +1692,10 @@ function cashFlowApp() {
         supplierName: (this.serviceOrderForm.supplierName || '').trim(),
         customerPaid: Boolean(this.serviceOrderForm.customerPaid),
         supplierPaid: Boolean(this.serviceOrderForm.supplierPaid),
+        receivedAccount: this.serviceOrderForm.receivedAccount || 'Vietcombank',
+        supplierPaidAccount: this.serviceOrderForm.supplierPaidAccount || this.serviceOrderForm.receivedAccount || 'Vietcombank',
+        syncCustomerAccount: Boolean(this.serviceOrderForm.syncCustomerAccount),
+        syncSupplierAccount: Boolean(this.serviceOrderForm.syncSupplierAccount),
         date: this.serviceOrderForm.date || new Date().toISOString().slice(0, 10),
         note: (this.serviceOrderForm.note || '').trim()
       };
@@ -1659,9 +1713,10 @@ function cashFlowApp() {
         });
         const data = await res.json();
         if (data.success) {
-          this.notify(this.serviceOrderForm._id ? '✓ Đã cập nhật đơn hàng!' : '✓ Đã ghi nhận đơn hàng mới!');
+          this.notify(this.serviceOrderForm._id ? '✓ Đã cập nhật đơn hàng & đồng bộ sổ!' : '✓ Đã ghi nhận đơn hàng mới!');
           this.modals.service = false;
           await this.fetchDashboard();
+          await this.fetchProjectionHealth();
         } else {
           alert('Lỗi: ' + (data.message || data.error));
         }
@@ -1670,42 +1725,194 @@ function cashFlowApp() {
       }
     },
 
-    async toggleCustomerPaid(order) {
-      try {
-        const res = await this.authFetch(`/api/service-orders/${order._id}/toggle-customer-paid`, {
-          method: 'PATCH'
-        });
-        const data = await res.json();
-        if (data.success) {
-          this.notify(data.message || '✓ Đã cập nhật trạng thái thu tiền khách!');
-          await this.fetchDashboard();
-        } else {
-          alert('Lỗi: ' + (data.message || data.error));
-        }
-      } catch (err) {
-        alert('Lỗi: ' + err.message);
+    // Multi-select helpers cho Sổ Đơn Hàng
+    isOrderSelected(id) {
+      return this.selectedOrderIds.includes(String(id));
+    },
+
+    toggleSelectOrder(id) {
+      const strId = String(id);
+      const idx = this.selectedOrderIds.indexOf(strId);
+      if (idx === -1) {
+        this.selectedOrderIds.push(strId);
+      } else {
+        this.selectedOrderIds.splice(idx, 1);
       }
     },
 
-    async toggleSupplierPaid(order) {
+    areAllFilteredOrdersSelected() {
+      const list = this.filteredServiceOrders || [];
+      if (list.length === 0) return false;
+      return list.every(o => this.selectedOrderIds.includes(String(o._id)));
+    },
+
+    toggleSelectAllOrders() {
+      const list = this.filteredServiceOrders || [];
+      if (this.areAllFilteredOrdersSelected()) {
+        const filteredSet = new Set(list.map(o => String(o._id)));
+        this.selectedOrderIds = this.selectedOrderIds.filter(id => !filteredSet.has(id));
+      } else {
+        const nextSet = new Set([...this.selectedOrderIds, ...list.map(o => String(o._id))]);
+        this.selectedOrderIds = Array.from(nextSet);
+      }
+    },
+
+    get selectedOrdersSummary() {
+      const all = this.dashboard?.allOrders || [];
+      const selectedSet = new Set(this.selectedOrderIds.map(String));
+      const selected = all.filter(o => selectedSet.has(String(o._id)));
+
+      const unpaidCust = selected.filter(o => !o.customerPaid);
+      const paidCust = selected.filter(o => o.customerPaid);
+      const unpaidSup = selected.filter(o => !o.supplierPaid && (Number(o.costPrice) || 0) > 0);
+      const paidSup = selected.filter(o => o.supplierPaid && (Number(o.costPrice) || 0) > 0);
+
+      return {
+        count: selected.length,
+        unpaidCustomerCount: unpaidCust.length,
+        unpaidCustomerTotal: unpaidCust.reduce((s, o) => s + (Number(o.salePrice) || 0), 0),
+        paidCustomerCount: paidCust.length,
+        paidCustomerTotal: paidCust.reduce((s, o) => s + (Number(o.salePrice) || 0), 0),
+        unpaidSupplierCount: unpaidSup.length,
+        unpaidSupplierTotal: unpaidSup.reduce((s, o) => s + (Number(o.costPrice) || 0), 0),
+        paidSupplierCount: paidSup.length,
+        paidSupplierTotal: paidSup.reduce((s, o) => s + (Number(o.costPrice) || 0), 0)
+      };
+    },
+
+    openOrderSettlementModal(orderIds, action = 'customer_paid', preferredAccount = '') {
+      const ids = (Array.isArray(orderIds) ? orderIds : [orderIds]).map(String).filter(Boolean);
+      if (ids.length === 0) {
+        alert('Vui lòng chọn ít nhất 1 đơn hàng!');
+        return;
+      }
+
+      const all = this.dashboard?.allOrders || [];
+      const idSet = new Set(ids);
+      const targetOrders = all.filter(o => idSet.has(String(o._id)));
+      const defaultAcc = preferredAccount || (this.dashboard?.accounts?.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
+
+      let custCount = 0;
+      let custAmt = 0;
+      let supCount = 0;
+      let supAmt = 0;
+
+      targetOrders.forEach(o => {
+        if (action === 'customer_paid' || action === 'both_paid') {
+          if (!o.customerPaid) {
+            custCount++;
+            custAmt += (Number(o.salePrice) || 0);
+          }
+        } else if (action === 'customer_unpaid') {
+          if (o.customerPaid) {
+            custCount++;
+            custAmt += (Number(o.salePrice) || 0);
+          }
+        }
+
+        if (action === 'supplier_paid' || action === 'both_paid') {
+          if (!o.supplierPaid && (Number(o.costPrice) || 0) > 0) {
+            supCount++;
+            supAmt += (Number(o.costPrice) || 0);
+          }
+        } else if (action === 'supplier_unpaid') {
+          if (o.supplierPaid) {
+            supCount++;
+            supAmt += (Number(o.costPrice) || 0);
+          }
+        }
+      });
+
+      const namesPreview = targetOrders.slice(0, 3).map(o => o.customerName).join(', ') +
+        (targetOrders.length > 3 ? ` và ${targetOrders.length - 3} đơn khác` : '');
+
+      this.orderSettlementForm = {
+        orderIds: ids,
+        action,
+        accountName: defaultAcc,
+        supplierAccountName: defaultAcc,
+        syncToAccount: true,
+        date: new Date().toISOString().slice(0, 10),
+        loading: false,
+        summaryTitle: namesPreview,
+        totalCustomerAmount: custAmt,
+        totalSupplierAmount: supAmt,
+        customerCount: custCount,
+        supplierCount: supCount
+      };
+
+      this.modals.orderSettlement = true;
+    },
+
+    async submitOrderSettlement() {
+      if (this.orderSettlementForm.loading) return;
+      this.orderSettlementForm.loading = true;
       try {
-        const res = await this.authFetch(`/api/service-orders/${order._id}/toggle-supplier-paid`, {
-          method: 'PATCH'
+        const res = await this.authFetch('/api/service-orders/batch-settle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderIds: this.orderSettlementForm.orderIds,
+            action: this.orderSettlementForm.action,
+            accountName: this.orderSettlementForm.accountName,
+            supplierAccountName: this.orderSettlementForm.supplierAccountName || this.orderSettlementForm.accountName,
+            syncToAccount: Boolean(this.orderSettlementForm.syncToAccount),
+            date: this.orderSettlementForm.date
+          })
         });
         const data = await res.json();
         if (data.success) {
-          this.notify(data.message || '✓ Đã cập nhật trạng thái trả vốn NCC!');
+          // Cập nhật tức thì (Optimistic UI) để tránh nhảy trạng thái
+          const idSet = new Set(this.orderSettlementForm.orderIds.map(String));
+          const act = this.orderSettlementForm.action;
+          (this.dashboard?.allOrders || []).forEach(o => {
+            if (idSet.has(String(o._id))) {
+              if (act === 'customer_paid' || act === 'both_paid') {
+                o.customerPaid = true;
+                o.receivedAccount = this.orderSettlementForm.accountName;
+              } else if (act === 'customer_unpaid') {
+                o.customerPaid = false;
+              }
+              if (act === 'supplier_paid' || act === 'both_paid') {
+                if ((Number(o.costPrice) || 0) > 0) {
+                  o.supplierPaid = true;
+                  o.supplierPaidAccount = this.orderSettlementForm.supplierAccountName || this.orderSettlementForm.accountName;
+                }
+              } else if (act === 'supplier_unpaid') {
+                o.supplierPaid = false;
+              }
+            }
+          });
+
+          this.notify(data.message || '✓ Đã cập nhật trạng thái đơn hàng & đồng bộ sổ!');
+          this.modals.orderSettlement = false;
+          this.selectedOrderIds = [];
           await this.fetchDashboard();
+          await this.fetchProjectionHealth();
         } else {
           alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
         alert('Lỗi: ' + err.message);
+      } finally {
+        this.orderSettlementForm.loading = false;
       }
+    },
+
+    toggleCustomerPaid(order) {
+      if (!order || !order._id) return;
+      const nextAction = order.customerPaid ? 'customer_unpaid' : 'customer_paid';
+      this.openOrderSettlementModal([order._id], nextAction, order.receivedAccount);
+    },
+
+    toggleSupplierPaid(order) {
+      if (!order || !order._id) return;
+      const nextAction = order.supplierPaid ? 'supplier_unpaid' : 'supplier_paid';
+      this.openOrderSettlementModal([order._id], nextAction, order.supplierPaidAccount || order.receivedAccount);
     },
 
     async deleteServiceOrder(order) {
-      if (!confirm(`Xác nhận xóa đơn hàng của khách "${order.customerName}" (${this.formatVND(order.salePrice)})?`)) return;
+      if (!confirm(`Xác nhận xóa đơn hàng của khách "${order.customerName}" (${this.formatVND(order.salePrice)})?\n(Nếu đơn đã cộng/trừ tiền ngân hàng, hệ thống sẽ tự động hoàn tác số dư tương ứng)`)) return;
       try {
         const res = await this.authFetch(`/api/service-orders/${order._id}`, {
           method: 'DELETE'
@@ -1713,7 +1920,9 @@ function cashFlowApp() {
         const data = await res.json();
         if (data.success) {
           this.notify('🗑️ Đã xóa đơn hàng!');
+          this.selectedOrderIds = this.selectedOrderIds.filter(id => id !== String(order._id));
           await this.fetchDashboard();
+          await this.fetchProjectionHealth();
         } else {
           alert('Lỗi: ' + (data.message || data.error));
         }
@@ -1812,8 +2021,9 @@ function cashFlowApp() {
       }
     },
 
-    // ==================== 5. SỔ NỢ 2 CHIỀU (CRUD) ====================
+    // ==================== 5. SỔ NỢ 2 CHIỀU (CRUD & ĐỒNG BỘ TÀI KHOẢN NGÂN HÀNG) ====================
     openDebtModal(debt = null) {
+      const defaultAcc = (this.dashboard?.accounts?.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
       if (debt) {
         this.editingDebtId = debt._id;
         this.debtForm = {
@@ -1821,6 +2031,9 @@ function cashFlowApp() {
           personName: debt.personName,
           amount: debt.amount,
           dueDate: debt.dueDate || new Date().toISOString().slice(0, 10),
+          status: debt.status || 'pending',
+          settledAccount: debt.settledAccount || defaultAcc,
+          syncToAccount: debt.status === 'paid' ? Boolean(debt.accountSynced) : true,
           note: debt.note || ''
         };
       } else {
@@ -1830,6 +2043,9 @@ function cashFlowApp() {
           personName: '',
           amount: '',
           dueDate: new Date().toISOString().slice(0, 10),
+          status: 'pending',
+          settledAccount: defaultAcc,
+          syncToAccount: true,
           note: ''
         };
       }
@@ -1837,12 +2053,16 @@ function cashFlowApp() {
     },
 
     copyDebt(debt) {
+      const defaultAcc = (this.dashboard?.accounts?.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
       this.editingDebtId = null;
       this.debtForm = {
         type: debt.type,
         personName: debt.personName + ' (Bản sao)',
         amount: debt.amount,
         dueDate: new Date().toISOString().slice(0, 10),
+        status: 'pending',
+        settledAccount: debt.settledAccount || defaultAcc,
+        syncToAccount: true,
         note: debt.note || ''
       };
       this.modals.debt = true;
@@ -1863,7 +2083,8 @@ function cashFlowApp() {
         if (data.success) {
           this.notify(this.editingDebtId ? '✓ Đã cập nhật khoản nợ!' : '✓ Đã thêm khoản nợ mới!');
           this.modals.debt = false;
-          this.fetchDashboard();
+          await this.fetchDashboard();
+          await this.fetchProjectionHealth();
         } else {
           alert('Lỗi: ' + (data.message || data.error));
         }
@@ -1872,27 +2093,177 @@ function cashFlowApp() {
       }
     },
 
-    async toggleDebtStatus(id) {
-      try {
-        const res = await this.authFetch(`/api/debts/${id}/toggle-status`, { method: 'PATCH' });
-        const data = await res.json();
-        if (data.success) {
-          this.notify('✓ Đã cập nhật trạng thái thanh toán nợ!');
-          this.fetchDashboard();
-        }
-      } catch (err) {
-        alert('Lỗi: ' + err.message);
+    // Multi-select helpers cho Sổ Nợ 2 Chiều
+    isDebtSelected(id) {
+      return this.selectedDebtIds.includes(String(id));
+    },
+
+    toggleSelectDebt(id) {
+      const strId = String(id);
+      const idx = this.selectedDebtIds.indexOf(strId);
+      if (idx === -1) {
+        this.selectedDebtIds.push(strId);
+      } else {
+        this.selectedDebtIds.splice(idx, 1);
       }
     },
 
+    areAllDebtsSelected() {
+      const list = this.dashboard?.allDebts || [];
+      if (list.length === 0) return false;
+      return list.every(d => this.selectedDebtIds.includes(String(d._id)));
+    },
+
+    toggleSelectAllDebts() {
+      const list = this.dashboard?.allDebts || [];
+      if (this.areAllDebtsSelected()) {
+        this.selectedDebtIds = [];
+      } else {
+        this.selectedDebtIds = list.map(d => String(d._id));
+      }
+    },
+
+    get selectedDebtsSummary() {
+      const all = this.dashboard?.allDebts || [];
+      const selectedSet = new Set(this.selectedDebtIds.map(String));
+      const selected = all.filter(d => selectedSet.has(String(d._id)));
+
+      const pending = selected.filter(d => d.status !== 'paid');
+      const paid = selected.filter(d => d.status === 'paid');
+      const pendingRec = pending.filter(d => d.type === 'receivable');
+      const pendingPay = pending.filter(d => d.type === 'payable');
+
+      return {
+        count: selected.length,
+        pendingCount: pending.length,
+        paidCount: paid.length,
+        pendingReceivableCount: pendingRec.length,
+        pendingReceivableTotal: pendingRec.reduce((s, d) => s + (Number(d.amount) || 0), 0),
+        pendingPayableCount: pendingPay.length,
+        pendingPayableTotal: pendingPay.reduce((s, d) => s + (Number(d.amount) || 0), 0)
+      };
+    },
+
+    openDebtSettlementModal(debtIds, action = 'paid', preferredAccount = '') {
+      const ids = (Array.isArray(debtIds) ? debtIds : [debtIds]).map(String).filter(Boolean);
+      if (ids.length === 0) {
+        alert('Vui lòng chọn ít nhất 1 khoản nợ!');
+        return;
+      }
+
+      const all = this.dashboard?.allDebts || [];
+      const idSet = new Set(ids);
+      const targetDebts = all.filter(d => idSet.has(String(d._id)));
+      const defaultAcc = preferredAccount || (this.dashboard?.accounts?.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
+
+      let recCount = 0;
+      let recAmt = 0;
+      let payCount = 0;
+      let payAmt = 0;
+
+      targetDebts.forEach(d => {
+        if (action === 'paid' && d.status !== 'paid') {
+          if (d.type === 'receivable') {
+            recCount++;
+            recAmt += (Number(d.amount) || 0);
+          } else {
+            payCount++;
+            payAmt += (Number(d.amount) || 0);
+          }
+        } else if (action === 'pending' && d.status === 'paid') {
+          if (d.type === 'receivable') {
+            recCount++;
+            recAmt += (Number(d.amount) || 0);
+          } else {
+            payCount++;
+            payAmt += (Number(d.amount) || 0);
+          }
+        }
+      });
+
+      const namesPreview = targetDebts.slice(0, 3).map(d => d.personName).join(', ') +
+        (targetDebts.length > 3 ? ` và ${targetDebts.length - 3} khoản khác` : '');
+
+      this.debtSettlementForm = {
+        debtIds: ids,
+        action,
+        accountName: defaultAcc,
+        syncToAccount: true,
+        date: new Date().toISOString().slice(0, 10),
+        loading: false,
+        summaryTitle: namesPreview,
+        receivableAmount: recAmt,
+        payableAmount: payAmt,
+        receivableCount: recCount,
+        payableCount: payCount
+      };
+
+      this.modals.debtSettlement = true;
+    },
+
+    async submitDebtSettlement() {
+      if (this.debtSettlementForm.loading) return;
+      this.debtSettlementForm.loading = true;
+      try {
+        const res = await this.authFetch('/api/debts/batch-settle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            debtIds: this.debtSettlementForm.debtIds,
+            action: this.debtSettlementForm.action,
+            accountName: this.debtSettlementForm.accountName,
+            syncToAccount: Boolean(this.debtSettlementForm.syncToAccount),
+            date: this.debtSettlementForm.date
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          const idSet = new Set(this.debtSettlementForm.debtIds.map(String));
+          const targetStatus = this.debtSettlementForm.action === 'pending' ? 'pending' : 'paid';
+          (this.dashboard?.allDebts || []).forEach(d => {
+            if (idSet.has(String(d._id))) {
+              d.status = targetStatus;
+              if (targetStatus === 'paid') {
+                d.settledAccount = this.debtSettlementForm.accountName;
+              }
+            }
+          });
+
+          this.notify(data.message || '✓ Đã cập nhật trạng thái khoản nợ & đồng bộ sổ!');
+          this.modals.debtSettlement = false;
+          this.selectedDebtIds = [];
+          await this.fetchDashboard();
+          await this.fetchProjectionHealth();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      } finally {
+        this.debtSettlementForm.loading = false;
+      }
+    },
+
+    toggleDebtStatus(debtOrId) {
+      const id = typeof debtOrId === 'object' ? debtOrId?._id : debtOrId;
+      const debt = typeof debtOrId === 'object'
+        ? debtOrId
+        : (this.dashboard?.allDebts || []).find(d => String(d._id) === String(id));
+      if (!debt) return;
+      const nextAction = debt.status === 'paid' ? 'pending' : 'paid';
+      this.openDebtSettlementModal([debt._id], nextAction, debt.settledAccount);
+    },
+
     async deleteDebt(id, name) {
-      if (!confirm(`Xóa khoản nợ của "${name}"?`)) return;
+      if (!confirm(`Xóa khoản nợ của "${name}"?\n(Nếu khoản nợ đã cộng/trừ vào tài khoản ngân hàng, hệ thống sẽ tự động hoàn tác số dư tương ứng)`)) return;
       try {
         const res = await this.authFetch(`/api/debts/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
           this.notify('🗑️ Đã xóa khoản nợ!');
-          this.fetchDashboard();
+          this.selectedDebtIds = this.selectedDebtIds.filter(dId => dId !== String(id));
+          await this.fetchDashboard();
+          await this.fetchProjectionHealth();
         }
       } catch (err) {
         alert('Lỗi: ' + err.message);
@@ -2337,6 +2708,10 @@ function cashFlowApp() {
     },
 
     async submitMember() {
+      if (!this.memberForm.name || !this.memberForm.name.trim()) {
+        alert('Vui lòng nhập tên thành viên!');
+        return;
+      }
       try {
         const url = this.editingMemberId ? `/api/dining/member/${this.editingMemberId}` : '/api/dining/member';
         const method = this.editingMemberId ? 'PUT' : 'POST';
@@ -2348,7 +2723,7 @@ function cashFlowApp() {
         });
         const data = await res.json();
         if (data.success) {
-          this.notify(this.editingMemberId ? '✓ Đã cập nhật thành viên!' : '✓ Đã thêm thành viên mới!');
+          this.notify(this.editingMemberId ? '✓ Đã cập nhật thành viên!' : `✓ Đã thêm "${this.memberForm.name.trim()}" vào sổ ăn uống!`);
           this.modals.member = false;
           await this.fetchDashboard();
           await this.fetchProjectionHealth();
@@ -2357,6 +2732,48 @@ function cashFlowApp() {
         }
       } catch (err) {
         alert('Lỗi: ' + err.message);
+      }
+    },
+
+    async quickAddMemberInBill() {
+      const name = (this.quickMemberName || '').trim();
+      if (!name) {
+        alert('Vui lòng nhập tên người muốn thêm vào sổ ăn uống!');
+        return;
+      }
+      if (this.quickMemberLoading) return;
+      this.quickMemberLoading = true;
+      try {
+        const targetGroup = this.diningBillForm.category === 'family' ? 'family' : 'work';
+        const res = await this.authFetch('/api/dining/member', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            group: targetGroup,
+            openingBalance: 0
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.member) {
+          this.quickMemberName = '';
+          this.notify(`✓ Đã thêm "${data.member.name}" vào sổ và chọn tham gia bữa ăn!`);
+          // Thêm ngay vào danh sách người tham gia bữa ăn hiện tại
+          this.diningBillForm.participants.push({
+            personKey: data.member.personKey,
+            name: data.member.name,
+            selected: true,
+            customAmount: 0
+          });
+          this.recalculateBillSplits();
+          await this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      } finally {
+        this.quickMemberLoading = false;
       }
     },
 

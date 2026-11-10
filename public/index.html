@@ -1816,9 +1816,15 @@
               </button>
               <button type="button" @click="openSettlementModal()"
                       x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
-                      class="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1">
+                      class="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1 cursor-pointer">
                 <i class="fa-solid fa-hand-holding-dollar text-emerald-600 text-[10px]"></i>
                 <span>Thu / Nạp Tiền</span>
+              </button>
+              <button type="button" @click="openMemberModal()"
+                      x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
+                      class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer">
+                <i class="fa-solid fa-user-plus text-[10px]"></i>
+                <span>+ Thêm Người</span>
               </button>
             </div>
           </div>
@@ -1908,20 +1914,29 @@
                 </button>
               </div>
 
-              <!-- View Switcher (Excel Table vs Cards) -->
-              <div class="inline-flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                <button type="button" @click="diningMemberView = 'excel'"
-                        class="px-2.5 py-1 rounded-md flex items-center gap-1.5 transition text-xs font-semibold"
-                        :class="diningMemberView === 'excel' ? 'bg-emerald-700 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'">
-                  <i class="fa-solid fa-table-cells"></i>
-                  <span>Bảng Excel</span>
+              <!-- View Switcher (Excel Table vs Cards) + Nút Thêm Người Nhanh -->
+              <div class="flex items-center gap-2">
+                <button type="button" @click="openMemberModal()"
+                        x-show="currentUser?.isAdmin || currentUser?.permissions?.manageDiningWork || currentUser?.permissions?.manageDiningFamily"
+                        class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer">
+                  <i class="fa-solid fa-user-plus text-[10px]"></i>
+                  <span>+ Thêm Người</span>
                 </button>
-                <button type="button" @click="diningMemberView = 'cards'"
-                        class="px-2.5 py-1 rounded-md flex items-center gap-1.5 transition text-xs font-semibold"
-                        :class="diningMemberView === 'cards' ? 'bg-emerald-700 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'">
-                  <i class="fa-solid fa-grip"></i>
-                  <span>Dạng Thẻ</span>
-                </button>
+
+                <div class="inline-flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                  <button type="button" @click="diningMemberView = 'excel'"
+                          class="px-2.5 py-1 rounded-md flex items-center gap-1.5 transition text-xs font-semibold cursor-pointer"
+                          :class="diningMemberView === 'excel' ? 'bg-emerald-700 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'">
+                    <i class="fa-solid fa-table-cells"></i>
+                    <span>Bảng Excel</span>
+                  </button>
+                  <button type="button" @click="diningMemberView = 'cards'"
+                          class="px-2.5 py-1 rounded-md flex items-center gap-1.5 transition text-xs font-semibold cursor-pointer"
+                          :class="diningMemberView === 'cards' ? 'bg-emerald-700 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'">
+                    <i class="fa-solid fa-grip"></i>
+                    <span>Dạng Thẻ</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2441,40 +2456,79 @@
               </div>
             </div>
 
+            <!-- Thanh chọn nhiều & thao tác hàng loạt cho Sổ Nợ 2 Chiều -->
+            <div x-show="(dashboard.allDebts || []).length > 0" class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+              <label class="flex items-center gap-2 cursor-pointer text-slate-600 font-semibold select-none">
+                <input type="checkbox" :checked="areAllDebtsSelected" @change="toggleSelectAllDebts()"
+                       class="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5 cursor-pointer">
+                <span>Chọn tất cả (<span x-text="selectedDebtIds.length"></span>/<span x-text="(dashboard.allDebts || []).length"></span>)</span>
+              </label>
+
+              <div x-show="selectedDebtIds.length > 0" class="flex flex-wrap items-center gap-1.5">
+                <button type="button" @click="openDebtSettlementModal(selectedDebtIds, 'paid')"
+                        class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer">
+                  <i class="fa-solid fa-building-columns text-[10px]"></i>
+                  <span>Tất toán &amp; Chọn NH (<span x-text="selectedDebtIds.length"></span>)</span>
+                </button>
+                <button type="button" @click="openDebtSettlementModal(selectedDebtIds, 'pending')"
+                        class="px-2 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-[11px] font-semibold transition cursor-pointer">
+                  Hoàn tác Chờ trả
+                </button>
+                <button type="button" @click="selectedDebtIds = []"
+                        class="px-1.5 py-1 text-slate-400 hover:text-slate-600 text-[11px] cursor-pointer" title="Bỏ chọn">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            </div>
+
             <!-- Debts List -->
-            <div class="space-y-2 pt-2 border-t border-slate-100">
+            <div class="space-y-2 pt-1">
               <template x-for="d in dashboard.allDebts" :key="d._id">
-                <div class="p-3.5 rounded-xl border border-slate-200/70 bg-white hover:border-slate-300 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-                     :class="d.status === 'paid' ? 'opacity-50 bg-slate-50' : ''">
-                  <div class="min-w-0 flex-1">
-                    <div class="flex flex-wrap items-center gap-1.5">
-                      <span class="px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap"
-                            :class="d.type === 'receivable' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
-                            x-text="d.type === 'receivable' ? 'Bạn nợ tôi' : 'Tôi nợ bạn'"></span>
-                      <strong class="text-xs font-bold text-slate-900" x-text="d.personName"></strong>
+                <div class="p-3.5 rounded-xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                     :class="[
+                       d.status === 'paid' ? 'bg-slate-50/80 border-slate-200/70' : 'bg-white border-slate-200/80 hover:border-slate-300',
+                       isDebtSelected(d._id) ? 'ring-2 ring-purple-500/40 border-purple-300 bg-purple-50/10' : ''
+                     ]">
+                  <div class="flex items-start gap-2.5 min-w-0 flex-1">
+                    <input type="checkbox" :checked="isDebtSelected(d._id)" @change="toggleSelectDebt(d._id)"
+                           class="mt-1 rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5 cursor-pointer shrink-0">
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-1.5">
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap"
+                              :class="d.type === 'receivable' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
+                              x-text="d.type === 'receivable' ? 'Bạn nợ tôi' : 'Tôi nợ bạn'"></span>
+                        <strong class="text-xs font-bold text-slate-900" x-text="d.personName"></strong>
+                        <span x-show="d.status === 'paid' && d.settledAccount"
+                              class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200/60 text-[10px] font-semibold flex items-center gap-1">
+                          <i class="fa-solid fa-building-columns text-[9px]"></i>
+                          <span x-text="d.settledAccount"></span>
+                        </span>
+                      </div>
+                      <p class="text-[10px] text-slate-400 mt-0.5 truncate" x-text="'Hạn: ' + formatDate(d.dueDate) + (d.note ? ' • ' + d.note : '')"></p>
                     </div>
-                    <p class="text-[10px] text-slate-400 mt-0.5 truncate" x-text="'Hạn: ' + formatDate(d.dueDate) + (d.note ? ' • ' + d.note : '')"></p>
                   </div>
 
                   <div class="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
-                    <strong class="font-mono text-xs font-bold" x-text="formatVND(d.amount)"></strong>
+                    <strong class="font-mono text-xs font-bold" :class="d.status === 'paid' ? 'line-through text-slate-400' : 'text-slate-900'" x-text="formatVND(d.amount)"></strong>
 
                     <button type="button" @click="toggleDebtStatus(d._id)"
-                            class="px-2.5 py-1 rounded-lg text-[10px] font-bold transition whitespace-nowrap"
-                            :class="d.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'"
-                            x-text="d.status === 'paid' ? '✓ Đã Xong' : 'Chờ Trả'"></button>
+                            class="px-2.5 py-1 rounded-lg text-[10px] font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1 shadow-2xs"
+                            :class="d.status === 'paid' ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' : 'bg-purple-600 text-white hover:bg-purple-700'">
+                      <i class="fa-solid" :class="d.status === 'paid' ? 'fa-check' : 'fa-hand-holding-dollar'"></i>
+                      <span x-text="d.status === 'paid' ? 'Đã Xong' : 'Chờ Trả'"></span>
+                    </button>
 
                     <div class="flex items-center gap-1 border-l border-slate-100 pl-2">
                       <button type="button" @click="openDebtModal(d)" title="Sửa"
-                              class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 text-xs">
+                              class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 text-xs cursor-pointer">
                         <i class="fa-solid fa-pen"></i>
                       </button>
                       <button type="button" @click="copyDebt(d)" title="Copy"
-                              class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 text-xs">
+                              class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 text-xs cursor-pointer">
                         <i class="fa-solid fa-copy"></i>
                       </button>
                       <button type="button" @click="deleteDebt(d._id, d.personName)" title="Xoá"
-                              class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs">
+                              class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs cursor-pointer">
                         <i class="fa-solid fa-trash-can"></i>
                       </button>
                     </div>
@@ -2574,29 +2628,83 @@
             </div>
           </div>
 
+          <!-- Thanh chọn nhiều đơn hàng & chuyển trạng thái 1 lần (Bulk Actions) -->
+          <div x-show="filteredServiceOrders.length > 0"
+               class="p-3 rounded-xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+               :class="selectedOrderIds.length > 0 ? 'bg-blue-50/80 border-blue-200 shadow-2xs' : 'bg-slate-50/70 border-slate-200/70'">
+            <div class="flex flex-wrap items-center gap-3">
+              <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 select-none">
+                <input type="checkbox" :checked="areAllFilteredOrdersSelected" @change="toggleSelectAllOrders()"
+                       class="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer">
+                <span>Chọn tất cả đang lọc (<span x-text="selectedOrderIds.length"></span>/<span x-text="filteredServiceOrders.length"></span> đơn)</span>
+              </label>
+              <span x-show="selectedOrderIds.length > 0" class="text-[11px] text-blue-800 font-medium">
+                • Cần thu khách: <strong class="font-mono" x-text="formatVND(selectedOrdersSummary.unpaidCustomerAmount)"></strong>
+                • Cần trả NCC: <strong class="font-mono" x-text="formatVND(selectedOrdersSummary.unpaidSupplierAmount)"></strong>
+              </span>
+            </div>
+
+            <div x-show="selectedOrderIds.length > 0" class="flex flex-wrap items-center gap-1.5">
+              <button type="button" @click="openOrderSettlementModal(selectedOrderIds, 'customer_paid')"
+                      class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer">
+                <i class="fa-solid fa-hand-holding-dollar text-[10px]"></i>
+                <span>Đã thu khách (<span x-text="selectedOrderIds.length"></span>)</span>
+              </button>
+              <button type="button" @click="openOrderSettlementModal(selectedOrderIds, 'supplier_paid')"
+                      class="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer">
+                <i class="fa-solid fa-truck-ramp-box text-[10px]"></i>
+                <span>Đã trả vốn NCC (<span x-text="selectedOrderIds.length"></span>)</span>
+              </button>
+              <button type="button" @click="openOrderSettlementModal(selectedOrderIds, 'both_paid')"
+                      class="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer">
+                <i class="fa-solid fa-check-double text-[10px]"></i>
+                <span>Tất toán cả 2</span>
+              </button>
+              <button type="button" @click="openOrderSettlementModal(selectedOrderIds, 'customer_unpaid')"
+                      class="px-2 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 text-[11px] font-semibold transition cursor-pointer">
+                Hoàn tác Thu khách
+              </button>
+              <button type="button" @click="openOrderSettlementModal(selectedOrderIds, 'supplier_unpaid')"
+                      class="px-2 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 text-[11px] font-semibold transition cursor-pointer">
+                Hoàn tác Trả vốn
+              </button>
+              <button type="button" @click="selectedOrderIds = []"
+                      class="px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-700 text-xs font-semibold cursor-pointer" title="Bỏ chọn tất cả">
+                Bỏ chọn
+              </button>
+            </div>
+          </div>
+
           <!-- Danh sách Đơn hàng -->
           <div class="space-y-2.5">
             <template x-for="o in filteredServiceOrders" :key="o._id">
               <div class="p-4 rounded-xl border transition bg-white flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 hover:border-slate-300"
-                   :class="(!o.customerPaid && !o.supplierPaid) ? 'border-amber-200 bg-amber-50/20' : (o.customerPaid && o.supplierPaid ? 'border-slate-200/70 bg-slate-50/40 opacity-75' : 'border-slate-200/80')">
+                   :class="[
+                     (!o.customerPaid && !o.supplierPaid) ? 'border-amber-200 bg-amber-50/20' : (o.customerPaid && o.supplierPaid ? 'border-slate-200/70 bg-slate-50/40' : 'border-slate-200/80'),
+                     isOrderSelected(o._id) ? 'ring-2 ring-blue-500/40 border-blue-400 bg-blue-50/10' : ''
+                   ]">
                 
-                <!-- Cột 1: Thông tin khách & mặt hàng -->
-                <div class="min-w-0 flex-1">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <strong class="text-sm font-bold text-slate-900" x-text="o.customerName"></strong>
-                    <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700" x-text="o.serviceName || o.serviceType"></span>
-                    <span class="text-[11px] text-slate-400" x-text="formatDate(o.date)"></span>
-                  </div>
-                  <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-1">
-                    <span x-show="o.supplierName" class="flex items-center gap-1">
-                      <i class="fa-solid fa-truck text-[10px] text-slate-400"></i>
-                      <span>NCC: <strong class="text-slate-700 font-semibold" x-text="o.supplierName"></strong></span>
-                    </span>
-                    <span class="flex items-center gap-1">
-                      <i class="fa-solid fa-chart-line text-[10px] text-emerald-500"></i>
-                      <span>Lợi nhuận: <strong class="text-emerald-700 font-bold" x-text="formatVND((o.salePrice || 0) - (o.costPrice || 0))"></strong></span>
-                    </span>
-                    <span x-show="o.note" class="text-slate-400 italic" x-text="'• ' + o.note"></span>
+                <!-- Cột 1: Checkbox + Thông tin khách & mặt hàng -->
+                <div class="flex items-start gap-3 min-w-0 flex-1">
+                  <input type="checkbox" :checked="isOrderSelected(o._id)" @change="toggleSelectOrder(o._id)"
+                         class="mt-1 rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer shrink-0">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <strong class="text-sm font-bold text-slate-900" x-text="o.customerName"></strong>
+                      <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700" x-text="o.serviceName || o.serviceType"></span>
+                      <span class="text-[11px] text-slate-400" x-text="formatDate(o.date)"></span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-1">
+                      <span x-show="o.supplierName" class="flex items-center gap-1">
+                        <i class="fa-solid fa-truck text-[10px] text-slate-400"></i>
+                        <span>NCC: <strong class="text-slate-700 font-semibold" x-text="o.supplierName"></strong></span>
+                      </span>
+                      <span class="flex items-center gap-1">
+                        <i class="fa-solid fa-chart-line text-[10px] text-emerald-500"></i>
+                        <span>Lợi nhuận: <strong class="text-emerald-700 font-bold" x-text="formatVND((o.salePrice || 0) - (o.costPrice || 0))"></strong></span>
+                      </span>
+                      <span x-show="o.note" class="text-slate-400 italic" x-text="'• ' + o.note"></span>
+                    </div>
                   </div>
                 </div>
 
@@ -2608,6 +2716,10 @@
                     <div class="text-right">
                       <div class="text-[10px] text-slate-400 font-medium">Giá thu khách:</div>
                       <div class="font-mono text-xs font-bold text-slate-900" x-text="formatVND(o.salePrice)"></div>
+                      <div x-show="o.customerPaid && o.receivedAccount" class="text-[9px] font-semibold text-emerald-700 flex items-center justify-end gap-0.5 mt-0.5">
+                        <i class="fa-solid fa-building-columns text-[8px]"></i>
+                        <span x-text="o.receivedAccount"></span>
+                      </div>
                     </div>
                     <button type="button" @click="toggleCustomerPaid(o)"
                             class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer"
@@ -2622,6 +2734,10 @@
                     <div class="text-right">
                       <div class="text-[10px] text-slate-400 font-medium">Giá vốn NCC:</div>
                       <div class="font-mono text-xs font-bold text-amber-700" x-text="formatVND(o.costPrice)"></div>
+                      <div x-show="o.supplierPaid && o.supplierPaidAccount" class="text-[9px] font-semibold text-blue-700 flex items-center justify-end gap-0.5 mt-0.5">
+                        <i class="fa-solid fa-building-columns text-[8px]"></i>
+                        <span x-text="o.supplierPaidAccount"></span>
+                      </div>
                     </div>
                     <button type="button" @click="toggleSupplierPaid(o)"
                             :disabled="!o.costPrice || o.costPrice === 0"
@@ -3299,6 +3415,18 @@
               </div>
             </div>
 
+            <!-- Ô thêm nhanh người mới vào Sổ Ăn Uống ngay trong lúc chia hóa đơn -->
+            <div class="flex items-center gap-1.5 pt-0.5 pb-1">
+              <input type="text" x-model="quickMemberName" @keydown.enter.prevent="quickAddMemberInBill()"
+                     placeholder="+ Nhập tên người mới để thêm nhanh vào sổ..."
+                     class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500">
+              <button type="button" @click="quickAddMemberInBill()" :disabled="quickMemberLoading"
+                      class="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition shrink-0 cursor-pointer disabled:opacity-50">
+                <i class="fa-solid fa-user-plus text-[10px]"></i>
+                <span>Thêm người</span>
+              </button>
+            </div>
+
             <!-- Chủ sổ (Tôi) -->
             <div class="flex items-center justify-between p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200 text-xs">
               <label class="flex items-center gap-2 cursor-pointer font-bold text-emerald-900">
@@ -3911,6 +4039,34 @@
           <label class="block text-[11px] font-semibold text-slate-500 mb-1">Ghi chú</label>
           <input type="text" x-model="debtForm.note" placeholder="VD: Tiền vay mặt, mua hộ đồ Shopee..."
                  class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none">
+        </div>
+
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
+          <label class="block text-[11px] font-semibold text-slate-700">Trạng thái tất toán:</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" @click="debtForm.status = 'pending'"
+                    class="py-1.5 rounded-lg text-xs font-bold border transition text-center cursor-pointer"
+                    :class="debtForm.status !== 'paid' ? 'bg-amber-500 border-amber-600 text-white' : 'bg-white border-slate-200 text-slate-600'">
+              Chờ Trả
+            </button>
+            <button type="button" @click="debtForm.status = 'paid'; if (!debtForm.settledAccount) debtForm.settledAccount = defaultBankAccountName()"
+                    class="py-1.5 rounded-lg text-xs font-bold border transition text-center cursor-pointer"
+                    :class="debtForm.status === 'paid' ? 'bg-emerald-600 border-emerald-700 text-white' : 'bg-white border-slate-200 text-slate-600'">
+              ✓ Đã Xong (Tất toán)
+            </button>
+          </div>
+
+          <div x-show="debtForm.status === 'paid'" class="pt-1">
+            <label class="block text-[11px] font-semibold text-slate-700 mb-1"
+                   x-text="debtForm.type === 'receivable' ? 'Chọn tài khoản ngân hàng nhận tiền (+):' : 'Chọn tài khoản ngân hàng trích tiền trả (-):'"></label>
+            <select x-model="debtForm.settledAccount"
+                    class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-600">
+              <option value="">-- Không đồng bộ số dư ngân hàng --</option>
+              <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+                <option :value="acc.name" x-text="acc.name + ' (Dư: ' + formatVND(acc.balance) + ')'"></option>
+              </template>
+            </select>
+          </div>
         </div>
 
         <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
@@ -5072,13 +5228,27 @@
                 <i class="fa-solid fa-hourglass-half"></i>
                 <span>Chưa trả (Khách nợ)</span>
               </button>
-              <button type="button" @click="serviceOrderForm.customerPaid = true"
+              <button type="button" @click="serviceOrderForm.customerPaid = true; if (!serviceOrderForm.receivedAccount) serviceOrderForm.receivedAccount = defaultBankAccountName()"
                       class="p-2 rounded-lg border text-center font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
                       :class="serviceOrderForm.customerPaid ? 'bg-emerald-600 border-emerald-700 text-white shadow-2xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'">
                 <i class="fa-solid fa-check"></i>
                 <span>Đã thu tiền khách</span>
               </button>
             </div>
+          </div>
+
+          <!-- Chọn ngân hàng cộng tiền khi Đã thu khách -->
+          <div x-show="serviceOrderForm.customerPaid" class="pt-1">
+            <label class="block font-semibold text-emerald-900 mb-1 text-[11px]">
+              <i class="fa-solid fa-building-columns mr-1 text-emerald-600"></i>Chọn nguồn tiền / Ngân hàng nhận tiền khách (+):
+            </label>
+            <select x-model="serviceOrderForm.receivedAccount"
+                    class="w-full px-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-600">
+              <option value="">-- Không cộng vào số dư ngân hàng --</option>
+              <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+                <option :value="acc.name" x-text="acc.name + ' (Số dư: ' + formatVND(acc.balance) + ')'"></option>
+              </template>
+            </select>
           </div>
         </div>
 
@@ -5119,7 +5289,7 @@
                 <i class="fa-solid fa-clock"></i>
                 <span>Chưa trả (Nợ vốn NCC)</span>
               </button>
-              <button type="button" @click="serviceOrderForm.supplierPaid = true"
+              <button type="button" @click="serviceOrderForm.supplierPaid = true; if (!serviceOrderForm.supplierPaidAccount) serviceOrderForm.supplierPaidAccount = defaultBankAccountName()"
                       class="p-2 rounded-lg border text-center font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
                       :class="serviceOrderForm.supplierPaid ? 'bg-emerald-600 border-emerald-700 text-white shadow-2xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'">
                 <i class="fa-solid fa-check"></i>
@@ -5129,6 +5299,20 @@
             <p class="text-[10px] text-slate-500 mt-1.5 italic" x-show="!serviceOrderForm.supplierPaid && serviceOrderForm.supplierName">
               💡 Lưu ý: Khi chọn "Chưa trả", hệ thống sẽ tự động cộng số tiền vốn này vào Hũ nợ của NCC <strong x-text="serviceOrderForm.supplierName"></strong>.
             </p>
+          </div>
+
+          <!-- Chọn ngân hàng trừ tiền khi Đã trả vốn NCC -->
+          <div x-show="serviceOrderForm.supplierPaid" class="pt-1">
+            <label class="block font-semibold text-blue-900 mb-1 text-[11px]">
+              <i class="fa-solid fa-building-columns mr-1 text-blue-600"></i>Chọn nguồn tiền / Ngân hàng trích trả vốn NCC (-):
+            </label>
+            <select x-model="serviceOrderForm.supplierPaidAccount"
+                    class="w-full px-3 py-2 rounded-xl border border-blue-300 bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600">
+              <option value="">-- Không trừ số dư ngân hàng --</option>
+              <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+                <option :value="acc.name" x-text="acc.name + ' (Số dư: ' + formatVND(acc.balance) + ')'"></option>
+              </template>
+            </select>
           </div>
         </div>
 
@@ -5273,6 +5457,188 @@
     </div>
   </div>
 
+  <!-- MODAL: XÁC NHẬN THU KHÁCH / TRẢ VỐN NCC & CHỌN NGUỒN TIỀN NGÂN HÀNG (1 HOẶC NHIỀU ĐƠN) -->
+  <div x-show="modals.orderSettlement" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div @click.away="modals.orderSettlement = false"
+         class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <span class="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold"
+                :class="orderSettlementForm.mode.includes('unpaid') ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'">
+            <i class="fa-solid fa-building-columns"></i>
+          </span>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900" x-text="orderSettlementForm.title"></h3>
+            <p class="text-[11px] text-slate-500" x-text="'Áp dụng cho ' + (orderSettlementForm.orderIds?.length || 0) + ' đơn hàng đã chọn'"></p>
+          </div>
+        </div>
+        <button type="button" @click="modals.orderSettlement = false" class="text-slate-400 hover:text-slate-600 p-1 cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="submitOrderSettlement()" class="space-y-4 text-xs">
+        <!-- Tóm tắt số tiền thực tế -->
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+          <div x-show="orderSettlementForm.mode === 'customer_paid' || orderSettlementForm.mode === 'both_paid'"
+               class="flex items-center justify-between">
+            <span class="text-slate-600 font-medium">Tổng tiền thu khách (+ Cộng vào NH):</span>
+            <strong class="font-mono text-sm font-extrabold text-emerald-600" x-text="'+' + formatVND(orderSettlementForm.totalCustomerAmount)"></strong>
+          </div>
+          <div x-show="orderSettlementForm.mode === 'supplier_paid' || orderSettlementForm.mode === 'both_paid'"
+               class="flex items-center justify-between">
+            <span class="text-slate-600 font-medium">Tổng tiền trả vốn NCC (- Trừ từ NH):</span>
+            <strong class="font-mono text-sm font-extrabold text-rose-600" x-text="'-' + formatVND(orderSettlementForm.totalSupplierAmount)"></strong>
+          </div>
+          <div x-show="orderSettlementForm.mode === 'customer_unpaid'"
+               class="flex items-center justify-between">
+            <span class="text-slate-600 font-medium">Hoàn tác thu khách (Trừ lại khỏi NH đã thu):</span>
+            <strong class="font-mono text-sm font-extrabold text-amber-600" x-text="formatVND(orderSettlementForm.totalCustomerAmount)"></strong>
+          </div>
+          <div x-show="orderSettlementForm.mode === 'supplier_unpaid'"
+               class="flex items-center justify-between">
+            <span class="text-slate-600 font-medium">Hoàn tác trả vốn (Cộng lại vào NH &amp; Hũ NCC):</span>
+            <strong class="font-mono text-sm font-extrabold text-amber-600" x-text="formatVND(orderSettlementForm.totalSupplierAmount)"></strong>
+          </div>
+        </div>
+
+        <!-- Chọn tài khoản Ngân hàng khi Thu khách / Trả vốn -->
+        <div x-show="orderSettlementForm.mode === 'customer_paid' || orderSettlementForm.mode === 'supplier_paid' || orderSettlementForm.mode === 'both_paid'" class="space-y-3">
+          <div x-show="orderSettlementForm.mode === 'customer_paid' || orderSettlementForm.mode === 'supplier_paid'">
+            <label class="block font-bold text-slate-800 mb-1.5"
+                   x-text="orderSettlementForm.mode === 'customer_paid' ? 'Chọn nguồn tiền / Ngân hàng nhận tiền (+):' : 'Chọn nguồn tiền / Ngân hàng trích trả vốn (-):'"></label>
+            <select x-model="orderSettlementForm.accountName"
+                    class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600">
+              <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+                <option :value="acc.name" x-text="acc.name + ' — Số dư: ' + formatVND(acc.balance)"></option>
+              </template>
+              <option value="">-- Chỉ đổi trạng thái (Không cộng/trừ Ngân hàng) --</option>
+            </select>
+          </div>
+
+          <div x-show="orderSettlementForm.mode === 'both_paid'" class="space-y-2.5">
+            <div>
+              <label class="block font-bold text-emerald-800 mb-1">1. Ngân hàng nhận tiền thu khách (+):</label>
+              <select x-model="orderSettlementForm.receivedAccount"
+                      class="w-full px-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600">
+                <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+                  <option :value="acc.name" x-text="acc.name + ' — Số dư: ' + formatVND(acc.balance)"></option>
+                </template>
+                <option value="">-- Không cộng vào Ngân hàng --</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold text-blue-800 mb-1">2. Ngân hàng trích tiền trả vốn NCC (-):</label>
+              <select x-model="orderSettlementForm.supplierPaidAccount"
+                      class="w-full px-3 py-2 rounded-xl border border-blue-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600">
+                <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+                  <option :value="acc.name" x-text="acc.name + ' — Số dư: ' + formatVND(acc.balance)"></option>
+                </template>
+                <option value="">-- Không trừ khỏi Ngân hàng --</option>
+              </select>
+            </div>
+          </div>
+
+          <p class="text-[11px] text-slate-500 leading-relaxed">
+            ✓ Hệ thống sẽ tự động cập nhật số dư ngân hàng thực tế, ghi nhận vào <strong>Sổ Giao Dịch</strong> và đồng bộ <strong>Hũ Tiền Hàng NCC</strong>.
+          </p>
+        </div>
+
+        <div x-show="orderSettlementForm.mode === 'customer_unpaid' || orderSettlementForm.mode === 'supplier_unpaid'"
+             class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+          Hệ thống sẽ chuyển trạng thái đơn hàng về <strong>Chưa thu / Chưa trả</strong>, đồng thời tự động hoàn tác số dư ngân hàng và xóa bút toán giao dịch đã tạo trước đó.
+        </div>
+
+        <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
+          <button type="button" @click="modals.orderSettlement = false"
+                  class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer">Hủy</button>
+          <button type="submit" :disabled="orderSettlementForm.loading"
+                  class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50">
+            <i class="fa-solid fa-check"></i>
+            <span x-text="orderSettlementForm.loading ? 'Đang xử lý...' : 'Xác Nhận Thực Hiện'"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: XÁC NHẬN TẤT TOÁN SỔ NỢ 2 CHIỀU & CHỌN NGUỒN TIỀN NGÂN HÀNG -->
+  <div x-show="modals.debtSettlement" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div @click.away="modals.debtSettlement = false"
+         class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <span class="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-sm font-bold">
+            <i class="fa-solid fa-hand-holding-dollar"></i>
+          </span>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900" x-text="debtSettlementForm.title"></h3>
+            <p class="text-[11px] text-slate-500" x-text="'Áp dụng cho ' + (debtSettlementForm.debtIds?.length || 0) + ' khoản nợ đã chọn'"></p>
+          </div>
+        </div>
+        <button type="button" @click="modals.debtSettlement = false" class="text-slate-400 hover:text-slate-600 p-1 cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="submitDebtSettlement()" class="space-y-4 text-xs">
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+          <div x-show="debtSettlementForm.receivableAmount > 0" class="flex items-center justify-between">
+            <span class="text-slate-600">Thu nợ (Bạn nợ tôi -> Cộng vào NH):</span>
+            <strong class="font-mono font-extrabold text-emerald-600" x-text="'+' + formatVND(debtSettlementForm.receivableAmount)"></strong>
+          </div>
+          <div x-show="debtSettlementForm.payableAmount > 0" class="flex items-center justify-between">
+            <span class="text-slate-600">Trả nợ (Tôi nợ bạn -> Trừ từ NH):</span>
+            <strong class="font-mono font-extrabold text-rose-600" x-text="'-' + formatVND(debtSettlementForm.payableAmount)"></strong>
+          </div>
+        </div>
+
+        <div x-show="debtSettlementForm.targetStatus === 'paid'" class="space-y-2">
+          <label class="block font-bold text-slate-800">Chọn nguồn tiền / Tài khoản Ngân hàng kết nối:</label>
+          <select x-model="debtSettlementForm.accountName"
+                  class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-600">
+            <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+              <option :value="acc.name" x-text="acc.name + ' — Số dư: ' + formatVND(acc.balance)"></option>
+            </template>
+            <option value="">-- Chỉ đánh dấu Đã Xong (Không cộng/trừ Ngân hàng) --</option>
+          </select>
+          <p class="text-[11px] text-slate-500">
+            ✓ Khi chọn ngân hàng, tiền thu nợ sẽ cộng trực tiếp vào số dư ngân hàng, tiền trả nợ sẽ trừ trực tiếp khỏi ngân hàng và lưu vào Sổ Giao Dịch.
+          </p>
+        </div>
+
+        <div x-show="debtSettlementForm.targetStatus === 'pending'"
+             class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+          Hệ thống sẽ chuyển khoản nợ về trạng thái <strong>Chờ Trả</strong>, đồng thời hoàn tác lại số dư ngân hàng và xóa giao dịch liên kết.
+        </div>
+
+        <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
+          <button type="button" @click="modals.debtSettlement = false"
+                  class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer">Hủy</button>
+          <button type="submit" :disabled="debtSettlementForm.loading"
+                  class="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50">
+            <i class="fa-solid fa-check"></i>
+            <span x-text="debtSettlementForm.loading ? 'Đang xử lý...' : 'Xác Nhận'"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- TOAST NOTIFICATION -->
   <div x-show="toast.show" x-cloak
        x-transition:enter="transition ease-out duration-200"
@@ -5287,6 +5653,6 @@
   </div>
 
   <!-- Load App Script -->
-  <script src="/app.js?v=3.4"></script>
+  <script src="/app.js?v=3.5"></script>
 </body>
 </html>

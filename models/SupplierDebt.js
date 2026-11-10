@@ -26,22 +26,27 @@ const supplierDebtSchema = new mongoose.Schema({
 
 // Pre-save lifecycle hook: automated calculation for installment debt tracking
 supplierDebtSchema.pre('save', function(next) {
-  // Safe backfill for legacy documents where totalAmount might be 0 but remainingAmount exists
-  if ((!this.totalAmount || this.totalAmount === 0) && (this.remainingAmount > 0 || this.paidAmount > 0)) {
-    this.totalAmount = (this.remainingAmount || 0) + (this.paidAmount || 0);
-  }
-
-  const total = Math.max(0, Number(this.totalAmount) || 0);
   const paid = Math.max(0, Number(this.paidAmount) || 0);
 
-  this.remainingAmount = Math.max(0, total - paid);
+  if (this.isModified('remainingAmount') && !this.isModified('totalAmount')) {
+    // Khi cập nhật trực tiếp remainingAmount (cộng/trừ từ đơn hàng hoặc trả nợ), giữ nguyên remainingAmount làm chuẩn
+    this.remainingAmount = Math.max(0, Number(this.remainingAmount) || 0);
+    this.totalAmount = this.remainingAmount + paid;
+  } else {
+    // Safe backfill for legacy documents where totalAmount might be 0 but remainingAmount exists
+    if ((!this.totalAmount || this.totalAmount === 0) && (this.remainingAmount > 0 || paid > 0)) {
+      this.totalAmount = (this.remainingAmount || 0) + paid;
+    }
+    const total = Math.max(0, Number(this.totalAmount) || 0);
+    this.remainingAmount = Math.max(0, total - paid);
+  }
 
-  if (paid === 0) {
-    this.status = 'pending';
-  } else if (paid < total) {
+  if (this.remainingAmount === 0 && (this.totalAmount > 0 || paid > 0)) {
+    this.status = 'completed';
+  } else if (paid > 0 && this.remainingAmount > 0) {
     this.status = 'partial';
   } else {
-    this.status = 'completed';
+    this.status = 'pending';
   }
 
   next();

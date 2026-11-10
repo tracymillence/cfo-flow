@@ -113,6 +113,16 @@ async function mergeDuplicateSuppliers() {
         }
       );
     }
+
+    // Đồng bộ cờ boolean customerPaid & supplierPaid trên các đơn hàng cũ
+    await ServiceOrder.updateMany(
+      { customerPaymentStatus: 'completed', customerPaid: { $ne: true } },
+      { $set: { customerPaid: true } }
+    );
+    await ServiceOrder.updateMany(
+      { supplierPaymentStatus: 'completed', supplierPaid: { $ne: true } },
+      { $set: { supplierPaid: true } }
+    );
   } catch (err) {
     console.error('Lỗi khi gộp NCC trùng lặp:', err.message);
   }
@@ -1711,22 +1721,42 @@ app.put('/api/supplier-debts/:id', authenticateToken, requirePermission('manageD
 
 app.post('/api/supplier-debts/:id/pay', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amount, accountName, deductFromAccount } = req.body;
     const payAmt = Number(amount);
     const sup = await SupplierDebt.findById(req.params.id);
     if (!sup) return res.status(404).json({ success: false, message: 'Không tìm thấy NCC' });
+
+    const actualPaid = (!payAmt || payAmt >= sup.remainingAmount) ? sup.remainingAmount : Math.max(0, payAmt);
 
     if (!payAmt || payAmt >= sup.remainingAmount) {
       sup.remainingAmount = 0;
     } else {
       sup.remainingAmount = Math.max(0, sup.remainingAmount - payAmt);
     }
+    sup.paidAmount = (sup.paidAmount || 0) + actualPaid;
     await sup.save();
 
-    await ServiceOrder.updateMany(
-      { supplierKey: sup.supplierKey, supplierPaid: false },
-      { $set: { supplierPaid: true } }
-    );
+    if (deductFromAccount && accountName && actualPaid > 0) {
+      await adjustAccountBalance(accountName, -actualPaid);
+      await Transaction.create({
+        date: new Date().toISOString().slice(0, 10),
+        title: `Thanh toán nợ NCC: ${sup.supplierName}`,
+        amount: actualPaid,
+        type: 'expense',
+        accountName: accountName.trim(),
+        category: 'Trả vốn NCC',
+        hubRole: 'hub1_income',
+        impactsWeeklyLimit: false,
+        notes: '[Đồng bộ Hũ Nợ NCC]'
+      });
+    }
+
+    if (sup.remainingAmount === 0) {
+      await ServiceOrder.updateMany(
+        { supplierKey: sup.supplierKey, supplierPaid: { $ne: true } },
+        { $set: { supplierPaid: true, supplierPaymentStatus: 'completed', supplierRemainingAmount: 0 } }
+      );
+    }
 
     res.json({ success: true, supplier: sup, message: 'Đã thanh toán cho NCC' });
   } catch (err) {
@@ -1736,8 +1766,8 @@ app.post('/api/supplier-debts/:id/pay', authenticateToken, requirePermission('ma
 
 app.post('/api/supplier-debts/batch-pay-all', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
-    await SupplierDebt.updateMany({}, { $set: { remainingAmount: 0 } });
-    await ServiceOrder.updateMany({}, { $set: { supplierPaid: true } });
+    await SupplierDebt.updateMany({}, { $set: { remainingAmount: 0, status: 'completed' } });
+    await ServiceOrder.updateMany({}, { $set: { supplierPaid: true, supplierPaymentStatus: 'completed', supplierRemainingAmount: 0 } });
     res.json({ success: true, message: 'Đã thanh toán toàn bộ công nợ cho các nhà cung cấp (Reset hũ về 0đ)' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -2232,7 +2262,80 @@ app.delete('/api/upcoming/:id', authenticateToken, requirePermission('manageTran
   }
 });
 
-// ==================== 4. SỔ NỢ 2 CHIỀU (CRUD) ====================
+// ==================== 4. SỔ NỢ 2 CHIỀU (CRUD & ĐỒNG BỘ SỐ DƯ NGÂN HÀNG) ====================
+async function applyDebtSettlementState(debt, { targetStatus, accountName, syncToAccount = true, dateStr } = {}) {
+  const nextPaid = targetStatus === 'paid';
+  const wasPaid = debt.status === 'paid';
+  const targetAcc = (accountName || debt.settledAccount || 'Vietcombank').trim();
+  const amt = Math.max(0, Number(debt.amount) || 0);
+  const txDate = dateStr || debt.paidDate || new Date().toISOString().slice(0, 10);
+  const isReceivable = debt.type === 'receivable'; // receivable: Bạn nợ tôi (+), payable: Tôi nợ bạn (-)
+
+  if (nextPaid) {
+    // Nếu trước đó đã từng đồng bộ tài khoản, hoàn tác giao dịch cũ trước khi ghi nhận mới (tránh trùng lặp khi sửa)
+    if (debt.accountSynced) {
+      if (debt.transactionId) {
+        const oldTx = await Transaction.findById(debt.transactionId);
+        if (oldTx) {
+          await adjustAccountBalance(oldTx.accountName, oldTx.type === 'income' ? -oldTx.amount : oldTx.amount);
+          await Transaction.findByIdAndDelete(oldTx._id);
+        }
+      } else if (amt > 0) {
+        await adjustAccountBalance(debt.settledAccount || 'Vietcombank', isReceivable ? -amt : amt);
+      }
+      debt.accountSynced = false;
+      debt.transactionId = null;
+    }
+
+    if (syncToAccount && amt > 0) {
+      const delta = isReceivable ? amt : -amt;
+      const updatedAcc = await adjustAccountBalance(targetAcc, delta);
+      const accHubRole = updatedAcc?.hubRole || 'hub1_income';
+      const tx = await Transaction.create({
+        date: txDate,
+        title: isReceivable
+          ? `Thu nợ cá nhân: ${debt.personName}${debt.note ? ' (' + debt.note + ')' : ''}`
+          : `Trả nợ cá nhân: ${debt.personName}${debt.note ? ' (' + debt.note + ')' : ''}`,
+        amount: amt,
+        type: isReceivable ? 'income' : 'expense',
+        accountName: targetAcc,
+        category: isReceivable ? 'Thu hồi nợ' : 'Trả nợ cá nhân',
+        hubRole: accHubRole,
+        impactsWeeklyLimit: false,
+        notes: debt.note ? `${debt.note} • [Đồng bộ Sổ Nợ 2 Chiều]` : '[Đồng bộ Sổ Nợ 2 Chiều]'
+      });
+      debt.transactionId = tx._id;
+      debt.accountSynced = true;
+    }
+
+    debt.status = 'paid';
+    debt.settledAccount = targetAcc;
+    debt.paidDate = txDate;
+  } else {
+    // Hoàn tác về Chờ trả (pending)
+    if (debt.accountSynced) {
+      if (debt.transactionId) {
+        const oldTx = await Transaction.findById(debt.transactionId);
+        if (oldTx) {
+          if (syncToAccount !== false) {
+            await adjustAccountBalance(oldTx.accountName, oldTx.type === 'income' ? -oldTx.amount : oldTx.amount);
+          }
+          await Transaction.findByIdAndDelete(oldTx._id);
+        } else if (syncToAccount !== false && amt > 0) {
+          await adjustAccountBalance(debt.settledAccount || 'Vietcombank', isReceivable ? -amt : amt);
+        }
+      } else if (syncToAccount !== false && amt > 0) {
+        await adjustAccountBalance(debt.settledAccount || 'Vietcombank', isReceivable ? -amt : amt);
+      }
+      debt.accountSynced = false;
+      debt.transactionId = null;
+      debt.paidDate = '';
+    }
+    debt.status = 'pending';
+    if (accountName) debt.settledAccount = targetAcc;
+  }
+}
+
 app.get('/api/debts', authenticateToken, async (req, res) => {
   try {
     const debts = await Debt.find().sort({ dueDate: 1 });
@@ -2244,17 +2347,30 @@ app.get('/api/debts', authenticateToken, async (req, res) => {
 
 app.post('/api/debts', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
-    const { personName, amount, type, dueDate, note } = req.body;
+    const { personName, amount, type, dueDate, note, status, settledAccount, syncToAccount, paidDate } = req.body;
     if (!personName || !personName.trim()) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập tên đối tượng nợ' });
     }
-    const debt = await Debt.create({
+    const debt = new Debt({
       personName: personName.trim(),
-      amount: Number(amount) || 0,
+      amount: Math.max(0, Number(amount) || 0),
       type: type || 'receivable',
       dueDate: dueDate || new Date().toISOString().slice(0, 10),
-      note: note || ''
+      settledAccount: settledAccount || 'Vietcombank',
+      note: note || '',
+      status: 'pending'
     });
+
+    if (status === 'paid') {
+      await applyDebtSettlementState(debt, {
+        targetStatus: 'paid',
+        accountName: settledAccount || 'Vietcombank',
+        syncToAccount: syncToAccount !== false,
+        dateStr: paidDate || dueDate || new Date().toISOString().slice(0, 10)
+      });
+    }
+
+    await debt.save();
     res.json({ success: true, debt });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -2263,17 +2379,25 @@ app.post('/api/debts', authenticateToken, requirePermission('manageDebts'), asyn
 
 app.put('/api/debts/:id', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
-    const { personName, amount, type, dueDate, note, status } = req.body;
-    const updateData = {};
-    if (personName) updateData.personName = personName.trim();
-    if (amount !== undefined) updateData.amount = Number(amount);
-    if (type) updateData.type = type;
-    if (dueDate) updateData.dueDate = dueDate;
-    if (note !== undefined) updateData.note = note;
-    if (status) updateData.status = status;
-
-    const debt = await Debt.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    const { personName, amount, type, dueDate, note, status, settledAccount, syncToAccount, paidDate } = req.body;
+    const debt = await Debt.findById(req.params.id);
     if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản nợ' });
+
+    if (personName) debt.personName = personName.trim();
+    if (amount !== undefined) debt.amount = Math.max(0, Number(amount) || 0);
+    if (type) debt.type = type;
+    if (dueDate) debt.dueDate = dueDate;
+    if (note !== undefined) debt.note = note;
+
+    const targetStatus = status || debt.status;
+    await applyDebtSettlementState(debt, {
+      targetStatus,
+      accountName: settledAccount || debt.settledAccount || 'Vietcombank',
+      syncToAccount: syncToAccount !== false,
+      dateStr: paidDate || debt.paidDate || new Date().toISOString().slice(0, 10)
+    });
+
+    await debt.save();
     res.json({ success: true, debt });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -2284,9 +2408,66 @@ app.patch('/api/debts/:id/toggle-status', authenticateToken, requirePermission('
   try {
     const debt = await Debt.findById(req.params.id);
     if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản nợ' });
-    debt.status = debt.status === 'paid' ? 'pending' : 'paid';
+
+    const { accountName, syncToAccount, date, status } = req.body || {};
+    const targetStatus = status ? status : (debt.status === 'paid' ? 'pending' : 'paid');
+
+    await applyDebtSettlementState(debt, {
+      targetStatus,
+      accountName: accountName || debt.settledAccount || 'Vietcombank',
+      syncToAccount: syncToAccount !== false,
+      dateStr: date || new Date().toISOString().slice(0, 10)
+    });
+
     await debt.save();
-    res.json({ success: true, debt });
+    res.json({
+      success: true,
+      debt,
+      message: debt.status === 'paid'
+        ? `✓ Đã tất toán khoản nợ của ${debt.personName} (${debt.type === 'receivable' ? 'Cộng vào' : 'Trừ từ'} ${debt.settledAccount})!`
+        : `↩️ Đã chuyển khoản nợ của ${debt.personName} về trạng thái Chờ trả!`
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Chuyển trạng thái hàng loạt cho Sổ Nợ 2 Chiều (kèm cộng/trừ tài khoản ngân hàng thực tế)
+app.post('/api/debts/batch-settle', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
+  try {
+    const { debtIds, action, accountName, syncToAccount, date } = req.body;
+    if (!Array.isArray(debtIds) || debtIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'Vui lòng chọn ít nhất 1 khoản nợ' });
+    }
+    const targetStatus = action === 'pending' ? 'pending' : 'paid';
+    const targetAcc = (accountName || 'Vietcombank').trim();
+    const shouldSync = syncToAccount !== false;
+    const txDate = date || new Date().toISOString().slice(0, 10);
+
+    const debts = await Debt.find({ _id: { $in: debtIds } });
+    let processedCount = 0;
+
+    for (const debt of debts) {
+      if (targetStatus === 'paid' && debt.status === 'paid') continue;
+      if (targetStatus === 'pending' && debt.status === 'pending') continue;
+
+      await applyDebtSettlementState(debt, {
+        targetStatus,
+        accountName: targetAcc,
+        syncToAccount: shouldSync,
+        dateStr: txDate
+      });
+      await debt.save();
+      processedCount++;
+    }
+
+    res.json({
+      success: true,
+      processedCount,
+      message: targetStatus === 'paid'
+        ? `✓ Đã tất toán ${processedCount} khoản nợ qua tài khoản ${targetAcc}!`
+        : `↩️ Đã chuyển ${processedCount} khoản nợ về trạng thái Chờ trả!`
+    });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -2294,8 +2475,15 @@ app.patch('/api/debts/:id/toggle-status', authenticateToken, requirePermission('
 
 app.delete('/api/debts/:id', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
-    const debt = await Debt.findByIdAndDelete(req.params.id);
+    const debt = await Debt.findById(req.params.id);
     if (!debt) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản nợ' });
+
+    // Nếu khoản nợ đã từng cộng/trừ vào tài khoản ngân hàng, hoàn tác trước khi xóa
+    if (debt.status === 'paid' && debt.accountSynced) {
+      await applyDebtSettlementState(debt, { targetStatus: 'pending', syncToAccount: true });
+    }
+
+    await Debt.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: 'Đã xóa khoản nợ' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -2303,13 +2491,194 @@ app.delete('/api/debts/:id', authenticateToken, requirePermission('manageDebts')
 });
 
 // ==================== 5. ĐƠN DỊCH VỤ / BÁN HÀNG CRUD (CÔNG NỢ KHÁCH & VỐN NCC) ====================
+async function adjustSupplierDebtPot(supplierName, supplierKey, deltaAmount) {
+  const delta = Number(deltaAmount) || 0;
+  const sName = (supplierName || '').trim();
+  const sKey = supplierKey || (sName ? normalizeKey(sName) : '');
+  if (!sKey || delta === 0) return null;
+
+  let sup = await SupplierDebt.findOne({
+    $or: [
+      { supplierKey: sKey },
+      ...(sName ? [{ supplierName: { $regex: new RegExp(`^${escapeRegex(sName)}$`, 'i') } }] : [])
+    ]
+  });
+
+  if (sup) {
+    sup.remainingAmount = Math.max(0, (sup.remainingAmount || 0) + delta);
+    sup.supplierKey = sKey;
+    if (sName && !sup.supplierName) sup.supplierName = sName;
+    await sup.save();
+    return sup;
+  } else if (delta > 0) {
+    sup = await SupplierDebt.create({
+      supplierName: sName || sKey,
+      supplierKey: sKey,
+      totalAmount: delta,
+      remainingAmount: delta
+    });
+    return sup;
+  }
+  return null;
+}
+
+async function applyOrderCustomerPaymentState(order, { customerPaid, receivedAccount, syncToAccount = true, dateStr } = {}) {
+  const nextPaid = Boolean(customerPaid);
+  const targetAcc = (receivedAccount || order.receivedAccount || 'Vietcombank').trim();
+  const saleAmt = Math.max(0, Number(order.salePrice) || 0);
+  const txDate = dateStr || order.customerPaidDate || order.date || new Date().toISOString().slice(0, 10);
+
+  if (nextPaid) {
+    // Nếu trước đó đơn này đã cộng tiền vào ngân hàng, hoàn tác giao dịch cũ trước khi cập nhật lại
+    if (order.customerAccountSynced) {
+      if (order.customerTransactionId) {
+        const oldTx = await Transaction.findById(order.customerTransactionId);
+        if (oldTx) {
+          await adjustAccountBalance(oldTx.accountName, -oldTx.amount);
+          await Transaction.findByIdAndDelete(oldTx._id);
+        }
+      } else if (saleAmt > 0) {
+        await adjustAccountBalance(order.receivedAccount || 'Vietcombank', -saleAmt);
+      }
+      order.customerAccountSynced = false;
+      order.customerTransactionId = null;
+    }
+
+    if (syncToAccount && saleAmt > 0) {
+      const updatedAcc = await adjustAccountBalance(targetAcc, saleAmt);
+      const accHubRole = updatedAcc?.hubRole || 'hub1_income';
+      const tx = await Transaction.create({
+        date: txDate,
+        title: `Thu tiền khách: ${order.customerName} (${order.serviceName || 'Bán dấu / Khắc dấu'})`,
+        amount: saleAmt,
+        type: 'income',
+        accountName: targetAcc,
+        category: 'Thu tiền đơn hàng',
+        hubRole: accHubRole,
+        impactsWeeklyLimit: false,
+        notes: order.note ? `${order.note} • [Đồng bộ Sổ Đơn Hàng]` : '[Đồng bộ Sổ Đơn Hàng]'
+      });
+      order.customerTransactionId = tx._id;
+      order.customerAccountSynced = true;
+    }
+
+    order.customerPaid = true;
+    order.customerPaidAmount = saleAmt;
+    order.customerRemainingAmount = 0;
+    order.customerPaymentStatus = 'completed';
+    order.receivedAccount = targetAcc;
+    order.customerPaidDate = txDate;
+  } else {
+    // Hoàn tác về Chưa thu tiền (Khách nợ)
+    if (order.customerAccountSynced) {
+      if (order.customerTransactionId) {
+        const oldTx = await Transaction.findById(order.customerTransactionId);
+        if (oldTx) {
+          if (syncToAccount !== false) {
+            await adjustAccountBalance(oldTx.accountName, -oldTx.amount);
+          }
+          await Transaction.findByIdAndDelete(oldTx._id);
+        } else if (syncToAccount !== false && saleAmt > 0) {
+          await adjustAccountBalance(order.receivedAccount || 'Vietcombank', -saleAmt);
+        }
+      } else if (syncToAccount !== false && saleAmt > 0) {
+        await adjustAccountBalance(order.receivedAccount || 'Vietcombank', -saleAmt);
+      }
+      order.customerAccountSynced = false;
+      order.customerTransactionId = null;
+      order.customerPaidDate = '';
+    }
+
+    order.customerPaid = false;
+    order.customerPaidAmount = 0;
+    order.customerRemainingAmount = saleAmt;
+    order.customerPaymentStatus = 'pending';
+    if (receivedAccount) order.receivedAccount = targetAcc;
+  }
+}
+
+async function applyOrderSupplierPaymentState(order, { supplierPaid, supplierPaidAccount, syncToAccount = true, dateStr } = {}) {
+  const nextPaid = Boolean(supplierPaid);
+  const targetAcc = (supplierPaidAccount || order.supplierPaidAccount || order.receivedAccount || 'Vietcombank').trim();
+  const costAmt = Math.max(0, Number(order.costPrice) || 0);
+  const txDate = dateStr || order.supplierPaidDate || order.date || new Date().toISOString().slice(0, 10);
+
+  if (nextPaid) {
+    // Nếu trước đó đơn này đã trừ tiền khỏi ngân hàng, hoàn tác giao dịch cũ trước khi cập nhật lại
+    if (order.supplierAccountSynced) {
+      if (order.supplierTransactionId) {
+        const oldTx = await Transaction.findById(order.supplierTransactionId);
+        if (oldTx) {
+          await adjustAccountBalance(oldTx.accountName, oldTx.amount);
+          await Transaction.findByIdAndDelete(oldTx._id);
+        }
+      } else if (costAmt > 0) {
+        await adjustAccountBalance(order.supplierPaidAccount || 'Vietcombank', costAmt);
+      }
+      order.supplierAccountSynced = false;
+      order.supplierTransactionId = null;
+    }
+
+    if (syncToAccount && costAmt > 0) {
+      const updatedAcc = await adjustAccountBalance(targetAcc, -costAmt);
+      const accHubRole = updatedAcc?.hubRole || 'hub1_income';
+      const tx = await Transaction.create({
+        date: txDate,
+        title: `Trả vốn NCC (${order.supplierName || 'Đối tác'}): Đơn ${order.customerName} (${order.serviceName || 'Bán dấu / Khắc dấu'})`,
+        amount: costAmt,
+        type: 'expense',
+        accountName: targetAcc,
+        category: 'Trả vốn NCC',
+        hubRole: accHubRole,
+        impactsWeeklyLimit: false,
+        notes: order.note ? `${order.note} • [Đồng bộ Sổ Đơn Hàng]` : '[Đồng bộ Sổ Đơn Hàng]'
+      });
+      order.supplierTransactionId = tx._id;
+      order.supplierAccountSynced = true;
+    }
+
+    order.supplierPaid = true;
+    order.supplierPaidAmount = costAmt;
+    order.supplierRemainingAmount = 0;
+    order.supplierPaymentStatus = 'completed';
+    order.supplierPaidAccount = targetAcc;
+    order.supplierPaidDate = txDate;
+  } else {
+    // Hoàn tác về Chưa trả vốn (Nợ NCC)
+    if (order.supplierAccountSynced) {
+      if (order.supplierTransactionId) {
+        const oldTx = await Transaction.findById(order.supplierTransactionId);
+        if (oldTx) {
+          if (syncToAccount !== false) {
+            await adjustAccountBalance(oldTx.accountName, oldTx.amount);
+          }
+          await Transaction.findByIdAndDelete(oldTx._id);
+        } else if (syncToAccount !== false && costAmt > 0) {
+          await adjustAccountBalance(order.supplierPaidAccount || 'Vietcombank', costAmt);
+        }
+      } else if (syncToAccount !== false && costAmt > 0) {
+        await adjustAccountBalance(order.supplierPaidAccount || 'Vietcombank', costAmt);
+      }
+      order.supplierAccountSynced = false;
+      order.supplierTransactionId = null;
+      order.supplierPaidDate = '';
+    }
+
+    order.supplierPaid = false;
+    order.supplierPaidAmount = 0;
+    order.supplierRemainingAmount = costAmt;
+    order.supplierPaymentStatus = 'pending';
+    if (supplierPaidAccount) order.supplierPaidAccount = targetAcc;
+  }
+}
+
 app.post('/api/service-orders', authenticateToken, requireAnyPermission('manageDebts', 'manageTransactions'), async (req, res) => {
   try {
     const {
       customerName, serviceName, costPrice, salePrice,
       supplierName, customerPaid, supplierPaid,
-      customerPaidAmount, supplierPaidAmount,
-      date, note, receivedAccount
+      date, note, receivedAccount, supplierPaidAccount,
+      syncCustomerAccount, syncSupplierAccount
     } = req.body;
     if (!customerName || !customerName.trim()) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập tên khách hàng' });
@@ -2321,8 +2690,9 @@ app.post('/api/service-orders', authenticateToken, requireAnyPermission('manageD
     const sPrice = Math.max(0, Number(salePrice) || 0);
     const cPaid = Boolean(customerPaid);
     const sPaid = Boolean(supplierPaid);
+    const orderDate = date || new Date().toISOString().slice(0, 10);
 
-    const orderPayload = {
+    const order = new ServiceOrder({
       customerName: customerName.trim(),
       serviceName: (serviceName || 'Bán dấu / Khắc dấu').trim(),
       costPrice: cPrice,
@@ -2330,43 +2700,36 @@ app.post('/api/service-orders', authenticateToken, requireAnyPermission('manageD
       supplierName: sName,
       supplierKey: sKey,
       receivedAccount: receivedAccount || 'Vietcombank',
-      date: date || new Date().toISOString().slice(0, 10),
-      note: (note || '').trim()
-    };
+      supplierPaidAccount: supplierPaidAccount || receivedAccount || 'Vietcombank',
+      date: orderDate,
+      note: (note || '').trim(),
+      customerPaid: false,
+      supplierPaid: false
+    });
 
-    if (customerPaidAmount !== undefined) {
-      orderPayload.customerPaidAmount = Math.max(0, Number(customerPaidAmount) || 0);
-    } else {
-      orderPayload.customerPaid = cPaid;
+    if (cPaid) {
+      await applyOrderCustomerPaymentState(order, {
+        customerPaid: true,
+        receivedAccount: receivedAccount || 'Vietcombank',
+        syncToAccount: syncCustomerAccount !== false,
+        dateStr: orderDate
+      });
     }
 
-    if (supplierPaidAmount !== undefined) {
-      orderPayload.supplierPaidAmount = Math.max(0, Number(supplierPaidAmount) || 0);
-    } else {
-      orderPayload.supplierPaid = sPaid;
+    if (sPaid) {
+      await applyOrderSupplierPaymentState(order, {
+        supplierPaid: true,
+        supplierPaidAccount: supplierPaidAccount || receivedAccount || 'Vietcombank',
+        syncToAccount: syncSupplierAccount !== false,
+        dateStr: orderDate
+      });
     }
 
-    const order = await ServiceOrder.create(orderPayload);
+    await order.save();
 
     // Nếu chưa thanh toán cho NCC và có giá vốn > 0 -> tự động cộng vào Hũ tiền nợ NCC (gộp đúng NCC)
     if (!sPaid && cPrice > 0 && sKey) {
-      let sup = await SupplierDebt.findOne({
-        $or: [
-          { supplierKey: sKey },
-          { supplierName: { $regex: new RegExp(`^${escapeRegex(sName)}$`, 'i') } }
-        ]
-      });
-      if (sup) {
-        sup.remainingAmount = (sup.remainingAmount || 0) + cPrice;
-        sup.supplierKey = sKey;
-        await sup.save();
-      } else {
-        await SupplierDebt.create({
-          supplierName: sName,
-          supplierKey: sKey,
-          remainingAmount: cPrice
-        });
-      }
+      await adjustSupplierDebtPot(sName, sKey, cPrice);
     }
 
     res.json({ success: true, order, message: 'Đã lưu đơn hàng thành công' });
@@ -2380,74 +2743,54 @@ app.put('/api/service-orders/:id', authenticateToken, requireAnyPermission('mana
     const {
       customerName, serviceName, costPrice, salePrice,
       supplierName, customerPaid, supplierPaid,
-      customerPaidAmount, supplierPaidAmount,
-      date, note, receivedAccount
+      date, note, receivedAccount, supplierPaidAccount,
+      syncCustomerAccount, syncSupplierAccount
     } = req.body;
     const oldOrder = await ServiceOrder.findById(req.params.id);
     if (!oldOrder) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
 
-    const newSName = (supplierName || '').trim();
+    const newSName = (supplierName !== undefined ? supplierName : oldOrder.supplierName || '').trim();
     const newSKey = newSName ? normalizeKey(newSName) : '';
-    const newCPrice = Math.max(0, Number(costPrice) || 0);
-    const newSPrice = Math.max(0, Number(salePrice) || 0);
-    const newCPaid = Boolean(customerPaid);
-    const newSPaid = Boolean(supplierPaid);
+    const newCPrice = costPrice !== undefined ? Math.max(0, Number(costPrice) || 0) : oldOrder.costPrice;
+    const newSPrice = salePrice !== undefined ? Math.max(0, Number(salePrice) || 0) : oldOrder.salePrice;
+    const newCPaid = customerPaid !== undefined ? Boolean(customerPaid) : Boolean(oldOrder.customerPaid);
+    const newSPaid = supplierPaid !== undefined ? Boolean(supplierPaid) : Boolean(oldOrder.supplierPaid);
 
     // Hoàn tác trừ công nợ NCC cũ nếu đơn cũ từng chưa trả NCC
     if (!oldOrder.supplierPaid && oldOrder.costPrice > 0 && oldOrder.supplierKey) {
-      await SupplierDebt.findOneAndUpdate(
-        { supplierKey: oldOrder.supplierKey },
-        { $inc: { remainingAmount: -oldOrder.costPrice } }
-      );
+      await adjustSupplierDebtPot(oldOrder.supplierName, oldOrder.supplierKey, -oldOrder.costPrice);
     }
 
-    // Cập nhật đơn hàng
-    oldOrder.customerName = (customerName || '').trim();
-    oldOrder.serviceName = (serviceName || 'Bán dấu / Khắc dấu').trim();
+    // Cập nhật thông tin cơ bản
+    oldOrder.customerName = (customerName || oldOrder.customerName || '').trim();
+    oldOrder.serviceName = (serviceName || oldOrder.serviceName || 'Bán dấu / Khắc dấu').trim();
     oldOrder.costPrice = newCPrice;
     oldOrder.salePrice = newSPrice;
     oldOrder.supplierName = newSName;
     oldOrder.supplierKey = newSKey;
-    if (customerPaidAmount !== undefined) {
-      oldOrder.customerPaidAmount = Math.max(0, Number(customerPaidAmount) || 0);
-    } else if (customerPaid !== undefined) {
-      oldOrder.customerPaid = newCPaid;
-    }
-
-    if (supplierPaidAmount !== undefined) {
-      oldOrder.supplierPaidAmount = Math.max(0, Number(supplierPaidAmount) || 0);
-    } else if (supplierPaid !== undefined) {
-      oldOrder.supplierPaid = newSPaid;
-    }
-
     if (date) oldOrder.date = date;
-    if (receivedAccount !== undefined) oldOrder.receivedAccount = receivedAccount;
     if (note !== undefined) oldOrder.note = (note || '').trim();
+
+    await applyOrderCustomerPaymentState(oldOrder, {
+      customerPaid: newCPaid,
+      receivedAccount: receivedAccount || oldOrder.receivedAccount || 'Vietcombank',
+      syncToAccount: syncCustomerAccount !== false,
+      dateStr: oldOrder.date
+    });
+
+    await applyOrderSupplierPaymentState(oldOrder, {
+      supplierPaid: newSPaid,
+      supplierPaidAccount: supplierPaidAccount || oldOrder.supplierPaidAccount || receivedAccount || 'Vietcombank',
+      syncToAccount: syncSupplierAccount !== false,
+      dateStr: oldOrder.date
+    });
+
     await oldOrder.save();
 
     // Cộng công nợ NCC mới nếu đơn mới chưa trả NCC (gộp đúng NCC)
     if (!newSPaid && newCPrice > 0 && newSKey) {
-      let sup = await SupplierDebt.findOne({
-        $or: [
-          { supplierKey: newSKey },
-          { supplierName: { $regex: new RegExp(`^${escapeRegex(newSName)}$`, 'i') } }
-        ]
-      });
-      if (sup) {
-        sup.remainingAmount = (sup.remainingAmount || 0) + newCPrice;
-        sup.supplierKey = newSKey;
-        await sup.save();
-      } else {
-        await SupplierDebt.create({
-          supplierName: newSName,
-          supplierKey: newSKey,
-          remainingAmount: newCPrice
-        });
-      }
+      await adjustSupplierDebtPot(newSName, newSKey, newCPrice);
     }
-
-    // Đảm bảo không bị âm nợ NCC
-    await SupplierDebt.updateMany({ remainingAmount: { $lt: 0 } }, { $set: { remainingAmount: 0 } });
 
     res.json({ success: true, order: oldOrder, message: 'Đã cập nhật đơn hàng thành công' });
   } catch (err) {
@@ -2455,60 +2798,190 @@ app.put('/api/service-orders/:id', authenticateToken, requireAnyPermission('mana
   }
 });
 
-// Chuyển đổi nhanh trạng thái: Khách đã trả / Chưa trả
+// Chuyển đổi trạng thái: Khách đã trả / Chưa trả (kèm chọn tài khoản ngân hàng cộng tiền)
 app.patch('/api/service-orders/:id/toggle-customer-paid', authenticateToken, requireAnyPermission('manageDebts', 'manageTransactions'), async (req, res) => {
   try {
     const order = await ServiceOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
-    order.customerPaid = !order.customerPaid;
+
+    const { accountName, syncToAccount, date, customerPaid } = req.body || {};
+    const nextCustomerPaid = customerPaid !== undefined ? Boolean(customerPaid) : !order.customerPaid;
+
+    await applyOrderCustomerPaymentState(order, {
+      customerPaid: nextCustomerPaid,
+      receivedAccount: accountName || order.receivedAccount || 'Vietcombank',
+      syncToAccount: syncToAccount !== false,
+      dateStr: date || new Date().toISOString().slice(0, 10)
+    });
+
     await order.save();
-    res.json({ 
-      success: true, 
-      order, 
-      message: order.customerPaid ? `✓ Đã đánh dấu ${order.customerName} đã thanh toán!` : `Đã chuyển đơn của ${order.customerName} sang Chưa thanh toán` 
+    res.json({
+      success: true,
+      order,
+      message: order.customerPaid
+        ? `✓ Đã thu ${order.salePrice.toLocaleString('vi-VN')}đ từ ${order.customerName} vào ${order.receivedAccount}!`
+        : `↩️ Đã chuyển đơn của ${order.customerName} sang Chưa thu tiền!`
     });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-// Chuyển đổi nhanh trạng thái: Đã trả vốn NCC / Nợ NCC
+// Chuyển đổi trạng thái: Đã trả vốn NCC / Nợ NCC (kèm chọn tài khoản ngân hàng trừ tiền)
 app.patch('/api/service-orders/:id/toggle-supplier-paid', authenticateToken, requireAnyPermission('manageDebts', 'manageTransactions'), async (req, res) => {
   try {
     const order = await ServiceOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
-    
-    const nextSupplierPaid = !order.supplierPaid;
+
+    const { accountName, syncToAccount, date, supplierPaid } = req.body || {};
+    const wasSupplierPaid = Boolean(order.supplierPaid);
+    const nextSupplierPaid = supplierPaid !== undefined ? Boolean(supplierPaid) : !wasSupplierPaid;
     const sKey = order.supplierKey || (order.supplierName ? normalizeKey(order.supplierName) : '');
 
-    if (order.costPrice > 0 && sKey) {
+    if (wasSupplierPaid !== nextSupplierPaid && order.costPrice > 0 && sKey) {
       if (nextSupplierPaid) {
-        // Đã trả vốn -> trừ nợ NCC
-        await SupplierDebt.findOneAndUpdate(
-          { supplierKey: sKey },
-          { $inc: { remainingAmount: -order.costPrice } }
-        );
+        // Đã trả vốn -> trừ nợ trong Hũ NCC
+        await adjustSupplierDebtPot(order.supplierName, sKey, -order.costPrice);
       } else {
-        // Quay lại nợ vốn -> tăng lại nợ NCC
-        await SupplierDebt.findOneAndUpdate(
-          { supplierKey: sKey },
-          { 
-            $inc: { remainingAmount: order.costPrice },
-            $setOnInsert: { supplierName: order.supplierName }
-          },
-          { upsert: true }
-        );
+        // Quay lại nợ vốn -> cộng lại nợ vào Hũ NCC
+        await adjustSupplierDebtPot(order.supplierName, sKey, order.costPrice);
       }
-      await SupplierDebt.updateMany({ remainingAmount: { $lt: 0 } }, { $set: { remainingAmount: 0 } });
     }
 
-    order.supplierPaid = nextSupplierPaid;
+    await applyOrderSupplierPaymentState(order, {
+      supplierPaid: nextSupplierPaid,
+      supplierPaidAccount: accountName || order.supplierPaidAccount || order.receivedAccount || 'Vietcombank',
+      syncToAccount: syncToAccount !== false,
+      dateStr: date || new Date().toISOString().slice(0, 10)
+    });
+
     await order.save();
 
-    res.json({ 
-      success: true, 
-      order, 
-      message: nextSupplierPaid ? `✓ Đã đánh dấu đã trả vốn cho ${order.supplierName || 'NCC'}!` : `Đã chuyển sang còn nợ vốn NCC` 
+    res.json({
+      success: true,
+      order,
+      message: order.supplierPaid
+        ? `✓ Đã trả vốn ${order.costPrice.toLocaleString('vi-VN')}đ cho ${order.supplierName || 'NCC'} từ ${order.supplierPaidAccount}!`
+        : `↩️ Đã chuyển đơn của ${order.customerName} sang Chưa trả vốn NCC!`
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Chuyển trạng thái hàng loạt cho nhiều đơn hàng cùng lúc (Thu khách / Trả vốn NCC / Hoàn tác)
+app.post('/api/service-orders/batch-settle', authenticateToken, requireAnyPermission('manageDebts', 'manageTransactions'), async (req, res) => {
+  try {
+    const {
+      orderIds,
+      action, // 'customer_paid' | 'customer_unpaid' | 'supplier_paid' | 'supplier_unpaid' | 'both_paid'
+      accountName,
+      supplierAccountName,
+      syncToAccount,
+      date
+    } = req.body;
+
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'Vui lòng chọn ít nhất 1 đơn hàng để thực hiện' });
+    }
+
+    const targetAcc = (accountName || 'Vietcombank').trim();
+    const targetSupAcc = (supplierAccountName || accountName || 'Vietcombank').trim();
+    const shouldSync = syncToAccount !== false;
+    const txDate = date || new Date().toISOString().slice(0, 10);
+
+    const orders = await ServiceOrder.find({ _id: { $in: orderIds } });
+    let customerCount = 0;
+    let supplierCount = 0;
+    let totalCustomerAmt = 0;
+    let totalSupplierAmt = 0;
+
+    for (const order of orders) {
+      let modified = false;
+
+      if (action === 'customer_paid' || action === 'both_paid') {
+        if (!order.customerPaid) {
+          await applyOrderCustomerPaymentState(order, {
+            customerPaid: true,
+            receivedAccount: targetAcc,
+            syncToAccount: shouldSync,
+            dateStr: txDate
+          });
+          customerCount++;
+          totalCustomerAmt += (order.salePrice || 0);
+          modified = true;
+        }
+      } else if (action === 'customer_unpaid') {
+        if (order.customerPaid) {
+          await applyOrderCustomerPaymentState(order, {
+            customerPaid: false,
+            syncToAccount: shouldSync,
+            dateStr: txDate
+          });
+          customerCount++;
+          totalCustomerAmt += (order.salePrice || 0);
+          modified = true;
+        }
+      }
+
+      if (action === 'supplier_paid' || action === 'both_paid') {
+        if (!order.supplierPaid && (order.costPrice || 0) > 0) {
+          const sKey = order.supplierKey || (order.supplierName ? normalizeKey(order.supplierName) : '');
+          if (sKey) {
+            await adjustSupplierDebtPot(order.supplierName, sKey, -order.costPrice);
+          }
+          await applyOrderSupplierPaymentState(order, {
+            supplierPaid: true,
+            supplierPaidAccount: targetSupAcc,
+            syncToAccount: shouldSync,
+            dateStr: txDate
+          });
+          supplierCount++;
+          totalSupplierAmt += (order.costPrice || 0);
+          modified = true;
+        }
+      } else if (action === 'supplier_unpaid') {
+        if (order.supplierPaid) {
+          const sKey = order.supplierKey || (order.supplierName ? normalizeKey(order.supplierName) : '');
+          if (order.costPrice > 0 && sKey) {
+            await adjustSupplierDebtPot(order.supplierName, sKey, order.costPrice);
+          }
+          await applyOrderSupplierPaymentState(order, {
+            supplierPaid: false,
+            syncToAccount: shouldSync,
+            dateStr: txDate
+          });
+          supplierCount++;
+          totalSupplierAmt += (order.costPrice || 0);
+          modified = true;
+        }
+      }
+
+      if (modified) {
+        await order.save();
+      }
+    }
+
+    let msg = '✓ Đã cập nhật trạng thái đơn hàng thành công!';
+    if (action === 'customer_paid') {
+      msg = `✓ Đã thu khách ${customerCount} đơn (+${totalCustomerAmt.toLocaleString('vi-VN')}đ vào ${targetAcc})!`;
+    } else if (action === 'supplier_paid') {
+      msg = `✓ Đã trả vốn NCC ${supplierCount} đơn (-${totalSupplierAmt.toLocaleString('vi-VN')}đ từ ${targetSupAcc})!`;
+    } else if (action === 'both_paid') {
+      msg = `✓ Đã tất toán xong (Thu khách ${customerCount} đơn, Trả vốn ${supplierCount} đơn)!`;
+    } else if (action === 'customer_unpaid') {
+      msg = `↩️ Đã hoàn tác ${customerCount} đơn về Chưa thu tiền khách!`;
+    } else if (action === 'supplier_unpaid') {
+      msg = `↩️ Đã hoàn tác ${supplierCount} đơn về Chưa trả vốn NCC!`;
+    }
+
+    res.json({
+      success: true,
+      customerCount,
+      supplierCount,
+      totalCustomerAmt,
+      totalSupplierAmt,
+      message: msg
     });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -2522,11 +2995,15 @@ app.delete('/api/service-orders/:id', authenticateToken, requireAnyPermission('m
 
     // Nếu đơn này chưa trả NCC, hoàn tác trừ nợ NCC
     if (!order.supplierPaid && order.costPrice > 0 && order.supplierKey) {
-      await SupplierDebt.findOneAndUpdate(
-        { supplierKey: order.supplierKey },
-        { $inc: { remainingAmount: -order.costPrice } }
-      );
-      await SupplierDebt.updateMany({ remainingAmount: { $lt: 0 } }, { $set: { remainingAmount: 0 } });
+      await adjustSupplierDebtPot(order.supplierName, order.supplierKey, -order.costPrice);
+    }
+
+    // Nếu đơn này đã từng cộng/trừ thực tế vào số dư ngân hàng, hoàn tác số dư & xóa giao dịch liên kết
+    if (order.customerPaid && order.customerAccountSynced) {
+      await applyOrderCustomerPaymentState(order, { customerPaid: false, syncToAccount: true });
+    }
+    if (order.supplierPaid && order.supplierAccountSynced) {
+      await applyOrderSupplierPaymentState(order, { supplierPaid: false, syncToAccount: true });
     }
 
     await ServiceOrder.findByIdAndDelete(req.params.id);
