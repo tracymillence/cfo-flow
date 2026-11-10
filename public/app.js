@@ -245,10 +245,12 @@ function cashFlowApp() {
     debtSettlementForm: {
       debtIds: [],
       action: 'paid', // 'paid' | 'pending'
+      targetStatus: 'paid',
       accountName: 'Vietcombank',
       syncToAccount: true,
       date: new Date().toISOString().slice(0, 10),
       loading: false,
+      title: 'Tất toán khoản nợ & Chọn Ngân hàng',
       summaryTitle: '',
       receivableAmount: 0,
       payableAmount: 0,
@@ -278,11 +280,15 @@ function cashFlowApp() {
     orderSettlementForm: {
       orderIds: [],
       action: 'customer_paid', // 'customer_paid' | 'customer_unpaid' | 'supplier_paid' | 'supplier_unpaid' | 'both_paid'
+      mode: 'customer_paid',
       accountName: 'Vietcombank',
       supplierAccountName: 'Vietcombank',
+      receivedAccount: 'Vietcombank',
+      supplierPaidAccount: 'Vietcombank',
       syncToAccount: true,
       date: new Date().toISOString().slice(0, 10),
       loading: false,
+      title: 'Xác nhận thanh toán & Chọn Ngân hàng',
       summaryTitle: '',
       totalCustomerAmount: 0,
       totalSupplierAmount: 0,
@@ -1692,10 +1698,10 @@ function cashFlowApp() {
         supplierName: (this.serviceOrderForm.supplierName || '').trim(),
         customerPaid: Boolean(this.serviceOrderForm.customerPaid),
         supplierPaid: Boolean(this.serviceOrderForm.supplierPaid),
-        receivedAccount: this.serviceOrderForm.receivedAccount || 'Vietcombank',
-        supplierPaidAccount: this.serviceOrderForm.supplierPaidAccount || this.serviceOrderForm.receivedAccount || 'Vietcombank',
-        syncCustomerAccount: Boolean(this.serviceOrderForm.syncCustomerAccount),
-        syncSupplierAccount: Boolean(this.serviceOrderForm.syncSupplierAccount),
+        receivedAccount: this.serviceOrderForm.receivedAccount || '',
+        supplierPaidAccount: this.serviceOrderForm.supplierPaidAccount || '',
+        syncCustomerAccount: Boolean(this.serviceOrderForm.receivedAccount),
+        syncSupplierAccount: Boolean(this.serviceOrderForm.supplierPaidAccount),
         date: this.serviceOrderForm.date || new Date().toISOString().slice(0, 10),
         note: (this.serviceOrderForm.note || '').trim()
       };
@@ -1723,6 +1729,10 @@ function cashFlowApp() {
       } catch (err) {
         alert('Lỗi: ' + err.message);
       }
+    },
+
+    defaultBankAccountName() {
+      return (this.dashboard?.accounts?.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
     },
 
     // Multi-select helpers cho Sổ Đơn Hàng
@@ -1767,14 +1777,19 @@ function cashFlowApp() {
       const unpaidSup = selected.filter(o => !o.supplierPaid && (Number(o.costPrice) || 0) > 0);
       const paidSup = selected.filter(o => o.supplierPaid && (Number(o.costPrice) || 0) > 0);
 
+      const unpaidCustomerTotal = unpaidCust.reduce((s, o) => s + (Number(o.salePrice) || 0), 0);
+      const unpaidSupplierTotal = unpaidSup.reduce((s, o) => s + (Number(o.costPrice) || 0), 0);
+
       return {
         count: selected.length,
         unpaidCustomerCount: unpaidCust.length,
-        unpaidCustomerTotal: unpaidCust.reduce((s, o) => s + (Number(o.salePrice) || 0), 0),
+        unpaidCustomerTotal,
+        unpaidCustomerAmount: unpaidCustomerTotal,
         paidCustomerCount: paidCust.length,
         paidCustomerTotal: paidCust.reduce((s, o) => s + (Number(o.salePrice) || 0), 0),
         unpaidSupplierCount: unpaidSup.length,
-        unpaidSupplierTotal: unpaidSup.reduce((s, o) => s + (Number(o.costPrice) || 0), 0),
+        unpaidSupplierTotal,
+        unpaidSupplierAmount: unpaidSupplierTotal,
         paidSupplierCount: paidSup.length,
         paidSupplierTotal: paidSup.reduce((s, o) => s + (Number(o.costPrice) || 0), 0)
       };
@@ -1790,7 +1805,7 @@ function cashFlowApp() {
       const all = this.dashboard?.allOrders || [];
       const idSet = new Set(ids);
       const targetOrders = all.filter(o => idSet.has(String(o._id)));
-      const defaultAcc = preferredAccount || (this.dashboard?.accounts?.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
+      const defaultAcc = preferredAccount || this.defaultBankAccountName();
 
       let custCount = 0;
       let custAmt = 0;
@@ -1826,14 +1841,26 @@ function cashFlowApp() {
       const namesPreview = targetOrders.slice(0, 3).map(o => o.customerName).join(', ') +
         (targetOrders.length > 3 ? ` và ${targetOrders.length - 3} đơn khác` : '');
 
+      const titleMap = {
+        customer_paid: 'Thu tiền khách hàng (+ Cộng Ngân hàng)',
+        supplier_paid: 'Trả vốn Nhà cung cấp (- Trừ Ngân hàng)',
+        both_paid: 'Tất toán cả Thu khách & Trả vốn NCC',
+        customer_unpaid: 'Hoàn tác: Chuyển về Chưa thu tiền khách',
+        supplier_unpaid: 'Hoàn tác: Chuyển về Chưa trả vốn NCC'
+      };
+
       this.orderSettlementForm = {
         orderIds: ids,
         action,
+        mode: action,
         accountName: defaultAcc,
         supplierAccountName: defaultAcc,
+        receivedAccount: defaultAcc,
+        supplierPaidAccount: defaultAcc,
         syncToAccount: true,
         date: new Date().toISOString().slice(0, 10),
         loading: false,
+        title: titleMap[action] || 'Cập nhật trạng thái đơn hàng',
         summaryTitle: namesPreview,
         totalCustomerAmount: custAmt,
         totalSupplierAmount: supAmt,
@@ -1848,15 +1875,26 @@ function cashFlowApp() {
       if (this.orderSettlementForm.loading) return;
       this.orderSettlementForm.loading = true;
       try {
+        const act = this.orderSettlementForm.action || this.orderSettlementForm.mode;
+        const chosenCustAcc = act === 'both_paid'
+          ? this.orderSettlementForm.receivedAccount
+          : this.orderSettlementForm.accountName;
+        const chosenSupAcc = act === 'both_paid'
+          ? this.orderSettlementForm.supplierPaidAccount
+          : (this.orderSettlementForm.accountName || this.orderSettlementForm.supplierAccountName);
+        const shouldSync = act === 'both_paid'
+          ? Boolean(chosenCustAcc || chosenSupAcc)
+          : (act.includes('unpaid') ? true : Boolean(this.orderSettlementForm.accountName));
+
         const res = await this.authFetch('/api/service-orders/batch-settle', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             orderIds: this.orderSettlementForm.orderIds,
-            action: this.orderSettlementForm.action,
-            accountName: this.orderSettlementForm.accountName,
-            supplierAccountName: this.orderSettlementForm.supplierAccountName || this.orderSettlementForm.accountName,
-            syncToAccount: Boolean(this.orderSettlementForm.syncToAccount),
+            action: act,
+            accountName: chosenCustAcc || '',
+            supplierAccountName: chosenSupAcc || '',
+            syncToAccount: shouldSync,
             date: this.orderSettlementForm.date
           })
         });
@@ -1864,19 +1902,18 @@ function cashFlowApp() {
         if (data.success) {
           // Cập nhật tức thì (Optimistic UI) để tránh nhảy trạng thái
           const idSet = new Set(this.orderSettlementForm.orderIds.map(String));
-          const act = this.orderSettlementForm.action;
           (this.dashboard?.allOrders || []).forEach(o => {
             if (idSet.has(String(o._id))) {
               if (act === 'customer_paid' || act === 'both_paid') {
                 o.customerPaid = true;
-                o.receivedAccount = this.orderSettlementForm.accountName;
+                o.receivedAccount = chosenCustAcc || o.receivedAccount;
               } else if (act === 'customer_unpaid') {
                 o.customerPaid = false;
               }
               if (act === 'supplier_paid' || act === 'both_paid') {
                 if ((Number(o.costPrice) || 0) > 0) {
                   o.supplierPaid = true;
-                  o.supplierPaidAccount = this.orderSettlementForm.supplierAccountName || this.orderSettlementForm.accountName;
+                  o.supplierPaidAccount = chosenSupAcc || o.supplierPaidAccount;
                 }
               } else if (act === 'supplier_unpaid') {
                 o.supplierPaid = false;
@@ -2074,10 +2111,15 @@ function cashFlowApp() {
         const url = this.editingDebtId ? `/api/debts/${this.editingDebtId}` : '/api/debts';
         const method = this.editingDebtId ? 'PUT' : 'POST';
 
+        const payload = {
+          ...this.debtForm,
+          syncToAccount: Boolean(this.debtForm.settledAccount)
+        };
+
         const res = await this.authFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(this.debtForm)
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (data.success) {
@@ -2187,10 +2229,14 @@ function cashFlowApp() {
       this.debtSettlementForm = {
         debtIds: ids,
         action,
+        targetStatus: action,
         accountName: defaultAcc,
         syncToAccount: true,
         date: new Date().toISOString().slice(0, 10),
         loading: false,
+        title: action === 'paid'
+          ? 'Tất toán khoản nợ & Chọn Ngân hàng'
+          : 'Hoàn tác khoản nợ về Chờ Trả',
         summaryTitle: namesPreview,
         receivableAmount: recAmt,
         payableAmount: payAmt,
@@ -2205,14 +2251,16 @@ function cashFlowApp() {
       if (this.debtSettlementForm.loading) return;
       this.debtSettlementForm.loading = true;
       try {
+        const act = this.debtSettlementForm.action || this.debtSettlementForm.targetStatus || 'paid';
+        const shouldSync = act === 'pending' ? true : Boolean(this.debtSettlementForm.accountName);
         const res = await this.authFetch('/api/debts/batch-settle', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             debtIds: this.debtSettlementForm.debtIds,
-            action: this.debtSettlementForm.action,
-            accountName: this.debtSettlementForm.accountName,
-            syncToAccount: Boolean(this.debtSettlementForm.syncToAccount),
+            action: act,
+            accountName: this.debtSettlementForm.accountName || '',
+            syncToAccount: shouldSync,
             date: this.debtSettlementForm.date
           })
         });

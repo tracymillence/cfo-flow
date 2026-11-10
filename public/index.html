@@ -2459,7 +2459,7 @@
             <!-- Thanh chọn nhiều & thao tác hàng loạt cho Sổ Nợ 2 Chiều -->
             <div x-show="(dashboard.allDebts || []).length > 0" class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
               <label class="flex items-center gap-2 cursor-pointer text-slate-600 font-semibold select-none">
-                <input type="checkbox" :checked="areAllDebtsSelected" @change="toggleSelectAllDebts()"
+                <input type="checkbox" :checked="areAllDebtsSelected()" @change="toggleSelectAllDebts()"
                        class="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5 cursor-pointer">
                 <span>Chọn tất cả (<span x-text="selectedDebtIds.length"></span>/<span x-text="(dashboard.allDebts || []).length"></span>)</span>
               </label>
@@ -2634,13 +2634,13 @@
                :class="selectedOrderIds.length > 0 ? 'bg-blue-50/80 border-blue-200 shadow-2xs' : 'bg-slate-50/70 border-slate-200/70'">
             <div class="flex flex-wrap items-center gap-3">
               <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 select-none">
-                <input type="checkbox" :checked="areAllFilteredOrdersSelected" @change="toggleSelectAllOrders()"
+                <input type="checkbox" :checked="areAllFilteredOrdersSelected()" @change="toggleSelectAllOrders()"
                        class="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer">
                 <span>Chọn tất cả đang lọc (<span x-text="selectedOrderIds.length"></span>/<span x-text="filteredServiceOrders.length"></span> đơn)</span>
               </label>
               <span x-show="selectedOrderIds.length > 0" class="text-[11px] text-blue-800 font-medium">
-                • Cần thu khách: <strong class="font-mono" x-text="formatVND(selectedOrdersSummary.unpaidCustomerAmount)"></strong>
-                • Cần trả NCC: <strong class="font-mono" x-text="formatVND(selectedOrdersSummary.unpaidSupplierAmount)"></strong>
+                • Cần thu khách: <strong class="font-mono" x-text="formatVND(selectedOrdersSummary.unpaidCustomerTotal)"></strong>
+                • Cần trả NCC: <strong class="font-mono" x-text="formatVND(selectedOrdersSummary.unpaidSupplierTotal)"></strong>
               </span>
             </div>
 
@@ -4061,10 +4061,10 @@
                    x-text="debtForm.type === 'receivable' ? 'Chọn tài khoản ngân hàng nhận tiền (+):' : 'Chọn tài khoản ngân hàng trích tiền trả (-):'"></label>
             <select x-model="debtForm.settledAccount"
                     class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-600">
-              <option value="">-- Không đồng bộ số dư ngân hàng --</option>
-              <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+              <template x-for="acc in (dashboard.accounts?.list || [])" :key="acc._id">
                 <option :value="acc.name" x-text="acc.name + ' (Dư: ' + formatVND(acc.balance) + ')'"></option>
               </template>
+              <option value="">-- Không đồng bộ số dư ngân hàng --</option>
             </select>
           </div>
         </div>
@@ -5244,10 +5244,10 @@
             </label>
             <select x-model="serviceOrderForm.receivedAccount"
                     class="w-full px-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-600">
-              <option value="">-- Không cộng vào số dư ngân hàng --</option>
-              <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+              <template x-for="acc in (dashboard.accounts?.list || [])" :key="acc._id">
                 <option :value="acc.name" x-text="acc.name + ' (Số dư: ' + formatVND(acc.balance) + ')'"></option>
               </template>
+              <option value="">-- Không cộng vào số dư ngân hàng --</option>
             </select>
           </div>
         </div>
@@ -5308,10 +5308,10 @@
             </label>
             <select x-model="serviceOrderForm.supplierPaidAccount"
                     class="w-full px-3 py-2 rounded-xl border border-blue-300 bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600">
-              <option value="">-- Không trừ số dư ngân hàng --</option>
-              <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+              <template x-for="acc in (dashboard.accounts?.list || [])" :key="acc._id">
                 <option :value="acc.name" x-text="acc.name + ' (Số dư: ' + formatVND(acc.balance) + ')'"></option>
               </template>
+              <option value="">-- Không trừ số dư ngân hàng --</option>
             </select>
           </div>
         </div>
@@ -5471,12 +5471,13 @@
       <div class="flex items-center justify-between pb-3 border-b border-slate-100">
         <div class="flex items-center gap-2.5">
           <span class="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold"
-                :class="orderSettlementForm.mode.includes('unpaid') ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'">
+                :class="(orderSettlementForm.action || '').includes('unpaid') ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'">
             <i class="fa-solid fa-building-columns"></i>
           </span>
           <div>
-            <h3 class="text-sm font-bold text-slate-900" x-text="orderSettlementForm.title"></h3>
-            <p class="text-[11px] text-slate-500" x-text="'Áp dụng cho ' + (orderSettlementForm.orderIds?.length || 0) + ' đơn hàng đã chọn'"></p>
+            <h3 class="text-sm font-bold text-slate-900" x-text="orderSettlementForm.title || 'Xác nhận thanh toán & Chọn Ngân hàng'"></h3>
+            <p class="text-[11px] text-slate-500"
+               x-text="'Áp dụng cho ' + (orderSettlementForm.orderIds?.length || 0) + ' đơn hàng' + (orderSettlementForm.summaryTitle ? ': ' + orderSettlementForm.summaryTitle : '')"></p>
           </div>
         </div>
         <button type="button" @click="modals.orderSettlement = false" class="text-slate-400 hover:text-slate-600 p-1 cursor-pointer">
@@ -5487,22 +5488,22 @@
       <form @submit.prevent="submitOrderSettlement()" class="space-y-4 text-xs">
         <!-- Tóm tắt số tiền thực tế -->
         <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-          <div x-show="orderSettlementForm.mode === 'customer_paid' || orderSettlementForm.mode === 'both_paid'"
+          <div x-show="orderSettlementForm.action === 'customer_paid' || orderSettlementForm.action === 'both_paid'"
                class="flex items-center justify-between">
             <span class="text-slate-600 font-medium">Tổng tiền thu khách (+ Cộng vào NH):</span>
             <strong class="font-mono text-sm font-extrabold text-emerald-600" x-text="'+' + formatVND(orderSettlementForm.totalCustomerAmount)"></strong>
           </div>
-          <div x-show="orderSettlementForm.mode === 'supplier_paid' || orderSettlementForm.mode === 'both_paid'"
+          <div x-show="orderSettlementForm.action === 'supplier_paid' || orderSettlementForm.action === 'both_paid'"
                class="flex items-center justify-between">
             <span class="text-slate-600 font-medium">Tổng tiền trả vốn NCC (- Trừ từ NH):</span>
             <strong class="font-mono text-sm font-extrabold text-rose-600" x-text="'-' + formatVND(orderSettlementForm.totalSupplierAmount)"></strong>
           </div>
-          <div x-show="orderSettlementForm.mode === 'customer_unpaid'"
+          <div x-show="orderSettlementForm.action === 'customer_unpaid'"
                class="flex items-center justify-between">
             <span class="text-slate-600 font-medium">Hoàn tác thu khách (Trừ lại khỏi NH đã thu):</span>
             <strong class="font-mono text-sm font-extrabold text-amber-600" x-text="formatVND(orderSettlementForm.totalCustomerAmount)"></strong>
           </div>
-          <div x-show="orderSettlementForm.mode === 'supplier_unpaid'"
+          <div x-show="orderSettlementForm.action === 'supplier_unpaid'"
                class="flex items-center justify-between">
             <span class="text-slate-600 font-medium">Hoàn tác trả vốn (Cộng lại vào NH &amp; Hũ NCC):</span>
             <strong class="font-mono text-sm font-extrabold text-amber-600" x-text="formatVND(orderSettlementForm.totalSupplierAmount)"></strong>
@@ -5510,25 +5511,25 @@
         </div>
 
         <!-- Chọn tài khoản Ngân hàng khi Thu khách / Trả vốn -->
-        <div x-show="orderSettlementForm.mode === 'customer_paid' || orderSettlementForm.mode === 'supplier_paid' || orderSettlementForm.mode === 'both_paid'" class="space-y-3">
-          <div x-show="orderSettlementForm.mode === 'customer_paid' || orderSettlementForm.mode === 'supplier_paid'">
+        <div x-show="orderSettlementForm.action === 'customer_paid' || orderSettlementForm.action === 'supplier_paid' || orderSettlementForm.action === 'both_paid'" class="space-y-3">
+          <div x-show="orderSettlementForm.action === 'customer_paid' || orderSettlementForm.action === 'supplier_paid'">
             <label class="block font-bold text-slate-800 mb-1.5"
-                   x-text="orderSettlementForm.mode === 'customer_paid' ? 'Chọn nguồn tiền / Ngân hàng nhận tiền (+):' : 'Chọn nguồn tiền / Ngân hàng trích trả vốn (-):'"></label>
+                   x-text="orderSettlementForm.action === 'customer_paid' ? 'Chọn nguồn tiền / Ngân hàng nhận tiền (+):' : 'Chọn nguồn tiền / Ngân hàng trích trả vốn (-):'"></label>
             <select x-model="orderSettlementForm.accountName"
                     class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600">
-              <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+              <template x-for="acc in (dashboard.accounts?.list || [])" :key="acc._id">
                 <option :value="acc.name" x-text="acc.name + ' — Số dư: ' + formatVND(acc.balance)"></option>
               </template>
               <option value="">-- Chỉ đổi trạng thái (Không cộng/trừ Ngân hàng) --</option>
             </select>
           </div>
 
-          <div x-show="orderSettlementForm.mode === 'both_paid'" class="space-y-2.5">
+          <div x-show="orderSettlementForm.action === 'both_paid'" class="space-y-2.5">
             <div>
               <label class="block font-bold text-emerald-800 mb-1">1. Ngân hàng nhận tiền thu khách (+):</label>
               <select x-model="orderSettlementForm.receivedAccount"
                       class="w-full px-3 py-2 rounded-xl border border-emerald-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600">
-                <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+                <template x-for="acc in (dashboard.accounts?.list || [])" :key="acc._id">
                   <option :value="acc.name" x-text="acc.name + ' — Số dư: ' + formatVND(acc.balance)"></option>
                 </template>
                 <option value="">-- Không cộng vào Ngân hàng --</option>
@@ -5538,7 +5539,7 @@
               <label class="block font-bold text-blue-800 mb-1">2. Ngân hàng trích tiền trả vốn NCC (-):</label>
               <select x-model="orderSettlementForm.supplierPaidAccount"
                       class="w-full px-3 py-2 rounded-xl border border-blue-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600">
-                <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+                <template x-for="acc in (dashboard.accounts?.list || [])" :key="acc._id">
                   <option :value="acc.name" x-text="acc.name + ' — Số dư: ' + formatVND(acc.balance)"></option>
                 </template>
                 <option value="">-- Không trừ khỏi Ngân hàng --</option>
@@ -5551,7 +5552,7 @@
           </p>
         </div>
 
-        <div x-show="orderSettlementForm.mode === 'customer_unpaid' || orderSettlementForm.mode === 'supplier_unpaid'"
+        <div x-show="orderSettlementForm.action === 'customer_unpaid' || orderSettlementForm.action === 'supplier_unpaid'"
              class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
           Hệ thống sẽ chuyển trạng thái đơn hàng về <strong>Chưa thu / Chưa trả</strong>, đồng thời tự động hoàn tác số dư ngân hàng và xóa bút toán giao dịch đã tạo trước đó.
         </div>
@@ -5586,8 +5587,9 @@
             <i class="fa-solid fa-hand-holding-dollar"></i>
           </span>
           <div>
-            <h3 class="text-sm font-bold text-slate-900" x-text="debtSettlementForm.title"></h3>
-            <p class="text-[11px] text-slate-500" x-text="'Áp dụng cho ' + (debtSettlementForm.debtIds?.length || 0) + ' khoản nợ đã chọn'"></p>
+            <h3 class="text-sm font-bold text-slate-900" x-text="debtSettlementForm.title || 'Tất toán khoản nợ & Chọn Ngân hàng'"></h3>
+            <p class="text-[11px] text-slate-500"
+               x-text="'Áp dụng cho ' + (debtSettlementForm.debtIds?.length || 0) + ' khoản nợ' + (debtSettlementForm.summaryTitle ? ': ' + debtSettlementForm.summaryTitle : '')"></p>
           </div>
         </div>
         <button type="button" @click="modals.debtSettlement = false" class="text-slate-400 hover:text-slate-600 p-1 cursor-pointer">
@@ -5607,11 +5609,11 @@
           </div>
         </div>
 
-        <div x-show="debtSettlementForm.targetStatus === 'paid'" class="space-y-2">
+        <div x-show="debtSettlementForm.action === 'paid'" class="space-y-2">
           <label class="block font-bold text-slate-800">Chọn nguồn tiền / Tài khoản Ngân hàng kết nối:</label>
           <select x-model="debtSettlementForm.accountName"
                   class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-600">
-            <template x-for="acc in dashboard.accounts || []" :key="acc._id">
+            <template x-for="acc in (dashboard.accounts?.list || [])" :key="acc._id">
               <option :value="acc.name" x-text="acc.name + ' — Số dư: ' + formatVND(acc.balance)"></option>
             </template>
             <option value="">-- Chỉ đánh dấu Đã Xong (Không cộng/trừ Ngân hàng) --</option>
@@ -5621,7 +5623,7 @@
           </p>
         </div>
 
-        <div x-show="debtSettlementForm.targetStatus === 'pending'"
+        <div x-show="debtSettlementForm.action === 'pending'"
              class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
           Hệ thống sẽ chuyển khoản nợ về trạng thái <strong>Chờ Trả</strong>, đồng thời hoàn tác lại số dư ngân hàng và xóa giao dịch liên kết.
         </div>
@@ -5653,6 +5655,6 @@
   </div>
 
   <!-- Load App Script -->
-  <script src="/app.js?v=3.5"></script>
+  <script src="/app.js?v=3.6"></script>
 </body>
 </html>
