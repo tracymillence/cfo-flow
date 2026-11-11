@@ -1268,6 +1268,15 @@ function cashFlowApp() {
           if (data.projectionHealth) {
             this.projectionHealth = data.projectionHealth;
           }
+          if (this.selectedSupplierForHistory && data.supplierPot?.suppliers) {
+            const freshSup = data.supplierPot.suppliers.find(
+              s => String(s._id) === String(this.selectedSupplierForHistory._id) ||
+                   this.normalizeKey(s.supplierName) === this.normalizeKey(this.selectedSupplierForHistory.supplierName)
+            );
+            if (freshSup) {
+              this.selectedSupplierForHistory = freshSup;
+            }
+          }
           this.fetchCorrectionRequests();
           this.fetchUpcomingTransactions();
         } else {

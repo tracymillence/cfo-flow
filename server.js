@@ -123,6 +123,12 @@ async function mergeDuplicateSuppliers() {
       { supplierPaymentStatus: 'completed', supplierPaid: { $ne: true } },
       { $set: { supplierPaid: true } }
     );
+
+    // Đồng bộ chính xác Tổng nợ trong hũ NCC theo tổng các đơn hàng lẻ của từng NCC
+    const allCurrentSups = await SupplierDebt.find();
+    for (const s of allCurrentSups) {
+      await reconcileSupplierDebtFromOrders(s.supplierName, s.supplierKey);
+    }
   } catch (err) {
     console.error('Lỗi khi gộp NCC trùng lặp:', err.message);
   }
@@ -2491,11 +2497,70 @@ app.delete('/api/debts/:id', authenticateToken, requirePermission('manageDebts')
 });
 
 // ==================== 5. ĐƠN DỊCH VỤ / BÁN HÀNG CRUD (CÔNG NỢ KHÁCH & VỐN NCC) ====================
+async function reconcileSupplierDebtFromOrders(supplierName, supplierKey, { allowZeroWhenNoOrders = false } = {}) {
+  const sName = (supplierName || '').trim();
+  const sKey = supplierKey || (sName ? normalizeKey(sName) : '');
+  if (!sKey) return null;
+
+  const orders = await ServiceOrder.find({
+    $or: [
+      { supplierKey: sKey },
+      ...(sName ? [{ supplierName: { $regex: new RegExp(`^${escapeRegex(sName)}$`, 'i') } }] : [])
+    ]
+  }).lean();
+
+  if (orders.length === 0 && !allowZeroWhenNoOrders) {
+    return null;
+  }
+
+  const unpaidCost = orders
+    .filter(o => !(o.supplierPaid === true || o.supplierPaymentStatus === 'completed'))
+    .reduce((sum, o) => sum + Math.max(0, Number(o.costPrice) || 0), 0);
+
+  const paidCost = orders
+    .filter(o => o.supplierPaid === true || o.supplierPaymentStatus === 'completed')
+    .reduce((sum, o) => sum + Math.max(0, Number(o.costPrice) || 0), 0);
+
+  const totalCost = unpaidCost + paidCost;
+
+  let sup = await SupplierDebt.findOne({
+    $or: [
+      { supplierKey: sKey },
+      ...(sName ? [{ supplierName: { $regex: new RegExp(`^${escapeRegex(sName)}$`, 'i') } }] : [])
+    ]
+  });
+
+  if (sup) {
+    sup.supplierKey = sKey;
+    if (sName && !sup.supplierName) sup.supplierName = sName;
+    sup.paidAmount = paidCost;
+    sup.totalAmount = totalCost;
+    sup.remainingAmount = unpaidCost;
+    await sup.save();
+    return sup;
+  } else if (totalCost > 0) {
+    sup = await SupplierDebt.create({
+      supplierName: sName || sKey,
+      supplierKey: sKey,
+      totalAmount: totalCost,
+      paidAmount: paidCost,
+      remainingAmount: unpaidCost
+    });
+    return sup;
+  }
+  return null;
+}
+
 async function adjustSupplierDebtPot(supplierName, supplierKey, deltaAmount) {
   const delta = Number(deltaAmount) || 0;
   const sName = (supplierName || '').trim();
   const sKey = supplierKey || (sName ? normalizeKey(sName) : '');
-  if (!sKey || delta === 0) return null;
+  if (!sKey) return null;
+
+  // Nếu NCC có đơn hàng lẻ trong ServiceOrder, tính chuẩn 100% từ danh sách đơn hàng lẻ
+  const synced = await reconcileSupplierDebtFromOrders(sName, sKey);
+  if (synced) return synced;
+  if (delta === 0) return null;
 
   let sup = await SupplierDebt.findOne({
     $or: [
@@ -2756,10 +2821,8 @@ app.put('/api/service-orders/:id', authenticateToken, requireAnyPermission('mana
     const newCPaid = customerPaid !== undefined ? Boolean(customerPaid) : Boolean(oldOrder.customerPaid);
     const newSPaid = supplierPaid !== undefined ? Boolean(supplierPaid) : Boolean(oldOrder.supplierPaid);
 
-    // Hoàn tác trừ công nợ NCC cũ nếu đơn cũ từng chưa trả NCC
-    if (!oldOrder.supplierPaid && oldOrder.costPrice > 0 && oldOrder.supplierKey) {
-      await adjustSupplierDebtPot(oldOrder.supplierName, oldOrder.supplierKey, -oldOrder.costPrice);
-    }
+    const prevSName = oldOrder.supplierName;
+    const prevSKey = oldOrder.supplierKey || (prevSName ? normalizeKey(prevSName) : '');
 
     // Cập nhật thông tin cơ bản
     oldOrder.customerName = (customerName || oldOrder.customerName || '').trim();
@@ -2787,9 +2850,11 @@ app.put('/api/service-orders/:id', authenticateToken, requireAnyPermission('mana
 
     await oldOrder.save();
 
-    // Cộng công nợ NCC mới nếu đơn mới chưa trả NCC (gộp đúng NCC)
-    if (!newSPaid && newCPrice > 0 && newSKey) {
-      await adjustSupplierDebtPot(newSName, newSKey, newCPrice);
+    if (prevSKey && prevSKey !== newSKey) {
+      await reconcileSupplierDebtFromOrders(prevSName, prevSKey, { allowZeroWhenNoOrders: true });
+    }
+    if (newSKey) {
+      await reconcileSupplierDebtFromOrders(newSName, newSKey);
     }
 
     res.json({ success: true, order: oldOrder, message: 'Đã cập nhật đơn hàng thành công' });
@@ -2838,16 +2903,6 @@ app.patch('/api/service-orders/:id/toggle-supplier-paid', authenticateToken, req
     const nextSupplierPaid = supplierPaid !== undefined ? Boolean(supplierPaid) : !wasSupplierPaid;
     const sKey = order.supplierKey || (order.supplierName ? normalizeKey(order.supplierName) : '');
 
-    if (wasSupplierPaid !== nextSupplierPaid && order.costPrice > 0 && sKey) {
-      if (nextSupplierPaid) {
-        // Đã trả vốn -> trừ nợ trong Hũ NCC
-        await adjustSupplierDebtPot(order.supplierName, sKey, -order.costPrice);
-      } else {
-        // Quay lại nợ vốn -> cộng lại nợ vào Hũ NCC
-        await adjustSupplierDebtPot(order.supplierName, sKey, order.costPrice);
-      }
-    }
-
     await applyOrderSupplierPaymentState(order, {
       supplierPaid: nextSupplierPaid,
       supplierPaidAccount: accountName || order.supplierPaidAccount || order.receivedAccount || 'Vietcombank',
@@ -2856,6 +2911,10 @@ app.patch('/api/service-orders/:id/toggle-supplier-paid', authenticateToken, req
     });
 
     await order.save();
+
+    if (sKey) {
+      await reconcileSupplierDebtFromOrders(order.supplierName, sKey);
+    }
 
     res.json({
       success: true,
@@ -2895,9 +2954,11 @@ app.post('/api/service-orders/batch-settle', authenticateToken, requireAnyPermis
     let supplierCount = 0;
     let totalCustomerAmt = 0;
     let totalSupplierAmt = 0;
+    const affectedSuppliers = new Map();
 
     for (const order of orders) {
       let modified = false;
+      const sKey = order.supplierKey || (order.supplierName ? normalizeKey(order.supplierName) : '');
 
       if (action === 'customer_paid' || action === 'both_paid') {
         if (!order.customerPaid) {
@@ -2926,31 +2987,25 @@ app.post('/api/service-orders/batch-settle', authenticateToken, requireAnyPermis
 
       if (action === 'supplier_paid' || action === 'both_paid') {
         if (!order.supplierPaid && (order.costPrice || 0) > 0) {
-          const sKey = order.supplierKey || (order.supplierName ? normalizeKey(order.supplierName) : '');
-          if (sKey) {
-            await adjustSupplierDebtPot(order.supplierName, sKey, -order.costPrice);
-          }
           await applyOrderSupplierPaymentState(order, {
             supplierPaid: true,
             supplierPaidAccount: targetSupAcc,
             syncToAccount: shouldSync,
             dateStr: txDate
           });
+          if (sKey) affectedSuppliers.set(sKey, order.supplierName);
           supplierCount++;
           totalSupplierAmt += (order.costPrice || 0);
           modified = true;
         }
       } else if (action === 'supplier_unpaid') {
         if (order.supplierPaid) {
-          const sKey = order.supplierKey || (order.supplierName ? normalizeKey(order.supplierName) : '');
-          if (order.costPrice > 0 && sKey) {
-            await adjustSupplierDebtPot(order.supplierName, sKey, order.costPrice);
-          }
           await applyOrderSupplierPaymentState(order, {
             supplierPaid: false,
             syncToAccount: shouldSync,
             dateStr: txDate
           });
+          if (sKey) affectedSuppliers.set(sKey, order.supplierName);
           supplierCount++;
           totalSupplierAmt += (order.costPrice || 0);
           modified = true;
@@ -2960,6 +3015,10 @@ app.post('/api/service-orders/batch-settle', authenticateToken, requireAnyPermis
       if (modified) {
         await order.save();
       }
+    }
+
+    for (const [sKey, sName] of affectedSuppliers.entries()) {
+      await reconcileSupplierDebtFromOrders(sName, sKey);
     }
 
     let msg = '✓ Đã cập nhật trạng thái đơn hàng thành công!';
@@ -2993,10 +3052,8 @@ app.delete('/api/service-orders/:id', authenticateToken, requireAnyPermission('m
     const order = await ServiceOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
 
-    // Nếu đơn này chưa trả NCC, hoàn tác trừ nợ NCC
-    if (!order.supplierPaid && order.costPrice > 0 && order.supplierKey) {
-      await adjustSupplierDebtPot(order.supplierName, order.supplierKey, -order.costPrice);
-    }
+    const sName = order.supplierName;
+    const sKey = order.supplierKey || (sName ? normalizeKey(sName) : '');
 
     // Nếu đơn này đã từng cộng/trừ thực tế vào số dư ngân hàng, hoàn tác số dư & xóa giao dịch liên kết
     if (order.customerPaid && order.customerAccountSynced) {
@@ -3007,6 +3064,11 @@ app.delete('/api/service-orders/:id', authenticateToken, requireAnyPermission('m
     }
 
     await ServiceOrder.findByIdAndDelete(req.params.id);
+
+    if (sKey) {
+      await reconcileSupplierDebtFromOrders(sName, sKey, { allowZeroWhenNoOrders: true });
+    }
+
     res.json({ success: true, message: 'Đã xóa đơn hàng thành công' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
