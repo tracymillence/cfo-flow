@@ -1236,9 +1236,10 @@ function cashFlowApp() {
 
     isTransactionWeeklyImpact(t) {
       if (!t || t.type !== 'expense') return false;
-      if (t.impactsWeeklyLimit) return true;
+      if (t.impactsWeeklyLimit === false) return false;
+      if (t.impactsWeeklyLimit === true) return true;
       if (t.hubRole === 'hub4_personal') {
-        const isDebt = /trả nợ|công nợ|tiền xưởng|nhà cung cấp/i.test(t.title || '');
+        const isDebt = /trả nợ|công nợ|tiền xưởng|nhà cung cấp|tiết kiệm/i.test(t.title || '');
         const isLiving = /ăn uống|chi tiêu|sinh hoạt|ăn ngoài|cafe|cà phê|tiêu dùng/i.test(t.category || '');
         return isLiving && !isDebt;
       }

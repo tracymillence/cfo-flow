@@ -115,8 +115,9 @@ async function calculateWeeklySpeedometerAgg({ referenceDate = new Date() } = {}
                       { $eq: ['$impactsWeeklyLimit', true] },
                       {
                         $and: [
+                          { $ne: ['$impactsWeeklyLimit', false] },
                           { $regexMatch: { input: '$category', regex: /ăn uống|chi tiêu|sinh hoạt|ăn ngoài|cafe|cà phê|tiêu dùng/i } },
-                          { $not: { $regexMatch: { input: '$title', regex: /trả nợ|công nợ|tiền xưởng|nhà cung cấp/i } } }
+                          { $not: { $regexMatch: { input: '$title', regex: /trả nợ|công nợ|tiền xưởng|nhà cung cấp|tiết kiệm/i } } }
                         ]
                       }
                     ]
