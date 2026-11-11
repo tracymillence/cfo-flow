@@ -222,6 +222,7 @@ function cashFlowApp() {
     upcomingCustomEnd: '',
     projectionHealth: null,
     upcomingFilterHub: 'all',   // 'all' | 'hub1_income' | 'hub2_dining' | 'hub3_family' | 'hub4_personal'
+    editingUpcomingId: null,
     upcomingForm: {
       type: 'expense',          // 'income' (Dự Thu) | 'expense' (Dự Chi)
       amount: '',
@@ -3259,6 +3260,46 @@ function cashFlowApp() {
       await this.fetchProjectionHealth('custom', this.upcomingCustomStart, this.upcomingCustomEnd);
     },
 
+    editUpcomingTransaction(item) {
+      if (!item) return;
+      if (item.isSupplierDebt) {
+        const sup = (this.dashboard?.supplierPot?.suppliers || []).find(s => String(s._id) === String(item.supplierDebtId));
+        if (sup) {
+          this.openSupplierModal(sup);
+        } else {
+          alert('Khoản nợ NCC này được đồng bộ từ Hũ Tiền Hàng Nợ Từng NCC.');
+        }
+        return;
+      }
+
+      this.editingUpcomingId = item._id;
+      this.upcomingForm = {
+        type: item.type || 'expense',
+        amount: Number(item.amount) || '',
+        title: item.title || '',
+        date: item.date || new Date().toISOString().slice(0, 10),
+        hubRole: item.hubRole || 'hub1_income',
+        notes: item.notes || ''
+      };
+
+      const formEl = document.getElementById('upcoming-form-panel');
+      if (formEl) {
+        formEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    },
+
+    cancelEditUpcoming() {
+      this.editingUpcomingId = null;
+      this.upcomingForm = {
+        type: 'expense',
+        amount: '',
+        title: '',
+        date: new Date().toISOString().slice(0, 10),
+        hubRole: 'hub1_income',
+        notes: ''
+      };
+    },
+
     async submitUpcomingTransaction() {
       if (!this.upcomingForm.title || !this.upcomingForm.title.trim()) {
         this.notify('⚠️ Vui lòng nhập tên khoản mục dự kiến');
@@ -3274,9 +3315,13 @@ function cashFlowApp() {
         return;
       }
 
+      const isEditing = Boolean(this.editingUpcomingId);
+      const url = isEditing ? `/api/upcoming/${this.editingUpcomingId}` : '/api/upcoming';
+      const method = isEditing ? 'PUT' : 'POST';
+
       try {
-        const res = await this.authFetch('/api/upcoming', {
-          method: 'POST',
+        const res = await this.authFetch(url, {
+          method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             title: this.upcomingForm.title.trim(),
@@ -3289,12 +3334,18 @@ function cashFlowApp() {
         });
         const data = await res.json();
         if (data.success) {
-          this.notify('✓ Đã ghi nhận khoản ' + (this.upcomingForm.type === 'income' ? 'Dự Thu' : 'Dự Chi') + ' vào bảng dự báo!');
+          this.notify(
+            isEditing
+              ? '✓ Đã cập nhật khoản ' + (this.upcomingForm.type === 'income' ? 'Dự Thu' : 'Dự Chi') + ' thành công!'
+              : '✓ Đã ghi nhận khoản ' + (this.upcomingForm.type === 'income' ? 'Dự Thu' : 'Dự Chi') + ' vào bảng dự báo!'
+          );
+          this.editingUpcomingId = null;
           this.upcomingForm.title = '';
           this.upcomingForm.amount = '';
           this.upcomingForm.notes = '';
           await this.fetchUpcomingTransactions();
           await this.fetchProjectionHealth();
+          await this.fetchDashboard();
         } else {
           this.notify('❌ ' + (data.message || data.error || 'Lỗi lưu dự báo'));
         }
@@ -3319,9 +3370,13 @@ function cashFlowApp() {
         });
         const data = await res.json();
         if (data.success) {
+          if (String(this.editingUpcomingId) === String(id)) {
+            this.cancelEditUpcoming();
+          }
           this.notify(isMarkAsDone ? '✓ Đã hoàn tất khoản dự kiến và gỡ khỏi danh sách!' : '🗑️ Đã xóa khoản dự kiến!');
           await this.fetchUpcomingTransactions();
           await this.fetchProjectionHealth();
+          await this.fetchDashboard();
         } else {
           this.notify('❌ ' + (data.message || data.error || 'Lỗi'));
         }

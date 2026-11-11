@@ -2250,6 +2250,54 @@ app.post('/api/upcoming', authenticateToken, requirePermission('manageTransactio
   }
 });
 
+app.put('/api/upcoming/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
+  try {
+    if (String(req.params.id).startsWith('supplier_debt_')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Khoản nợ NCC này được đồng bộ từ Hũ Tiền Hàng NCC. Vui lòng chỉnh sửa trực tiếp tại mục Hũ Tiền Hàng Nợ Từng NCC!'
+      });
+    }
+
+    const { title, amount, type, date, hubRole, notes } = req.body;
+    if (!title || !title.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập tên khoản mục dự kiến' });
+    }
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ success: false, message: 'Số tiền dự kiến phải là số lớn hơn 0' });
+    }
+    if (!date) {
+      return res.status(400).json({ success: false, message: 'Vui lòng chọn ngày dự kiến thực hiện' });
+    }
+
+    const validHubs = ['hub1_income', 'hub2_dining', 'hub3_family', 'hub4_personal'];
+    const chosenHub = validHubs.includes(hubRole) ? hubRole : 'hub1_income';
+    const chosenType = (type === 'income') ? 'income' : 'expense';
+
+    const item = await UpcomingTransaction.findByIdAndUpdate(
+      req.params.id,
+      {
+        title: title.trim(),
+        amount: numAmount,
+        type: chosenType,
+        date: String(date).trim(),
+        hubRole: chosenHub,
+        notes: notes !== undefined ? String(notes).trim() : ''
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy khoản dự kiến để cập nhật' });
+    }
+
+    res.json({ success: true, item });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 app.delete('/api/upcoming/:id', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
     if (String(req.params.id).startsWith('supplier_debt_')) {
