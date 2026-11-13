@@ -21,7 +21,22 @@ const supplierDebtSchema = new mongoose.Schema({
   notes: { type: String, default: '', trim: true },
 
   // Accounts Payable Aging: Ngày đến hạn thanh toán công nợ
-  dueDate: { type: Date, required: false, default: null, index: true }
+  dueDate: { type: Date, required: false, default: null, index: true },
+
+  // Lịch sử các lần trả nợ nhà cung cấp (từng phần hoặc toàn bộ)
+  paymentHistory: {
+    type: [{
+      amount: { type: Number, required: true, min: 0 },
+      date: { type: String, required: true },
+      accountName: { type: String, default: '' },
+      deductFromAccount: { type: Boolean, default: true },
+      appliedToOrders: { type: Boolean, default: false },
+      note: { type: String, default: '' },
+      transactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', default: null },
+      createdAt: { type: Date, default: Date.now }
+    }],
+    default: []
+  }
 }, { timestamps: true });
 
 // Pre-save lifecycle hook: automated calculation for installment debt tracking

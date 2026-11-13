@@ -407,11 +407,26 @@ function cashFlowApp() {
       correctionList: false,
       memberStatement: false,
       supplierHistory: false,
+      supplierPayment: false,
       orderSettlement: false,
       debtSettlement: false
     },
 
     selectedSupplierForHistory: null,
+
+    supplierPaymentModal: {
+      mode: 'pay', // 'pay' | 'sync_payment' | 'batch_all'
+      supplierId: '',
+      supplierName: '',
+      paymentId: '',
+      remainingAmount: 0,
+      amount: 0,
+      accountName: 'Vietcombank',
+      deductFromAccount: true,
+      date: new Date().toISOString().slice(0, 10),
+      note: '',
+      loading: false
+    },
 
     // Sao kê & lịch sử thu chi từng thành viên (Member Statements)
     selectedMemberStatement: null,
@@ -1547,41 +1562,154 @@ function cashFlowApp() {
       }
     },
 
-    async paySupplierPrompt(sup) {
-      const input = prompt(
-        `Nhập số tiền muốn trả cho NCC "${sup.supplierName}":\n(Nợ hiện tại: ${this.formatVND(sup.remainingAmount)})\n\n💡 Bạn có thể trả một phần (VD: gõ 480k, 480000 hoặc 480.000):`,
-        sup.remainingAmount
-      );
-      if (input === null) return;
-      const payAmount = this.parseVND(input);
-      if (payAmount <= 0) {
-        alert('Vui lòng nhập số tiền hợp lệ lớn hơn 0đ!');
+    paySupplierPrompt(sup) {
+      if (!sup) return;
+      const defaultAcc = (this.dashboard?.accounts?.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
+      this.supplierPaymentModal = {
+        mode: 'pay',
+        supplierId: sup._id,
+        supplierName: sup.supplierName || '',
+        paymentId: '',
+        remainingAmount: Number(sup.remainingAmount) || 0,
+        amount: Number(sup.remainingAmount) || 0,
+        accountName: defaultAcc,
+        deductFromAccount: true,
+        date: new Date().toISOString().slice(0, 10),
+        note: '',
+        loading: false
+      };
+      this.modals.supplierPayment = true;
+    },
+
+    openSyncSupplierPaymentModal(sup, payment) {
+      if (!sup || !payment) return;
+      const defaultAcc = payment.accountName || (this.dashboard?.accounts?.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
+      this.supplierPaymentModal = {
+        mode: 'sync_payment',
+        supplierId: sup._id,
+        supplierName: sup.supplierName || '',
+        paymentId: payment._id,
+        remainingAmount: Number(sup.remainingAmount) || 0,
+        amount: Number(payment.amount) || 0,
+        accountName: defaultAcc,
+        deductFromAccount: true,
+        date: payment.date || new Date().toISOString().slice(0, 10),
+        note: (payment.note && !payment.note.includes('bấm "Chọn Ngân Hàng"')) ? payment.note : '',
+        loading: false
+      };
+      this.modals.supplierPayment = true;
+    },
+
+    batchPayAllSuppliers() {
+      const totalAmt = Number(this.dashboard?.supplierPot?.totalAmount) || 0;
+      if (totalAmt <= 0) {
+        alert('Hiện không có khoản nợ nhà cung cấp nào cần thanh toán!');
         return;
       }
+      const defaultAcc = (this.dashboard?.accounts?.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
+      this.supplierPaymentModal = {
+        mode: 'batch_all',
+        supplierId: '',
+        supplierName: 'Tất cả nhà cung cấp',
+        paymentId: '',
+        remainingAmount: totalAmt,
+        amount: totalAmt,
+        accountName: defaultAcc,
+        deductFromAccount: true,
+        date: new Date().toISOString().slice(0, 10),
+        note: 'Tất toán gom toàn bộ NCC',
+        loading: false
+      };
+      this.modals.supplierPayment = true;
+    },
+
+    async confirmSupplierPayment() {
+      if (this.supplierPaymentModal.loading) return;
+      const modal = this.supplierPaymentModal;
+      const payAmount = this.parseVND(modal.amount);
+
+      if (modal.mode === 'pay' && payAmount <= 0) {
+        alert('Vui lòng nhập số tiền trả nợ hợp lệ lớn hơn 0đ!');
+        return;
+      }
+      if (modal.deductFromAccount && !modal.accountName) {
+        alert('Vui lòng chọn tài khoản ngân hàng để trừ tiền!');
+        return;
+      }
+
+      modal.loading = true;
       try {
-        const res = await this.authFetch(`/api/supplier-debts/${sup._id}/pay`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amount: payAmount })
-        });
+        let res;
+        if (modal.mode === 'batch_all') {
+          res = await this.authFetch('/api/supplier-debts/batch-pay-all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accountName: modal.accountName,
+              deductFromAccount: modal.deductFromAccount,
+              date: modal.date,
+              note: modal.note
+            })
+          });
+        } else if (modal.mode === 'sync_payment') {
+          res = await this.authFetch(`/api/supplier-debts/${modal.supplierId}/payments/${modal.paymentId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accountName: modal.accountName,
+              deductFromAccount: modal.deductFromAccount,
+              date: modal.date,
+              note: modal.note
+            })
+          });
+        } else {
+          res = await this.authFetch(`/api/supplier-debts/${modal.supplierId}/pay`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              amount: payAmount,
+              accountName: modal.accountName,
+              deductFromAccount: modal.deductFromAccount,
+              date: modal.date,
+              note: modal.note
+            })
+          });
+        }
+
         const data = await res.json();
         if (data.success) {
-          this.notify(`✓ Đã thanh toán ${this.formatVND(payAmount)} cho ${sup.supplierName}!`);
-          this.fetchDashboard();
+          this.modals.supplierPayment = false;
+          if (modal.mode === 'batch_all') {
+            this.notify('🎉 Đã thanh toán gom toàn bộ NCC & đồng bộ Sổ Giao Dịch!');
+          } else if (modal.mode === 'sync_payment') {
+            this.notify(`✓ Đã cập nhật ngân hàng ${modal.accountName} & ghi vào Sổ Giao Dịch Tổng!`);
+          } else {
+            this.notify(`✓ Đã trả nợ ${this.formatVND(payAmount)} cho ${modal.supplierName}${modal.deductFromAccount ? ' (Trừ ' + modal.accountName + ')' : ''}!`);
+          }
+          await this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
         alert('Lỗi: ' + err.message);
+      } finally {
+        modal.loading = false;
       }
     },
 
-    async batchPayAllSuppliers() {
-      if (!confirm(`Xác nhận thanh toán gom toàn bộ tiền hàng cho TẤT CẢ nhà cung cấp?\nTổng tiền: ${this.formatVND(this.dashboard.supplierPot.totalAmount)}\nHũ tiền hàng sẽ được reset về 0đ.`)) return;
+    async deleteSupplierPayment(sup, payment) {
+      if (!sup || !payment) return;
+      if (!confirm(`Hoàn tác khoản trả nợ ${this.formatVND(payment.amount)} cho "${sup.supplierName}"?\n(Số dư nợ NCC sẽ được cộng lại${payment.deductFromAccount && payment.accountName ? ' và hoàn tiền về tài khoản ' + payment.accountName : ''})`)) return;
       try {
-        const res = await this.authFetch('/api/supplier-debts/batch-pay-all', { method: 'POST' });
+        const res = await this.authFetch(`/api/supplier-debts/${sup._id}/payments/${payment._id}`, {
+          method: 'DELETE'
+        });
         const data = await res.json();
         if (data.success) {
-          this.notify('🎉 Đã thanh toán gom toàn bộ NCC! Hũ tiền hàng về 0đ.');
-          this.fetchDashboard();
+          this.notify('↩️ Đã hoàn tác khoản trả nợ NCC!');
+          await this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
         }
       } catch (err) {
         alert('Lỗi: ' + err.message);
@@ -1610,6 +1738,19 @@ function cashFlowApp() {
     normalizeKey(str) {
       if (!str) return '';
       return String(str).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+    },
+
+    getSupplierPayments(sup) {
+      if (!sup || !Array.isArray(sup.paymentHistory)) return [];
+      return [...sup.paymentHistory].sort((a, b) => {
+        const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
+        if (dateCmp !== 0) return dateCmp;
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      });
+    },
+
+    getSupplierHistoryCount(sup) {
+      return this.getSupplierOrders(sup).length + this.getSupplierPayments(sup).length;
     },
 
     getSupplierOrders(sup) {

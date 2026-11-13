@@ -128,6 +128,22 @@ async function mergeDuplicateSuppliers() {
     const allCurrentSups = await SupplierDebt.find();
     for (const s of allCurrentSups) {
       await reconcileSupplierDebtFromOrders(s.supplierName, s.supplierKey);
+      // Tự động phục hồi lịch sử trả nợ cho các NCC độc lập đã có paidAmount > 0 nhưng chưa có paymentHistory
+      const freshSup = await SupplierDebt.findById(s._id);
+      if (freshSup && (freshSup.paidAmount || 0) > 0 && (!freshSup.paymentHistory || freshSup.paymentHistory.length === 0)) {
+        const orderCount = await ServiceOrder.countDocuments({ supplierKey: freshSup.supplierKey });
+        if (orderCount === 0) {
+          freshSup.paymentHistory = [{
+            amount: freshSup.paidAmount,
+            date: (freshSup.updatedAt || new Date()).toISOString().slice(0, 10),
+            accountName: '',
+            deductFromAccount: false,
+            appliedToOrders: false,
+            note: 'Khoản trả nợ đã nhập (bấm "Chọn Ngân Hàng" để trừ số dư & ghi Sổ Giao Dịch)'
+          }];
+          await freshSup.save();
+        }
+      }
     }
   } catch (err) {
     console.error('Lỗi khi gộp NCC trùng lặp:', err.message);
@@ -1727,12 +1743,19 @@ app.put('/api/supplier-debts/:id', authenticateToken, requirePermission('manageD
 
 app.post('/api/supplier-debts/:id/pay', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
-    const { amount, accountName, deductFromAccount } = req.body;
+    const { amount, accountName, deductFromAccount = true, date, note } = req.body;
     const payAmt = Number(amount);
     const sup = await SupplierDebt.findById(req.params.id);
     if (!sup) return res.status(404).json({ success: false, message: 'Không tìm thấy NCC' });
 
     const actualPaid = (!payAmt || payAmt >= sup.remainingAmount) ? sup.remainingAmount : Math.max(0, payAmt);
+    if (actualPaid <= 0) {
+      return res.status(400).json({ success: false, message: 'Số tiền trả nợ phải lớn hơn 0đ' });
+    }
+
+    const payDate = date || new Date().toISOString().slice(0, 10);
+    const cleanAcc = (accountName || '').trim();
+    const shouldDeduct = deductFromAccount !== false && Boolean(cleanAcc);
 
     if (!payAmt || payAmt >= sup.remainingAmount) {
       sup.remainingAmount = 0;
@@ -1740,31 +1763,143 @@ app.post('/api/supplier-debts/:id/pay', authenticateToken, requirePermission('ma
       sup.remainingAmount = Math.max(0, sup.remainingAmount - payAmt);
     }
     sup.paidAmount = (sup.paidAmount || 0) + actualPaid;
-    await sup.save();
 
-    if (deductFromAccount && accountName && actualPaid > 0) {
-      await adjustAccountBalance(accountName, -actualPaid);
-      await Transaction.create({
-        date: new Date().toISOString().slice(0, 10),
+    let createdTx = null;
+    if (shouldDeduct && actualPaid > 0) {
+      const updatedAcc = await adjustAccountBalance(cleanAcc, -actualPaid);
+      const accHubRole = updatedAcc?.hubRole || 'hub1_income';
+      createdTx = await Transaction.create({
+        date: payDate,
         title: `Thanh toán nợ NCC: ${sup.supplierName}`,
         amount: actualPaid,
         type: 'expense',
-        accountName: accountName.trim(),
+        accountName: cleanAcc,
         category: 'Trả vốn NCC',
-        hubRole: 'hub1_income',
+        hubRole: accHubRole,
         impactsWeeklyLimit: false,
-        notes: '[Đồng bộ Hũ Nợ NCC]'
+        notes: note ? `${note} • [Đồng bộ Hũ Nợ NCC]` : '[Đồng bộ Hũ Nợ NCC]'
       });
     }
 
-    if (sup.remainingAmount === 0) {
+    const appliedToOrders = sup.remainingAmount === 0;
+    if (appliedToOrders) {
       await ServiceOrder.updateMany(
         { supplierKey: sup.supplierKey, supplierPaid: { $ne: true } },
-        { $set: { supplierPaid: true, supplierPaymentStatus: 'completed', supplierRemainingAmount: 0 } }
+        {
+          $set: {
+            supplierPaid: true,
+            supplierPaymentStatus: 'completed',
+            supplierRemainingAmount: 0,
+            supplierPaidDate: payDate,
+            ...(cleanAcc ? { supplierPaidAccount: cleanAcc } : {})
+          }
+        }
       );
+      if (Array.isArray(sup.paymentHistory)) {
+        sup.paymentHistory.forEach(p => { p.appliedToOrders = true; });
+      }
     }
 
-    res.json({ success: true, supplier: sup, message: 'Đã thanh toán cho NCC' });
+    if (!Array.isArray(sup.paymentHistory)) sup.paymentHistory = [];
+    sup.paymentHistory.push({
+      amount: actualPaid,
+      date: payDate,
+      accountName: shouldDeduct ? cleanAcc : '',
+      deductFromAccount: shouldDeduct,
+      appliedToOrders,
+      note: note || '',
+      transactionId: createdTx ? createdTx._id : null
+    });
+
+    await sup.save();
+
+    res.json({ success: true, supplier: sup, transaction: createdTx, message: 'Đã thanh toán cho NCC' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Cập nhật tài khoản ngân hàng / đồng bộ Sổ Giao Dịch cho 1 lần trả nợ NCC trong lịch sử
+app.put('/api/supplier-debts/:id/payments/:paymentId', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
+  try {
+    const { accountName, deductFromAccount = true, date, note } = req.body;
+    const sup = await SupplierDebt.findById(req.params.id);
+    if (!sup) return res.status(404).json({ success: false, message: 'Không tìm thấy NCC' });
+
+    const payment = (sup.paymentHistory || []).id(req.params.paymentId);
+    if (!payment) return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi trả nợ' });
+
+    // Nếu trước đó đã trừ tiền tài khoản cũ, hoàn tác trước
+    if (payment.deductFromAccount && payment.accountName) {
+      await adjustAccountBalance(payment.accountName, payment.amount);
+    }
+    if (payment.transactionId) {
+      await Transaction.findByIdAndDelete(payment.transactionId);
+      payment.transactionId = null;
+    }
+
+    const cleanAcc = (accountName || '').trim();
+    const shouldDeduct = deductFromAccount !== false && Boolean(cleanAcc);
+    if (date) payment.date = date;
+    if (note !== undefined) payment.note = note;
+
+    let createdTx = null;
+    if (shouldDeduct && payment.amount > 0) {
+      const updatedAcc = await adjustAccountBalance(cleanAcc, -payment.amount);
+      const accHubRole = updatedAcc?.hubRole || 'hub1_income';
+      createdTx = await Transaction.create({
+        date: payment.date || new Date().toISOString().slice(0, 10),
+        title: `Thanh toán nợ NCC: ${sup.supplierName}`,
+        amount: payment.amount,
+        type: 'expense',
+        accountName: cleanAcc,
+        category: 'Trả vốn NCC',
+        hubRole: accHubRole,
+        impactsWeeklyLimit: false,
+        notes: payment.note ? `${payment.note} • [Đồng bộ Hũ Nợ NCC]` : '[Đồng bộ Hũ Nợ NCC]'
+      });
+      payment.accountName = cleanAcc;
+      payment.deductFromAccount = true;
+      payment.transactionId = createdTx._id;
+      if (payment.note && payment.note.includes('bấm "Chọn Ngân Hàng"')) {
+        payment.note = '';
+      }
+    } else {
+      payment.accountName = '';
+      payment.deductFromAccount = false;
+    }
+
+    await sup.save();
+    res.json({ success: true, supplier: sup, transaction: createdTx, message: 'Đã cập nhật nguồn tiền trả nợ NCC' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Xóa / Hoàn tác 1 lần trả nợ NCC trong lịch sử
+app.delete('/api/supplier-debts/:id/payments/:paymentId', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
+  try {
+    const sup = await SupplierDebt.findById(req.params.id);
+    if (!sup) return res.status(404).json({ success: false, message: 'Không tìm thấy NCC' });
+
+    const payment = (sup.paymentHistory || []).id(req.params.paymentId);
+    if (!payment) return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi trả nợ' });
+
+    const payAmt = Number(payment.amount) || 0;
+
+    if (payment.deductFromAccount && payment.accountName && payAmt > 0) {
+      await adjustAccountBalance(payment.accountName, payAmt);
+    }
+    if (payment.transactionId) {
+      await Transaction.findByIdAndDelete(payment.transactionId);
+    }
+
+    sup.paidAmount = Math.max(0, (sup.paidAmount || 0) - payAmt);
+    sup.remainingAmount = Math.max(0, (sup.remainingAmount || 0) + payAmt);
+    sup.paymentHistory.pull({ _id: payment._id });
+
+    await sup.save();
+    res.json({ success: true, supplier: sup, message: 'Đã hoàn tác khoản trả nợ NCC' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -1772,8 +1907,62 @@ app.post('/api/supplier-debts/:id/pay', authenticateToken, requirePermission('ma
 
 app.post('/api/supplier-debts/batch-pay-all', authenticateToken, requirePermission('manageDebts'), async (req, res) => {
   try {
-    await SupplierDebt.updateMany({}, { $set: { remainingAmount: 0, status: 'completed' } });
-    await ServiceOrder.updateMany({}, { $set: { supplierPaid: true, supplierPaymentStatus: 'completed', supplierRemainingAmount: 0 } });
+    const { accountName, deductFromAccount = true, date, note } = req.body || {};
+    const payDate = date || new Date().toISOString().slice(0, 10);
+    const cleanAcc = (accountName || '').trim();
+    const shouldDeduct = deductFromAccount !== false && Boolean(cleanAcc);
+
+    const activeSuppliers = await SupplierDebt.find({ remainingAmount: { $gt: 0 } });
+    for (const sup of activeSuppliers) {
+      const payAmt = sup.remainingAmount || 0;
+      if (payAmt <= 0) continue;
+
+      let createdTx = null;
+      if (shouldDeduct) {
+        const updatedAcc = await adjustAccountBalance(cleanAcc, -payAmt);
+        const accHubRole = updatedAcc?.hubRole || 'hub1_income';
+        createdTx = await Transaction.create({
+          date: payDate,
+          title: `Thanh toán nợ NCC: ${sup.supplierName}`,
+          amount: payAmt,
+          type: 'expense',
+          accountName: cleanAcc,
+          category: 'Trả vốn NCC',
+          hubRole: accHubRole,
+          impactsWeeklyLimit: false,
+          notes: note ? `${note} • [Tất toán gom toàn bộ NCC]` : '[Tất toán gom toàn bộ NCC]'
+        });
+      }
+
+      sup.paidAmount = (sup.paidAmount || 0) + payAmt;
+      sup.remainingAmount = 0;
+      sup.status = 'completed';
+      if (!Array.isArray(sup.paymentHistory)) sup.paymentHistory = [];
+      sup.paymentHistory.forEach(p => { p.appliedToOrders = true; });
+      sup.paymentHistory.push({
+        amount: payAmt,
+        date: payDate,
+        accountName: shouldDeduct ? cleanAcc : '',
+        deductFromAccount: shouldDeduct,
+        appliedToOrders: true,
+        note: note || 'Tất toán gom toàn bộ NCC',
+        transactionId: createdTx ? createdTx._id : null
+      });
+      await sup.save();
+    }
+
+    await ServiceOrder.updateMany(
+      { supplierPaid: { $ne: true } },
+      {
+        $set: {
+          supplierPaid: true,
+          supplierPaymentStatus: 'completed',
+          supplierRemainingAmount: 0,
+          supplierPaidDate: payDate,
+          ...(cleanAcc ? { supplierPaidAccount: cleanAcc } : {})
+        }
+      }
+    );
     res.json({ success: true, message: 'Đã thanh toán toàn bộ công nợ cho các nhà cung cấp (Reset hũ về 0đ)' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -2579,11 +2768,14 @@ async function reconcileSupplierDebtFromOrders(supplierName, supplierKey, { allo
   });
 
   if (sup) {
+    const unappliedDirectPaid = (sup.paymentHistory || [])
+      .filter(p => !p.appliedToOrders)
+      .reduce((sum, p) => sum + Math.max(0, Number(p.amount) || 0), 0);
     sup.supplierKey = sKey;
     if (sName && !sup.supplierName) sup.supplierName = sName;
-    sup.paidAmount = paidCost;
+    sup.paidAmount = paidCost + unappliedDirectPaid;
     sup.totalAmount = totalCost;
-    sup.remainingAmount = unpaidCost;
+    sup.remainingAmount = Math.max(0, unpaidCost - unappliedDirectPaid);
     await sup.save();
     return sup;
   } else if (totalCost > 0) {

@@ -2432,10 +2432,10 @@
 
                   <!-- Hàng 3: Thanh nút thao tác (Tương thích Desktop & Mobile) -->
                   <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                    <button type="button" @click="openSupplierHistoryModal(s)" title="Xem các đơn hàng lẻ của NCC này"
+                    <button type="button" @click="openSupplierHistoryModal(s)" title="Xem lịch sử trả nợ & các đơn hàng lẻ của NCC này"
                             class="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition border border-blue-200/60">
                       <i class="fa-solid fa-clock-rotate-left text-[11px]"></i>
-                      <span>Lịch sử (<span x-text="getSupplierOrders(s).length"></span>)</span>
+                      <span>Lịch sử (<span x-text="getSupplierHistoryCount(s)"></span>)</span>
                     </button>
 
                     <div class="flex items-center gap-1.5 ml-auto">
@@ -5402,10 +5402,10 @@
             </span>
             <div>
               <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-                <span>Lịch Sử Đơn Hàng Lẻ:</span>
+                <span>Lịch Sử Trả Nợ &amp; Đơn Hàng:</span>
                 <span class="text-blue-600" x-text="selectedSupplierForHistory?.supplierName"></span>
               </h3>
-              <p class="text-xs text-slate-500 mt-0.5">Chi tiết các đơn hàng phát sinh tiền vốn phải trả nhà cung cấp này.</p>
+              <p class="text-xs text-slate-500 mt-0.5">Chi tiết các lần thanh toán công nợ và các đơn hàng lẻ của nhà cung cấp này.</p>
             </div>
           </div>
         </div>
@@ -5417,59 +5417,121 @@
       <!-- Quick Summary Cards -->
       <div class="grid grid-cols-3 gap-3 mb-4">
         <div class="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80">
-          <div class="text-[10px] font-bold text-amber-800 uppercase">Tổng nợ trong hũ:</div>
+          <div class="text-[10px] font-bold text-amber-800 uppercase">Tổng nợ còn lại:</div>
           <div class="text-lg font-mono font-extrabold text-amber-600 mt-0.5" x-text="formatVND(selectedSupplierForHistory?.remainingAmount)"></div>
           <p class="text-[9px] text-amber-700 mt-0.5">Số dư nợ thực tế hiện tại</p>
         </div>
 
         <div class="p-3 rounded-xl bg-rose-50/70 border border-rose-200/80">
-          <div class="text-[10px] font-bold text-rose-800 uppercase">Đơn chưa trả vốn:</div>
-          <div class="text-lg font-mono font-extrabold text-rose-600 mt-0.5" x-text="formatVND(getSupplierOrdersSummary(selectedSupplierForHistory).totalUnpaidCost)"></div>
-          <p class="text-[9px] text-rose-600 mt-0.5" x-text="getSupplierOrdersSummary(selectedSupplierForHistory).unpaidCount + ' đơn đang nợ vốn'"></p>
+          <div class="text-[10px] font-bold text-rose-800 uppercase"
+               x-text="getSupplierOrders(selectedSupplierForHistory).length > 0 ? 'Đơn chưa trả vốn:' : 'Tổng nợ gốc ban đầu:'"></div>
+          <div class="text-lg font-mono font-extrabold text-rose-600 mt-0.5"
+               x-text="getSupplierOrders(selectedSupplierForHistory).length > 0 ? formatVND(getSupplierOrdersSummary(selectedSupplierForHistory).totalUnpaidCost) : formatVND(selectedSupplierForHistory?.totalAmount || ((selectedSupplierForHistory?.remainingAmount || 0) + (selectedSupplierForHistory?.paidAmount || 0)))"></div>
+          <p class="text-[9px] text-rose-600 mt-0.5"
+             x-text="getSupplierOrders(selectedSupplierForHistory).length > 0 ? (getSupplierOrdersSummary(selectedSupplierForHistory).unpaidCount + ' đơn đang nợ vốn') : 'Tổng công nợ phát sinh'"></p>
         </div>
 
         <div class="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200/80">
-          <div class="text-[10px] font-bold text-emerald-800 uppercase">Đơn đã trả vốn:</div>
-          <div class="text-lg font-mono font-extrabold text-emerald-600 mt-0.5" x-text="formatVND(getSupplierOrdersSummary(selectedSupplierForHistory).totalPaidCost)"></div>
-          <p class="text-[9px] text-emerald-600 mt-0.5" x-text="getSupplierOrdersSummary(selectedSupplierForHistory).paidCount + ' đơn đã xong'"></p>
+          <div class="text-[10px] font-bold text-emerald-800 uppercase">Đã thanh toán / Trả nợ:</div>
+          <div class="text-lg font-mono font-extrabold text-emerald-600 mt-0.5"
+               x-text="formatVND(Math.max(selectedSupplierForHistory?.paidAmount || 0, getSupplierOrdersSummary(selectedSupplierForHistory).totalPaidCost))"></div>
+          <p class="text-[9px] text-emerald-600 mt-0.5"
+             x-text="getSupplierPayments(selectedSupplierForHistory).length + ' lần trả nợ • ' + getSupplierOrdersSummary(selectedSupplierForHistory).paidCount + ' đơn xong'"></p>
         </div>
       </div>
 
-      <!-- Orders List Container -->
-      <div class="flex-1 overflow-y-auto space-y-2.5 pr-1 max-h-[50vh]">
-        <template x-for="o in getSupplierOrders(selectedSupplierForHistory)" :key="o._id">
-          <div class="p-3.5 rounded-xl border bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition hover:border-slate-300"
-               :class="o.supplierPaid ? 'border-slate-200/70 bg-slate-50/40 opacity-80' : 'border-rose-200 bg-rose-50/20'">
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <strong class="text-xs font-bold text-slate-900" x-text="o.customerName"></strong>
-                <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700" x-text="o.serviceName || o.serviceType"></span>
-                <span class="text-[10px] text-slate-400" x-text="formatDate(o.date)"></span>
-              </div>
-              <div class="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span>Giá thu khách: <strong class="text-slate-800" x-text="formatVND(o.salePrice)"></strong></span>
-                <span>•</span>
-                <span>Giá vốn nợ NCC: <strong class="text-amber-700 font-bold font-mono" x-text="formatVND(o.costPrice)"></strong></span>
-                <span x-show="o.note" class="text-slate-400 italic" x-text="'• ' + o.note"></span>
-              </div>
-            </div>
-
-            <div class="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-              <button type="button" @click="toggleSupplierPaid(o)"
-                      class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer"
-                      :class="o.supplierPaid ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' : 'bg-rose-500 text-white hover:bg-rose-600'">
-                <i class="fa-solid" :class="o.supplierPaid ? 'fa-check' : 'fa-clock'"></i>
-                <span x-text="o.supplierPaid ? 'Đã trả vốn' : 'Chưa trả vốn'"></span>
-              </button>
-            </div>
+      <!-- History & Orders List Container -->
+      <div class="flex-1 overflow-y-auto space-y-3 pr-1 max-h-[52vh]">
+        <!-- 1. LỊCH SỬ CÁC LẦN TRẢ NỢ NCC -->
+        <div x-show="getSupplierPayments(selectedSupplierForHistory).length > 0" class="space-y-2">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-money-bill-transfer text-emerald-600"></i>
+              <span>Lịch sử các lần trả nợ NCC (<span x-text="getSupplierPayments(selectedSupplierForHistory).length"></span>)</span>
+            </h4>
           </div>
-        </template>
+          <template x-for="p in getSupplierPayments(selectedSupplierForHistory)" :key="p._id">
+            <div class="p-3.5 rounded-xl border border-emerald-200/80 bg-emerald-50/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div class="min-w-0 flex-1 space-y-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-600 text-white">✓ ĐÃ TRẢ NỢ</span>
+                  <strong class="text-sm font-mono font-extrabold text-emerald-700" x-text="'-' + formatVND(p.amount)"></strong>
+                  <span class="text-[11px] font-mono text-slate-500" x-text="formatDate(p.date)"></span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 text-xs">
+                  <template x-if="p.deductFromAccount && p.accountName">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-emerald-200 text-emerald-800 text-[11px] font-semibold">
+                      <i class="fa-solid fa-building-columns text-[10px]"></i>
+                      <span x-text="'Đã trừ TK: ' + p.accountName + ' (Đã ghi Sổ Giao Dịch)'"></span>
+                    </span>
+                  </template>
+                  <template x-if="!p.deductFromAccount || !p.accountName">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 border border-amber-300 text-amber-900 text-[11px] font-bold">
+                      <i class="fa-solid fa-triangle-exclamation text-[10px]"></i>
+                      <span>Chưa chọn ngân hàng trừ tiền &amp; chưa ghi Sổ Giao Dịch</span>
+                    </span>
+                  </template>
+                  <span x-show="p.note" class="text-[11px] text-slate-500 italic" x-text="p.note"></span>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-1.5 shrink-0">
+                <button type="button" @click="openSyncSupplierPaymentModal(selectedSupplierForHistory, p)"
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                        :class="(!p.deductFromAccount || !p.accountName) ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'">
+                  <i class="fa-solid fa-building-columns text-[10px]"></i>
+                  <span x-text="(!p.deductFromAccount || !p.accountName) ? 'Chọn Ngân Hàng' : 'Đổi TK'"></span>
+                </button>
+                <button type="button" @click="deleteSupplierPayment(selectedSupplierForHistory, p)" title="Hoàn tác khoản trả nợ này"
+                        class="px-2 py-1.5 rounded-lg bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-semibold transition cursor-pointer">
+                  <i class="fa-solid fa-rotate-left text-[10px]"></i>
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- 2. DANH SÁCH ĐƠN HÀNG LẺ CỦA NCC -->
+        <div x-show="getSupplierOrders(selectedSupplierForHistory).length > 0" class="space-y-2">
+          <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 pt-1">
+            <i class="fa-solid fa-file-invoice text-blue-600"></i>
+            <span>Đơn hàng lẻ của NCC (<span x-text="getSupplierOrders(selectedSupplierForHistory).length"></span>)</span>
+          </h4>
+          <template x-for="o in getSupplierOrders(selectedSupplierForHistory)" :key="o._id">
+            <div class="p-3.5 rounded-xl border bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition hover:border-slate-300"
+                 :class="o.supplierPaid ? 'border-slate-200/70 bg-slate-50/40 opacity-80' : 'border-rose-200 bg-rose-50/20'">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <strong class="text-xs font-bold text-slate-900" x-text="o.customerName"></strong>
+                  <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700" x-text="o.serviceName || o.serviceType"></span>
+                  <span class="text-[10px] text-slate-400" x-text="formatDate(o.date)"></span>
+                </div>
+                <div class="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span>Giá thu khách: <strong class="text-slate-800" x-text="formatVND(o.salePrice)"></strong></span>
+                  <span>•</span>
+                  <span>Giá vốn nợ NCC: <strong class="text-amber-700 font-bold font-mono" x-text="formatVND(o.costPrice)"></strong></span>
+                  <span x-show="o.note" class="text-slate-400 italic" x-text="'• ' + o.note"></span>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                <button type="button" @click="toggleSupplierPaid(o)"
+                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                        :class="o.supplierPaid ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' : 'bg-rose-500 text-white hover:bg-rose-600'">
+                  <i class="fa-solid" :class="o.supplierPaid ? 'fa-check' : 'fa-clock'"></i>
+                  <span x-text="o.supplierPaid ? 'Đã trả vốn' : 'Chưa trả vốn'"></span>
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
 
         <!-- Trống -->
-        <div x-show="getSupplierOrders(selectedSupplierForHistory).length === 0" class="py-8 text-center text-slate-400 space-y-2">
+        <div x-show="getSupplierOrders(selectedSupplierForHistory).length === 0 && getSupplierPayments(selectedSupplierForHistory).length === 0"
+             class="py-8 text-center text-slate-400 space-y-2">
           <i class="fa-solid fa-receipt text-3xl opacity-30"></i>
-          <p class="text-xs">Chưa có đơn hàng lẻ chi tiết nào cho NCC này trong sổ đơn.</p>
-          <p class="text-[11px] text-slate-400">Số dư nợ được ghi nhận trực tiếp trong hũ hoặc qua các lần gom trước.</p>
+          <p class="text-xs">Chưa có lịch sử trả nợ hoặc đơn hàng lẻ chi tiết nào cho NCC này.</p>
+          <p class="text-[11px] text-slate-400">Khi bạn bấm "Trả nợ", lịch sử thanh toán và ngân hàng chi trả sẽ hiển thị tại đây.</p>
         </div>
       </div>
 
@@ -5482,7 +5544,7 @@
         </button>
 
         <div class="flex items-center gap-2">
-          <button type="button" @click="paySupplierPrompt(selectedSupplierForHistory); modals.supplierHistory = false"
+          <button type="button" @click="paySupplierPrompt(selectedSupplierForHistory)"
                   class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer">
             <i class="fa-solid fa-money-bill-wave text-[10px]"></i>
             <span>Trả Nợ NCC Này</span>
@@ -5492,6 +5554,107 @@
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- MODAL: THANH TOÁN NỢ NHÀ CUNG CẤP & CHỌN NGÂN HÀNG CHI TRẢ -->
+  <div x-show="modals.supplierPayment" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div class="bg-white rounded-2xl border border-slate-200/90 shadow-modal max-w-md w-full p-5 sm:p-6 space-y-4"
+         @click.away="if (!supplierPaymentModal.loading) modals.supplierPayment = false">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <span class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm shadow-2xs">
+            <i class="fa-solid fa-building-columns"></i>
+          </span>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900"
+                x-text="supplierPaymentModal.mode === 'sync_payment' ? ('Chọn Ngân Hàng Trừ Tiền: ' + supplierPaymentModal.supplierName) : (supplierPaymentModal.mode === 'batch_all' ? 'Thanh Toán Gom Toàn Bộ NCC' : ('Trả Nợ NCC: ' + supplierPaymentModal.supplierName))"></h3>
+            <p class="text-[11px] text-slate-500 mt-0.5"
+               x-text="supplierPaymentModal.mode === 'sync_payment' ? ('Khoản trả nợ: ' + formatVND(supplierPaymentModal.amount)) : ('Nợ hiện tại: ' + formatVND(supplierPaymentModal.remainingAmount))"></p>
+          </div>
+        </div>
+        <button type="button" @click="modals.supplierPayment = false" class="text-slate-400 hover:text-slate-600">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="confirmSupplierPayment()" class="space-y-3.5">
+        <!-- Số tiền trả nợ (hiển thị khi trả nợ từng NCC) -->
+        <div x-show="supplierPaymentModal.mode === 'pay'">
+          <label class="block text-xs font-bold text-slate-700 mb-1">Số tiền muốn trả (VNĐ):</label>
+          <input type="text" x-model="supplierPaymentModal.amount" required
+                 placeholder="VD: 200000 hoặc 200k"
+                 class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-600 focus:outline-none">
+          <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+            <button type="button" @click="supplierPaymentModal.amount = supplierPaymentModal.remainingAmount"
+                    class="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold hover:bg-emerald-100 cursor-pointer">
+              Trả hết (<span x-text="formatVND(supplierPaymentModal.remainingAmount)"></span>)
+            </button>
+            <button type="button" @click="supplierPaymentModal.amount = Math.round(supplierPaymentModal.remainingAmount / 2)"
+                    class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-semibold hover:bg-slate-200 cursor-pointer">
+              Trả 50%
+            </button>
+            <button type="button" @click="supplierPaymentModal.amount = 200000"
+                    class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-semibold hover:bg-slate-200 cursor-pointer">
+              200.000đ
+            </button>
+          </div>
+        </div>
+
+        <!-- Tùy chọn trừ số dư ngân hàng & ghi Sổ Giao Dịch -->
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
+          <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+            <input type="checkbox" x-model="supplierPaymentModal.deductFromAccount"
+                   class="rounded text-emerald-600 focus:ring-emerald-600 w-4 h-4">
+            <span>Trừ trực tiếp số dư ngân hàng &amp; ghi vào Sổ Giao Dịch Tổng</span>
+          </label>
+
+          <div x-show="supplierPaymentModal.deductFromAccount" class="space-y-1.5 pt-1">
+            <label class="block text-[11px] font-semibold text-slate-600">Chọn ngân hàng / ví chi trả:</label>
+            <select x-model="supplierPaymentModal.accountName"
+                    class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:ring-2 focus:ring-slate-900 focus:outline-none">
+              <template x-for="acc in (dashboard?.accounts?.list || [])" :key="acc._id || acc.name">
+                <option :value="acc.name" x-text="acc.name + ' (Hiện có: ' + formatVND(acc.balance) + ')'"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+
+        <!-- Ngày thanh toán & Ghi chú -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Ngày trả nợ:</label>
+            <input type="date" x-model="supplierPaymentModal.date" required
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Ghi chú (tùy chọn):</label>
+            <input type="text" x-model="supplierPaymentModal.note" placeholder="VD: Trả bớt 200k..."
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+          <button type="button" @click="modals.supplierPayment = false"
+                  :disabled="supplierPaymentModal.loading"
+                  class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer">
+            Hủy
+          </button>
+          <button type="submit"
+                  :disabled="supplierPaymentModal.loading"
+                  class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs">
+            <i class="fa-solid" :class="supplierPaymentModal.loading ? 'fa-spinner fa-spin' : 'fa-check'"></i>
+            <span x-text="supplierPaymentModal.loading ? 'Đang xử lý...' : 'Xác Nhận Thanh Toán'"></span>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -5693,6 +5856,6 @@
   </div>
 
   <!-- Load App Script -->
-  <script src="/app.js?v=4.0"></script>
+  <script src="/app.js?v=4.1"></script>
 </body>
 </html>
