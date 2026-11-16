@@ -1294,6 +1294,21 @@ function cashFlowApp() {
               this.selectedSupplierForHistory = freshSup;
             }
           }
+          if (this.modals.memberStatement && this.selectedMemberStatement) {
+            const targetGroup = this.selectedMemberStatement.group || this.diningCategory || 'work';
+            const groupData = targetGroup === 'family'
+              ? data.card4_dining?.family
+              : (targetGroup === 'all' ? data.card4_dining?.combined : data.card4_dining?.work);
+            const freshMember = (groupData?.members || []).find(
+              m => String(m.id || m._id) === String(this.selectedMemberStatement.id || this.selectedMemberStatement._id) ||
+                   this.normalizeKey(m.name) === this.normalizeKey(this.selectedMemberStatement.name)
+            );
+            if (freshMember) {
+              const savedFilter = this.memberStatementFilter;
+              this.openMemberStatement(freshMember);
+              this.memberStatementFilter = savedFilter;
+            }
+          }
           this.fetchCorrectionRequests();
           this.fetchUpcomingTransactions();
         } else {
@@ -3079,8 +3094,10 @@ function cashFlowApp() {
           const isTransfer = Boolean(s.transferRef);
           events.push({
             id: s._id,
+            rawId: String(s._id || ''),
             date: s.date,
-            isoDate: s.date || s.createdAt || '1970-01-01',
+            isoDate: s.date || (s.createdAt ? String(s.createdAt).slice(0, 10) : '1970-01-01'),
+            createdAt: s.createdAt || s.updatedAt || '',
             type: isTransfer ? 'transfer' : (isTopup ? 'topup' : 'borrow'),
             typeLabel: isTransfer ? '⇄ Cấn trừ 2 sổ' : (isTopup ? '💰 Nạp tiền vào quỹ' : '💸 Mượn tiền quỹ'),
             title: isTransfer ? (s.note || 'Cấn trừ số dư 2 sổ') : (isTopup ? 'Nạp tiền vào quỹ' : 'Mượn tiền từ quỹ'),
@@ -3102,9 +3119,11 @@ function cashFlowApp() {
           if (isMatch && (sp.amount || 0) > 0) {
             events.push({
               id: b._id + '_' + (sp.personKey || sp.personName),
+              rawId: String(b._id || ''),
               billId: b._id,
               date: b.date,
-              isoDate: b.date || b.createdAt || '1970-01-01',
+              isoDate: b.date || (b.createdAt ? String(b.createdAt).slice(0, 10) : '1970-01-01'),
+              createdAt: b.createdAt || b.updatedAt || '',
               type: 'meal',
               typeLabel: '🍜 Tiền ăn bữa trưa',
               title: b.mealTitle || 'Bữa ăn chung',
@@ -3117,11 +3136,16 @@ function cashFlowApp() {
         });
       });
 
-      // Sắp xếp thời gian tăng dần để tính số dư lũy kế
+      // Sắp xếp thời gian tăng dần chuẩn xác theo cả Ngày (date) và Giờ tạo thực tế (createdAt / ObjectId) để tính số dư lũy kế
       events.sort((a, b) => {
         if (a.type === 'opening') return -1;
         if (b.type === 'opening') return 1;
-        return (a.isoDate || '').localeCompare(b.isoDate || '');
+        const dateCmp = String(a.isoDate || '').localeCompare(String(b.isoDate || ''));
+        if (dateCmp !== 0) return dateCmp;
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (timeA !== timeB) return timeA - timeB;
+        return String(a.rawId || a.id || '').localeCompare(String(b.rawId || b.id || ''));
       });
 
       // Tính số dư lũy kế (Running Balance) sau mỗi giao dịch

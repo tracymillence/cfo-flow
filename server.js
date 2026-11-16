@@ -1215,12 +1215,12 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
       Account.find().sort({ type: 1, name: 1 }),
       SupplierDebt.find().sort({ remainingAmount: -1, createdAt: -1 }),
       CashflowReminder.find().sort({ date: 1, createdAt: 1 }),
-      ServiceOrder.find().sort({ createdAt: -1 }),
-      DiningLedger.find().sort({ date: -1, createdAt: -1 }),
+      ServiceOrder.find().sort({ date: -1, createdAt: -1, _id: -1 }),
+      DiningLedger.find().sort({ date: -1, createdAt: -1, _id: -1 }),
       DiningMember.find().sort({ name: 1 }),
-      DiningSettlement.find().sort({ createdAt: -1 }),
+      DiningSettlement.find().sort({ date: -1, createdAt: -1, _id: -1 }),
       Debt.find().sort({ dueDate: 1 }),
-      Transaction.find().sort({ date: -1, createdAt: -1 }),
+      Transaction.find().sort({ date: -1, createdAt: -1, _id: -1 }),
       Income.find().sort({ date: 1 }),
       PersonalExpense.find().sort({ dueDay: 1, createdAt: 1 })
     ]);

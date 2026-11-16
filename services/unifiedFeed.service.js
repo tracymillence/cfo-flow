@@ -173,7 +173,7 @@ async function getUnifiedFeed(page = 1, limit = 50, filters = {}) {
               },
               source: { $literal: 'personal_expense' },
               sourceId: '$_id',
-              createdAt: 1
+              createdAt: { $ifNull: ['$updatedAt', '$createdAt'] }
             }
           }
         ]
@@ -184,7 +184,7 @@ async function getUnifiedFeed(page = 1, limit = 50, filters = {}) {
     ...(Object.keys(txMatch).length > 0 ? [{ $match: txMatch }] : []),
 
     // 5. Global facet sorting and memory-efficient pagination
-    { $sort: { date: -1, createdAt: -1 } },
+    { $sort: { date: -1, createdAt: -1, _id: -1 } },
     {
       $facet: {
         metadata: [{ $count: 'total' }],
