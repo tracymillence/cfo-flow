@@ -20,7 +20,20 @@ const personalExpenseSchema = new mongoose.Schema({
   paidAccount: { type: String, default: 'Vietcombank' },
   deductFromAccount: { type: Boolean, default: true },
   accountSynced: { type: Boolean, default: false },
-  notes: { type: String, default: '' }
+  notes: { type: String, default: '' },
+  // Lịch sử trạng thái thanh toán theo từng tháng (YYYY-MM) cho Hóa Đơn Cố Định
+  monthlyHistory: {
+    type: [{
+      monthKey: { type: String, required: true }, // VD: '2026-11', '2026-12'
+      status: { type: String, enum: ['pending', 'paid'], default: 'pending' },
+      amount: { type: Number, default: 0 },
+      paidDate: { type: String, default: '' },
+      paidAccount: { type: String, default: 'Vietcombank' },
+      deductFromAccount: { type: Boolean, default: true },
+      accountSynced: { type: Boolean, default: false }
+    }],
+    default: []
+  }
 }, { timestamps: true });
 
 module.exports = mongoose.model('PersonalExpense', personalExpenseSchema);

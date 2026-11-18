@@ -362,6 +362,7 @@ function cashFlowApp() {
     },
 
     // Chi phí cá nhân & Hóa đơn cố định (Hub 4)
+    selectedFixedBillMonth: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date()).slice(0, 7),
     personalExpenseForm: {
       title: '',
       category: 'streaming_tech', // health_fitness | streaming_tech | living_utility | savings | flexible_spending
@@ -1261,6 +1262,102 @@ function cashFlowApp() {
       return this.personalHub.fixedBillsList || [];
     },
 
+    getCurrentMonthKey() {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date()).slice(0, 7);
+    },
+
+    getNextMonthKey(monthKey = this.getCurrentMonthKey()) {
+      const [y, m] = String(monthKey || '').split('-').map(Number);
+      if (!y || !m) return this.getCurrentMonthKey();
+      const nextY = m === 12 ? y + 1 : y;
+      const nextM = m === 12 ? 1 : m + 1;
+      return `${nextY}-${String(nextM).padStart(2, '0')}`;
+    },
+
+    prevFixedBillMonth() {
+      const [y, m] = String(this.selectedFixedBillMonth || this.getCurrentMonthKey()).split('-').map(Number);
+      if (!y || !m) return;
+      const prevY = m === 1 ? y - 1 : y;
+      const prevM = m === 1 ? 12 : m - 1;
+      this.selectedFixedBillMonth = `${prevY}-${String(prevM).padStart(2, '0')}`;
+    },
+
+    nextFixedBillMonth() {
+      const [y, m] = String(this.selectedFixedBillMonth || this.getCurrentMonthKey()).split('-').map(Number);
+      if (!y || !m) return;
+      const nextY = m === 12 ? y + 1 : y;
+      const nextM = m === 12 ? 1 : m + 1;
+      this.selectedFixedBillMonth = `${nextY}-${String(nextM).padStart(2, '0')}`;
+    },
+
+    formatMonthLabel(monthKey = this.selectedFixedBillMonth) {
+      const [y, m] = String(monthKey || '').split('-');
+      if (!y || !m) return monthKey || '';
+      return `Tháng ${m}/${y}`;
+    },
+
+    getBillMonthEntry(bill, monthKey = this.selectedFixedBillMonth) {
+      const targetMk = monthKey || this.getCurrentMonthKey();
+      if (!bill) {
+        return { monthKey: targetMk, status: 'pending', amount: 0, paidDate: '', paidAccount: 'Vietcombank', deductFromAccount: true };
+      }
+      const history = Array.isArray(bill.monthlyHistory) ? bill.monthlyHistory : [];
+      const entry = history.find(h => h.monthKey === targetMk);
+      if (entry) return entry;
+
+      if (bill.status === 'paid' && history.length === 0) {
+        const legacyMk = (bill.paidDate && bill.paidDate.length >= 7) ? bill.paidDate.slice(0, 7) : this.getCurrentMonthKey();
+        if (legacyMk === targetMk) {
+          return {
+            monthKey: targetMk,
+            status: 'paid',
+            amount: bill.amount,
+            paidDate: bill.paidDate || '',
+            paidAccount: bill.paidAccount || 'Vietcombank',
+            deductFromAccount: bill.deductFromAccount !== false
+          };
+        }
+      }
+      return {
+        monthKey: targetMk,
+        status: 'pending',
+        amount: bill.amount,
+        paidDate: '',
+        paidAccount: bill.paidAccount || 'Vietcombank',
+        deductFromAccount: true
+      };
+    },
+
+    isBillPaidInSelectedMonth(bill) {
+      return this.getBillMonthEntry(bill, this.selectedFixedBillMonth).status === 'paid';
+    },
+
+    getBillPaidAccountInSelectedMonth(bill) {
+      return this.getBillMonthEntry(bill, this.selectedFixedBillMonth).paidAccount || bill?.paidAccount || 'Vietcombank';
+    },
+
+    getBillPaidDateInSelectedMonth(bill) {
+      return this.getBillMonthEntry(bill, this.selectedFixedBillMonth).paidDate || '';
+    },
+
+    getBillDueDateInSelectedMonth(bill) {
+      const [y, m] = String(this.selectedFixedBillMonth || this.getCurrentMonthKey()).split('-');
+      const day = String(bill?.dueDay || 5).padStart(2, '0');
+      return `${day}/${m}/${y}`;
+    },
+
+    get fixedBillsPaidSelectedMonth() {
+      return (this.fixedBills || [])
+        .filter(b => this.isBillPaidInSelectedMonth(b))
+        .reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+    },
+
+    get fixedBillsPendingSelectedMonth() {
+      return (this.fixedBills || [])
+        .filter(b => !this.isBillPaidInSelectedMonth(b))
+        .reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+    },
+
     get savingsList() {
       return this.personalHub.savingsList || [];
     },
@@ -1451,6 +1548,25 @@ function cashFlowApp() {
         return this.deleteSettlement(id, title);
       }
       if (src === 'personal_expense') {
+        if (t.monthKey) {
+          const bill = (this.fixedBills || []).find(b => String(b._id || b.id) === String(id));
+          if (bill) {
+            if (!confirm(`Hoàn tác trạng thái thanh toán của "${title}"?\nSố tiền sẽ được hoàn lại vào tài khoản ${t.accountName} và hóa đơn kỳ ${t.monthKey} trở về Chờ Thanh Toán.`)) return;
+            const res = await this.authFetch(`/api/personal/expense/${id}/toggle`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ monthKey: t.monthKey, paidAccount: t.accountName })
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.notify(`↩️ Đã hoàn tác "${title}" về Chờ Thanh Toán!`);
+              await this.fetchDashboard();
+              await this.fetchUpcomingTransactions();
+              await this.fetchProjectionHealth();
+            }
+            return;
+          }
+        }
         return this.deletePersonalExpense(id, title);
       }
       return this.deleteTransaction(id, title);
@@ -3270,7 +3386,10 @@ function cashFlowApp() {
         const res = await this.authFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(this.personalExpenseForm)
+          body: JSON.stringify({
+            ...this.personalExpenseForm,
+            monthKey: this.selectedFixedBillMonth
+          })
         });
         const data = await res.json();
         if (!data.success) throw new Error(data.message || data.error);
@@ -3278,6 +3397,7 @@ function cashFlowApp() {
         this.notify('✓ ' + (this.editingPersonalId ? 'Đã cập nhật khoản chi & đồng bộ ngân hàng!' : 'Đã thêm khoản chi cá nhân mới!'));
         this.modals.personalExpense = false;
         await this.fetchDashboard();
+        await this.fetchUpcomingTransactions();
         await this.fetchProjectionHealth();
       } catch (err) {
         console.error('Lỗi lưu chi phí cá nhân:', err);
@@ -3285,25 +3405,30 @@ function cashFlowApp() {
       }
     },
 
-    async togglePersonalExpenseStatus(item) {
+    async togglePersonalExpenseStatus(item, monthKey = null) {
       try {
+        const targetMonth = monthKey || this.selectedFixedBillMonth || this.getCurrentMonthKey();
+        const chosenAcc = this.getBillPaidAccountInSelectedMonth(item) || this.defaultBankAccountName();
         const res = await this.authFetch(`/api/personal/expense/${item._id || item.id}/toggle`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            paidAccount: item.paidAccount || this.defaultBankAccountName(),
+            monthKey: targetMonth,
+            paidAccount: chosenAcc,
             deductFromAccount: true
           })
         });
         const data = await res.json();
         if (!data.success) throw new Error(data.message || data.error);
 
-        if (data.item.status === 'paid') {
-          this.notify(`✓ Đã thanh toán "${item.title}" (-${this.formatVND(item.amount)} từ ${data.item.paidAccount}) & ghi Sổ Giao Dịch!`);
+        const newStatus = data.status || data.item?.status;
+        if (newStatus === 'paid') {
+          this.notify(`✓ Đã thanh toán "${item.title}" (${this.formatMonthLabel(targetMonth)}) (-${this.formatVND(item.amount)} từ ${chosenAcc}) & đồng bộ Dự Chi + Sổ Giao Dịch!`);
         } else {
-          this.notify(`↩️ Đã hoàn tác "${item.title}" về Chờ Thanh Toán (+${this.formatVND(item.amount)} hoàn lại ${data.item.paidAccount})!`);
+          this.notify(`↩️ Đã hoàn tác "${item.title}" (${this.formatMonthLabel(targetMonth)}) về Chờ Thanh Toán (+${this.formatVND(item.amount)} hoàn lại ${chosenAcc})!`);
         }
         await this.fetchDashboard();
+        await this.fetchUpcomingTransactions();
         await this.fetchProjectionHealth();
       } catch (err) {
         alert('Lỗi: ' + err.message);
@@ -3317,6 +3442,7 @@ function cashFlowApp() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            monthKey: this.selectedFixedBillMonth,
             paidAccount: newAccount,
             deductFromAccount: true
           })
@@ -3326,6 +3452,7 @@ function cashFlowApp() {
 
         this.notify(`✓ Đã chuyển nguồn thanh toán "${item.title}" sang ${newAccount}!`);
         await this.fetchDashboard();
+        await this.fetchUpcomingTransactions();
         await this.fetchProjectionHealth();
       } catch (err) {
         alert('Lỗi: ' + err.message);
@@ -3340,6 +3467,7 @@ function cashFlowApp() {
         if (data.success) {
           this.notify('🗑️ ' + (data.message || 'Đã xóa khoản chi cá nhân!'));
           await this.fetchDashboard();
+          await this.fetchUpcomingTransactions();
           await this.fetchProjectionHealth();
         } else {
           alert('Lỗi: ' + (data.message || data.error));
@@ -3450,6 +3578,16 @@ function cashFlowApp() {
           this.openSupplierModal(sup);
         } else {
           alert('Khoản nợ NCC này được đồng bộ từ Hũ Tiền Hàng Nợ Từng NCC.');
+        }
+        return;
+      }
+      if (item.isFixedBill) {
+        const bill = (this.fixedBills || []).find(b => String(b._id || b.id) === String(item.fixedBillId));
+        if (bill) {
+          if (item.monthKey) this.selectedFixedBillMonth = item.monthKey;
+          this.openPersonalExpenseModal(bill, 'fixed_bill');
+        } else {
+          alert('Khoản hóa đơn cố định này được đồng bộ từ Sổ Chi Tiêu Cá Nhân (Hub 4).');
         }
         return;
       }

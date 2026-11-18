@@ -130,26 +130,74 @@ async function getUnifiedFeed(page = 1, limit = 50, filters = {}) {
       }
     },
 
-    // 4. Union with 'personalexpenses' (Hub 4 Paid Bills)
+    // 4. Union with 'personalexpenses' (Hub 4 Paid Bills across monthly cycles)
     {
       $unionWith: {
         coll: 'personalexpenses',
         pipeline: [
-          { $match: { status: 'paid', deductFromAccount: { $ne: false } } },
+          {
+            $addFields: {
+              _historyEntries: {
+                $cond: [
+                  { $gt: [{ $size: { $ifNull: ['$monthlyHistory', []] } }, 0] },
+                  '$monthlyHistory',
+                  {
+                    $cond: [
+                      { $eq: ['$status', 'paid'] },
+                      [{
+                        monthKey: '',
+                        status: '$status',
+                        amount: '$amount',
+                        paidDate: '$paidDate',
+                        paidAccount: '$paidAccount',
+                        deductFromAccount: '$deductFromAccount'
+                      }],
+                      []
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          { $unwind: '$_historyEntries' },
+          {
+            $match: {
+              '_historyEntries.status': 'paid',
+              '_historyEntries.deductFromAccount': { $ne: false }
+            }
+          },
           {
             $project: {
-              _id: 1,
-              date: {
+              _id: {
                 $cond: [
-                  { $gt: [{ $strLenCP: { $ifNull: ['$paidDate', ''] } }, 0] },
-                  '$paidDate',
-                  { $dateToString: { format: '%Y-%m-%d', date: { $ifNull: ['$updatedAt', '$createdAt'] } } }
+                  { $gt: [{ $strLenCP: { $ifNull: ['$_historyEntries.monthKey', ''] } }, 0] },
+                  { $concat: [{ $toString: '$_id' }, '_', '$_historyEntries.monthKey'] },
+                  '$_id'
                 ]
               },
-              title: '$title',
-              amount: '$amount',
+              date: {
+                $cond: [
+                  { $gt: [{ $strLenCP: { $ifNull: ['$_historyEntries.paidDate', ''] } }, 0] },
+                  '$_historyEntries.paidDate',
+                  {
+                    $cond: [
+                      { $gt: [{ $strLenCP: { $ifNull: ['$paidDate', ''] } }, 0] },
+                      '$paidDate',
+                      { $dateToString: { format: '%Y-%m-%d', date: { $ifNull: ['$updatedAt', '$createdAt'] } } }
+                    ]
+                  }
+                ]
+              },
+              title: {
+                $cond: [
+                  { $gt: [{ $strLenCP: { $ifNull: ['$_historyEntries.monthKey', ''] } }, 0] },
+                  { $concat: ['$title', ' (Kỳ ', '$_historyEntries.monthKey', ')'] },
+                  '$title'
+                ]
+              },
+              amount: { $ifNull: ['$_historyEntries.amount', '$amount'] },
               type: { $literal: 'expense' },
-              accountName: { $ifNull: ['$paidAccount', 'Vietcombank'] },
+              accountName: { $ifNull: ['$_historyEntries.paidAccount', { $ifNull: ['$paidAccount', 'Vietcombank'] }] },
               toAccountName: { $literal: '' },
               category: {
                 $switch: {
@@ -171,6 +219,7 @@ async function getUnifiedFeed(page = 1, limit = 50, filters = {}) {
                   '[Đồng bộ Sổ Cá Nhân]'
                 ]
               },
+              monthKey: { $ifNull: ['$_historyEntries.monthKey', ''] },
               source: { $literal: 'personal_expense' },
               sourceId: '$_id',
               createdAt: { $ifNull: ['$updatedAt', '$createdAt'] }

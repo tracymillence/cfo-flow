@@ -1434,7 +1434,7 @@
                        :class="[
                          item.type === 'income' 
                            ? 'bg-emerald-50/40 border-emerald-200 hover:border-emerald-300' 
-                           : (item.isSupplierDebt ? 'bg-amber-50/50 border-amber-300 hover:border-amber-400' : 'bg-rose-50/40 border-rose-200 hover:border-rose-300'),
+                           : (item.isSupplierDebt ? 'bg-amber-50/50 border-amber-300 hover:border-amber-400' : (item.isFixedBill ? 'bg-purple-50/40 border-purple-200 hover:border-purple-300' : 'bg-rose-50/40 border-rose-200 hover:border-rose-300')),
                          editingUpcomingId === item._id ? 'ring-2 ring-indigo-500 border-indigo-400 bg-indigo-50/30' : ''
                        ]">
                     
@@ -1443,15 +1443,15 @@
                       
                       <!-- Icon Badge -->
                       <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-sm mt-0.5"
-                           :class="item.type === 'income' ? 'bg-emerald-100 text-emerald-700' : (item.isSupplierDebt ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700')">
-                        <i :class="item.isSupplierDebt ? 'fa-solid fa-truck-ramp-box' : (item.type === 'income' ? 'fa-solid fa-arrow-down-left' : 'fa-solid fa-arrow-up-right')"></i>
+                           :class="item.type === 'income' ? 'bg-emerald-100 text-emerald-700' : (item.isSupplierDebt ? 'bg-amber-100 text-amber-800' : (item.isFixedBill ? 'bg-purple-100 text-purple-700' : 'bg-rose-100 text-rose-700'))">
+                        <i :class="item.isSupplierDebt ? 'fa-solid fa-truck-ramp-box' : (item.isFixedBill ? 'fa-solid fa-calendar-check' : (item.type === 'income' ? 'fa-solid fa-arrow-down-left' : 'fa-solid fa-arrow-up-right'))"></i>
                       </div>
 
                       <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-1.5">
                           <span class="px-2 py-0.5 rounded text-[10px] font-bold"
-                                :class="item.type === 'income' ? 'bg-emerald-200/70 text-emerald-800' : (item.isSupplierDebt ? 'bg-amber-200/80 text-amber-900 border border-amber-300' : 'bg-rose-200/70 text-rose-800')"
-                                x-text="item.isSupplierDebt ? 'HẠN NỢ NCC' : (item.type === 'income' ? 'DỰ THU' : 'DỰ CHI')"></span>
+                                :class="item.type === 'income' ? 'bg-emerald-200/70 text-emerald-800' : (item.isSupplierDebt ? 'bg-amber-200/80 text-amber-900 border border-amber-300' : (item.isFixedBill ? 'bg-purple-200/80 text-purple-900 border border-purple-300' : 'bg-rose-200/70 text-rose-800'))"
+                                x-text="item.isSupplierDebt ? 'HẠN NỢ NCC' : (item.isFixedBill ? 'HÓA ĐƠN CỐ ĐỊNH' : (item.type === 'income' ? 'DỰ THU' : 'DỰ CHI'))"></span>
 
                           <span class="px-2 py-0.5 rounded text-[10px] font-medium"
                                 :class="{
@@ -1524,12 +1524,12 @@
                             </button>
 
                             <button type="button" @click="editUpcomingTransaction(item)"
-                                    title="Chỉnh sửa khoản Dự Thu / Dự Chi này"
+                                    :title="item.isFixedBill ? 'Chỉnh sửa Hóa Đơn Cố Định này' : 'Chỉnh sửa khoản Dự Thu / Dự Chi này'"
                                     class="w-8 h-8 rounded-lg border border-slate-200 bg-white hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 text-slate-500 transition flex items-center justify-center text-xs cursor-pointer">
                               <i class="fa-solid fa-pen"></i>
                             </button>
 
-                            <button type="button" @click="deleteUpcomingTransaction(item._id, false)"
+                            <button type="button" x-show="!item.isFixedBill" @click="deleteUpcomingTransaction(item._id, false)"
                                     title="Xóa khoản dự kiến này"
                                     class="w-8 h-8 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-slate-400 transition flex items-center justify-center text-xs cursor-pointer">
                               <i class="fa-solid fa-trash-can"></i>
@@ -2922,8 +2922,8 @@
                 </div>
                 <div class="space-y-1">
                   <div class="flex items-center justify-between text-[11px] font-mono">
-                    <span class="text-emerald-700">Đã trả: <strong x-text="formatVND(personalHub.paidFixedBills)"></strong></span>
-                    <span class="text-amber-700">Chờ trả: <strong x-text="formatVND(personalHub.pendingFixedBills)"></strong></span>
+                    <span class="text-emerald-700">Đã trả (<span x-text="formatMonthLabel(selectedFixedBillMonth)"></span>): <strong x-text="formatVND(fixedBillsPaidSelectedMonth)"></strong></span>
+                    <span class="text-amber-700">Chờ trả: <strong x-text="formatVND(fixedBillsPendingSelectedMonth)"></strong></span>
                   </div>
                   <p class="text-[10px] text-slate-400 leading-tight">Chi phí tiện ích sống không co giãn. Cất riêng ngay để không bị tiêu lẹm.</p>
                 </div>
@@ -2984,6 +2984,43 @@
 
           <!-- SUB-TAB 1: HÓA ĐƠN CỐ ĐỊNH (GYM, STREAMING, UTILITIES) -->
           <div x-show="personalTab === 'fixed'" class="space-y-3 pt-1">
+            <!-- Thanh chọn kỳ tháng & trạng thái đồng bộ 2 chiều với Dự Thu / Dự Chi -->
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <i class="fa-regular fa-calendar-days text-purple-600"></i>
+                  <span>Xem kỳ hóa đơn tháng:</span>
+                </span>
+                <div class="inline-flex items-center gap-1 bg-white border border-slate-300 rounded-xl p-1 shadow-2xs">
+                  <button type="button" @click="prevFixedBillMonth()" title="Tháng trước"
+                          class="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-600 text-xs font-bold transition cursor-pointer">
+                    <i class="fa-solid fa-chevron-left text-[10px]"></i>
+                  </button>
+                  <input type="month" x-model="selectedFixedBillMonth"
+                         class="px-2 py-0.5 text-xs font-mono font-bold text-purple-800 bg-transparent focus:outline-none cursor-pointer">
+                  <button type="button" @click="nextFixedBillMonth()" title="Tháng sau"
+                          class="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-600 text-xs font-bold transition cursor-pointer">
+                    <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                  </button>
+                </div>
+                <button type="button" @click="selectedFixedBillMonth = getCurrentMonthKey()"
+                        class="px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition cursor-pointer"
+                        :class="selectedFixedBillMonth === getCurrentMonthKey() ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'">
+                  Tháng này
+                </button>
+                <button type="button" @click="selectedFixedBillMonth = getNextMonthKey(getCurrentMonthKey())"
+                        class="px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition cursor-pointer"
+                        :class="selectedFixedBillMonth === getNextMonthKey(getCurrentMonthKey()) ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'">
+                  Tháng tới (<span x-text="formatMonthLabel(getNextMonthKey(getCurrentMonthKey()))"></span>)
+                </button>
+              </div>
+
+              <div class="flex items-center gap-1.5 text-[11px] text-purple-700 font-semibold bg-purple-50 border border-purple-200/80 px-2.5 py-1 rounded-lg">
+                <i class="fa-solid fa-arrows-rotate text-[10px]"></i>
+                <span>Đồng bộ 2 chiều tự động với Dự Thu / Dự Chi (Tổng Quan)</span>
+              </div>
+            </div>
+
             <div class="overflow-x-auto rounded-xl border border-slate-300 bg-white shadow-sm">
               <table class="w-full text-left text-xs border-collapse">
                 <thead>
@@ -2992,8 +3029,8 @@
                     <th class="py-2.5 px-3 min-w-[200px] border-r border-slate-300">Tên Dịch Vụ / Tiện Ích</th>
                     <th class="py-2.5 px-3 min-w-[130px] border-r border-slate-300">Phân Loại</th>
                     <th class="py-2.5 px-3 text-right min-w-[120px] border-r border-slate-300">Số Tiền / Tháng</th>
-                    <th class="py-2.5 px-3 text-center min-w-[100px] border-r border-slate-300">Hạn Đóng</th>
-                    <th class="py-2.5 px-3 text-center min-w-[130px] border-r border-slate-300">Trạng Thái (Bấm Đổi)</th>
+                    <th class="py-2.5 px-3 text-center min-w-[110px] border-r border-slate-300">Hạn Đóng (<span x-text="selectedFixedBillMonth"></span>)</th>
+                    <th class="py-2.5 px-3 text-center min-w-[140px] border-r border-slate-300">Trạng Thái Kỳ Này (Bấm Đổi)</th>
                     <th class="py-2.5 px-3 min-w-[120px] border-r border-slate-300">TK Thanh Toán</th>
                     <th class="py-2.5 px-3 text-center min-w-[120px]">Thao Tác</th>
                   </tr>
@@ -3025,29 +3062,34 @@
                       <td class="py-2.5 px-3 text-right font-mono font-bold border-r border-slate-200 text-slate-900 text-sm"
                           x-text="formatVND(bill.amount)"></td>
 
-                      <!-- Hạn đóng -->
-                      <td class="py-2.5 px-3 text-center font-mono text-slate-600 border-r border-slate-200"
-                          x-text="'Ngày ' + (bill.dueDay || 5)"></td>
+                      <!-- Hạn đóng theo tháng đã chọn -->
+                      <td class="py-2.5 px-3 text-center font-mono text-slate-600 border-r border-slate-200">
+                        <span class="font-bold text-slate-800" x-text="getBillDueDateInSelectedMonth(bill)"></span>
+                      </td>
 
-                      <!-- Trạng thái 1-click toggle -->
+                      <!-- Trạng thái 1-click toggle theo tháng đã chọn -->
                       <td class="py-2 px-3 text-center border-r border-slate-200 whitespace-nowrap">
                         <button type="button" @click="togglePersonalExpenseStatus(bill)"
-                                title="Bấm để đổi trạng thái Đã trả / Chờ trả"
+                                title="Bấm để đổi trạng thái Đã trả / Chờ trả của tháng đang chọn"
                                 class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition shadow-xs cursor-pointer"
-                                :class="bill.status === 'paid' ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800' : 'bg-amber-100 hover:bg-amber-200 text-amber-800'">
+                                :class="isBillPaidInSelectedMonth(bill) ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800' : 'bg-amber-100 hover:bg-amber-200 text-amber-800'">
                           <span class="w-1.5 h-1.5 rounded-full"
-                                :class="bill.status === 'paid' ? 'bg-emerald-500' : 'bg-amber-500'"></span>
-                          <span x-text="bill.status === 'paid' ? '✓ Đã Thanh Toán' : '⏳ Chờ Thanh Toán'"></span>
+                                :class="isBillPaidInSelectedMonth(bill) ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+                          <span x-text="isBillPaidInSelectedMonth(bill) ? '✓ Đã Thanh Toán' : '⏳ Chờ Thanh Toán'"></span>
                         </button>
+                        <template x-if="isBillPaidInSelectedMonth(bill) && getBillPaidDateInSelectedMonth(bill)">
+                          <div class="text-[9px] font-mono text-slate-400 mt-0.5"
+                               x-text="'Trả ngày: ' + formatDate(getBillPaidDateInSelectedMonth(bill))"></div>
+                        </template>
                       </td>
 
                       <!-- TK Thanh toán (Chọn trực tiếp Ngân hàng trích trả) -->
                       <td class="py-2 px-3 border-r border-slate-200 whitespace-nowrap">
-                        <select :value="bill.paidAccount || 'Vietcombank'"
+                        <select :value="getBillPaidAccountInSelectedMonth(bill)"
                                 @change="changePersonalExpenseAccount(bill, $event.target.value)"
                                 class="px-2 py-1 rounded-lg border border-slate-200 bg-white hover:border-slate-300 font-mono text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer">
                           <template x-for="acc in (dashboard.accounts?.list || [])" :key="acc._id">
-                            <option :value="acc.name" :selected="acc.name === (bill.paidAccount || 'Vietcombank')" x-text="acc.name"></option>
+                            <option :value="acc.name" :selected="acc.name === getBillPaidAccountInSelectedMonth(bill)" x-text="acc.name"></option>
                           </template>
                         </select>
                       </td>
@@ -3056,13 +3098,13 @@
                       <td class="py-2 px-3 text-center whitespace-nowrap">
                         <div class="inline-flex items-center gap-1">
                           <button type="button" @click="openPersonalExpenseModal(bill, 'fixed_bill')"
-                                  title="Chỉnh sửa hóa đơn"
-                                  class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs hover:bg-slate-100 transition">
+                                   title="Chỉnh sửa hóa đơn"
+                                   class="p-1 rounded text-slate-400 hover:text-slate-700 text-xs hover:bg-slate-100 transition">
                             <i class="fa-solid fa-pen"></i>
                           </button>
                           <button type="button" @click="deletePersonalExpense(bill._id || bill.id, bill.title)"
-                                  title="Xóa hóa đơn"
-                                  class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs hover:bg-rose-50 transition">
+                                   title="Xóa hóa đơn"
+                                   class="p-1 rounded text-slate-400 hover:text-rose-600 text-xs hover:bg-rose-50 transition">
                             <i class="fa-solid fa-trash-can"></i>
                           </button>
                         </div>
@@ -3073,17 +3115,17 @@
                 <tfoot class="bg-gradient-to-b from-slate-100 to-slate-200/90 text-slate-800 font-bold text-xs border-t-2 border-slate-300">
                   <tr>
                     <td colspan="3" class="py-3 px-3 text-left border-r border-slate-300 tracking-wider">
-                      <span>∑ TỔNG CỘNG HÓA ĐƠN CỐ ĐỊNH THÁNG (<span x-text="fixedBills.length"></span> khoản)</span>
+                      <span>∑ TỔNG HÓA ĐƠN CỐ ĐỊNH <span class="text-purple-700 uppercase" x-text="formatMonthLabel(selectedFixedBillMonth)"></span> (<span x-text="fixedBills.length"></span> khoản)</span>
                     </td>
                     <td class="py-3 px-3 text-right font-mono border-r border-slate-300 text-amber-800 text-sm"
                         x-text="formatVND(personalHub.totalFixedBills)"></td>
                     <td colspan="2" class="py-3 px-3 text-center border-r border-slate-300 text-[11px]">
-                      <span class="text-emerald-700 font-mono">Đã thanh toán: <strong x-text="formatVND(personalHub.paidFixedBills)"></strong></span>
+                      <span class="text-emerald-700 font-mono">Đã thanh toán: <strong x-text="formatVND(fixedBillsPaidSelectedMonth)"></strong></span>
                       <span class="text-slate-300 mx-1">•</span>
-                      <span class="text-amber-700 font-mono">Còn chờ: <strong x-text="formatVND(personalHub.pendingFixedBills)"></strong></span>
+                      <span class="text-amber-700 font-mono">Còn chờ: <strong x-text="formatVND(fixedBillsPendingSelectedMonth)"></strong></span>
                     </td>
                     <td colspan="2" class="py-3 px-3 text-center text-[11px] text-slate-500 font-medium">
-                      Đã giữ chỗ sẵn tiền
+                      Liên kết Dự Thu / Dự Chi
                     </td>
                   </tr>
                 </tfoot>
@@ -5977,6 +6019,6 @@
   </div>
 
   <!-- Load App Script -->
-  <script src="/app.js?v=4.3"></script>
+  <script src="/app.js?v=4.4"></script>
 </body>
 </html>

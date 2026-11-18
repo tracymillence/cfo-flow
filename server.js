@@ -145,6 +145,26 @@ async function mergeDuplicateSuppliers() {
         }
       }
     }
+
+    // Tự động chuẩn hóa monthlyHistory cho các Hóa Đơn Cố Định (PersonalExpense) đã thanh toán
+    const PersonalExpense = require('./models/PersonalExpense');
+    const allPersonal = await PersonalExpense.find();
+    const curVnMonth = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date()).slice(0, 7);
+    for (const pe of allPersonal) {
+      if (pe.status === 'paid' && (!pe.monthlyHistory || pe.monthlyHistory.length === 0)) {
+        const mk = (pe.paidDate && pe.paidDate.length >= 7) ? pe.paidDate.slice(0, 7) : curVnMonth;
+        pe.monthlyHistory = [{
+          monthKey: mk,
+          status: 'paid',
+          amount: Number(pe.amount) || 0,
+          paidDate: pe.paidDate || `${mk}-01`,
+          paidAccount: pe.paidAccount || 'Vietcombank',
+          deductFromAccount: pe.deductFromAccount !== false,
+          accountSynced: Boolean(pe.accountSynced)
+        }];
+        await pe.save();
+      }
+    }
   } catch (err) {
     console.error('Lỗi khi gộp NCC trùng lặp:', err.message);
   }
@@ -2061,14 +2081,16 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
     diningBills,
     diningMembers,
     diningSettlements,
-    upcomingTransactions
+    upcomingTransactions,
+    fixedPersonalBills
   ] = await Promise.all([
     Account.find().lean(),
     SupplierDebt.find().lean(),
     DiningLedger.find().lean(),
     DiningMember.find().lean(),
     DiningSettlement.find().lean(),
-    UpcomingTransaction.find().sort({ date: 1, createdAt: 1 }).lean()
+    UpcomingTransaction.find().sort({ date: 1, createdAt: 1 }).lean(),
+    PersonalExpense.find({ type: 'fixed_bill' }).lean()
   ]);
 
   // 1. Tiền mặt thực tế (Tổng số dư tất cả tài khoản ngân hàng & tiền mặt)
@@ -2157,8 +2179,9 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
   const diningReceivable = isShortTermFilter ? collectibleDebtReceivable : totalDebtReceivable;
   const badDebtExcluded = isShortTermFilter ? badDebtReceivable : 0;
 
-  // Lọc các khoản dự kiến trong khung thời gian yêu cầu
-  let rangeUpcoming = upcomingTransactions;
+  // Lọc các khoản dự kiến trong khung thời gian yêu cầu (bao gồm cả Hóa Đơn Cố Định hàng tháng chưa thanh toán)
+  const fixedBillUpcomingItems = buildUpcomingFixedBillItems(fixedPersonalBills, vnDateStr.slice(0, 7));
+  let rangeUpcoming = [...upcomingTransactions, ...fixedBillUpcomingItems];
   if (range === 'custom') {
     rangeUpcoming = rangeUpcoming.filter(it => {
       if (minDateStr && it.date < minDateStr) return false;
@@ -2345,18 +2368,104 @@ app.get('/api/projection-health', authenticateToken, async (req, res) => {
 });
 
 // ==================== DỰ BÁO DÒNG TIỀN TƯƠNG LAI (CASH FLOW PROJECTION) ====================
-// Collection 'upcoming_transactions' tách biệt 100%, không can thiệp hay merge với sổ giao dịch thực tế
+// Helper xử lý chu kỳ tháng (YYYY-MM) và liên kết Hóa Đơn Cố Định (Hub 4) vào Dự Thu / Dự Chi
+function getVietnamMonthKey(dateObj = new Date()) {
+  const vnStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(dateObj);
+  return vnStr.slice(0, 7);
+}
+
+function getNextMonthKey(monthKey) {
+  const [y, m] = String(monthKey || getVietnamMonthKey()).split('-').map(Number);
+  if (!y || !m) return getVietnamMonthKey();
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  return `${nextY}-${String(nextM).padStart(2, '0')}`;
+}
+
+function getBillMonthDateStr(monthKey, dueDay = 5) {
+  const [y, m] = String(monthKey || getVietnamMonthKey()).split('-').map(Number);
+  const maxDay = new Date(y, m, 0).getDate() || 28;
+  const clampedDay = Math.min(maxDay, Math.max(1, Number(dueDay) || 5));
+  return `${y}-${String(m).padStart(2, '0')}-${String(clampedDay).padStart(2, '0')}`;
+}
+
+function isFixedBillPaidInMonth(bill, monthKey) {
+  if (!bill || !monthKey) return false;
+  const history = Array.isArray(bill.monthlyHistory) ? bill.monthlyHistory : [];
+  const entry = history.find(h => h.monthKey === monthKey);
+  if (entry) {
+    return entry.status === 'paid';
+  }
+  // Fallback cho dữ liệu cũ chưa có monthlyHistory
+  if (bill.status === 'paid') {
+    const paidMk = (bill.paidDate && bill.paidDate.length >= 7) ? bill.paidDate.slice(0, 7) : getVietnamMonthKey();
+    return paidMk === monthKey;
+  }
+  return false;
+}
+
+function buildUpcomingFixedBillItems(fixedBills = [], currentMonthKey = getVietnamMonthKey()) {
+  const nextMonthKey = getNextMonthKey(currentMonthKey);
+  const results = [];
+
+  for (const bill of (fixedBills || [])) {
+    if (!bill || bill.type !== 'fixed_bill') continue;
+    const amt = Number(bill.amount) || 0;
+    if (amt <= 0) continue;
+
+    // Nếu tháng hiện tại chưa thanh toán -> hiện kỳ tháng hiện tại.
+    // Nếu tháng hiện tại đã thanh toán -> tự động chuyển sang kỳ tháng kế tiếp (nếu tháng kế tiếp chưa thanh toán).
+    let targetMonthKey = null;
+    if (!isFixedBillPaidInMonth(bill, currentMonthKey)) {
+      targetMonthKey = currentMonthKey;
+    } else if (!isFixedBillPaidInMonth(bill, nextMonthKey)) {
+      targetMonthKey = nextMonthKey;
+    }
+
+    if (!targetMonthKey) continue;
+
+    const [yyyy, mm] = targetMonthKey.split('-');
+    const dateStr = getBillMonthDateStr(targetMonthKey, bill.dueDay || 5);
+    const monthEntry = (bill.monthlyHistory || []).find(h => h.monthKey === targetMonthKey);
+    const chosenAcc = monthEntry?.paidAccount || bill.paidAccount || 'Vietcombank';
+
+    results.push({
+      _id: `fixed_bill_${bill._id}_${targetMonthKey}`,
+      fixedBillId: bill._id,
+      monthKey: targetMonthKey,
+      title: `${bill.title} (Kỳ T${mm}/${yyyy})`,
+      rawTitle: bill.title,
+      amount: amt,
+      type: 'expense',
+      hubRole: 'hub4_personal',
+      accountName: chosenAcc,
+      date: dateStr,
+      dueDay: bill.dueDay || 5,
+      notes: bill.notes
+        ? `${bill.notes} • [Hóa đơn cố định T${mm}/${yyyy}]`
+        : `[Hóa đơn cố định định kỳ ngày ${bill.dueDay || 5} - Kỳ T${mm}/${yyyy}]`,
+      source: 'fixed_bill',
+      isFixedBill: true,
+      status: 'pending',
+      createdAt: bill.createdAt || new Date()
+    });
+  }
+
+  return results;
+}
+
 app.get('/api/upcoming', authenticateToken, async (req, res) => {
   try {
-    const upcoming = await UpcomingTransaction.find().sort({ date: 1, createdAt: 1 }).lean();
-
-    // Accounts Payable Aging: Query các bản ghi SupplierDebt có trạng thái pending hoặc partial (còn nợ NCC)
-    const supplierDebts = await SupplierDebt.find({
-      $or: [
-        { status: { $in: ['pending', 'partial'] } },
-        { remainingAmount: { $gt: 0 } }
-      ]
-    }).lean();
+    const [upcoming, supplierDebts, fixedBills] = await Promise.all([
+      UpcomingTransaction.find().sort({ date: 1, createdAt: 1 }).lean(),
+      SupplierDebt.find({
+        $or: [
+          { status: { $in: ['pending', 'partial'] } },
+          { remainingAmount: { $gt: 0 } }
+        ]
+      }).lean(),
+      PersonalExpense.find({ type: 'fixed_bill' }).sort({ dueDay: 1, createdAt: 1 }).lean()
+    ]);
 
     // Mặc định dueDate nếu trống: Ngày cuối cùng của tháng hiện tại (theo giờ VN/local) dạng YYYY-MM-DD
     const now = new Date();
@@ -2393,8 +2502,11 @@ app.get('/api/upcoming', authenticateToken, async (req, res) => {
         };
       });
 
+    // Ánh xạ các Hóa Đơn Cố Định hàng tháng (Hub 4) chưa thanh toán sang danh sách Dự Chi
+    const fixedBillOutflowItems = buildUpcomingFixedBillItems(fixedBills, getVietnamMonthKey(now));
+
     // Kết hợp và sắp xếp theo ngày tăng dần
-    const combined = [...upcoming, ...supplierOutflowItems].sort((a, b) => {
+    const combined = [...upcoming, ...supplierOutflowItems, ...fixedBillOutflowItems].sort((a, b) => {
       const cmp = (a.date || '').localeCompare(b.date || '');
       if (cmp !== 0) return cmp;
       return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
@@ -2500,6 +2612,45 @@ app.post('/api/upcoming/:id/complete', authenticateToken, requirePermission('man
       return res.status(400).json({
         success: false,
         message: 'Khoản nợ NCC này được liên kết tự động từ Hũ Tiền Hàng Nợ NCC. Vui lòng sử dụng nút "Trả nợ NCC" để thanh toán!'
+      });
+    }
+
+    // Nếu là Hóa Đơn Cố Định hàng tháng (fixed_bill_<billId>_<monthKey>) được thanh toán từ mục Dự Thu / Dự Chi:
+    // Đồng bộ 2 chiều: đánh dấu Đã Thanh Toán ngay trong Sổ Hóa Đơn Cố Định (Hub 4) cho kỳ tháng đó + trừ số dư Ngân hàng + ghi Sổ Giao Dịch!
+    const fixedMatch = String(req.params.id).match(/^fixed_bill_([a-fA-F0-9]{24})_(\d{4}-\d{2})$/);
+    if (fixedMatch) {
+      const [, billId, monthKey] = fixedMatch;
+      const bill = await PersonalExpense.findById(billId);
+      if (!bill) {
+        return res.status(404).json({ success: false, message: 'Không tìm thấy hóa đơn cố định liên kết' });
+      }
+      const {
+        accountName,
+        syncToAccount = true,
+        amount,
+        date
+      } = req.body || {};
+
+      const finalAmount = Math.max(0, Number(amount !== undefined ? amount : bill.amount) || 0);
+      const finalDate = (date || new Date().toISOString().slice(0, 10)).trim();
+      const cleanAcc = (accountName || bill.paidAccount || 'Vietcombank').trim();
+      const shouldDeduct = syncToAccount !== false && Boolean(cleanAcc) && finalAmount > 0;
+
+      await setFixedBillMonthStatus(bill, monthKey, {
+        status: 'paid',
+        paidAccount: cleanAcc,
+        deductFromAccount: shouldDeduct,
+        paidDate: finalDate,
+        amount: finalAmount
+      });
+      await bill.save();
+
+      return res.json({
+        success: true,
+        item: bill,
+        message: shouldDeduct
+          ? `Đã thanh toán "${bill.title}" (Kỳ ${monthKey}) & trừ ${finalAmount.toLocaleString('vi-VN')}đ tại ${cleanAcc} (Đã đồng bộ sang Hóa Đơn Cố Định Hub 4)`
+          : `Đã đánh dấu thanh toán "${bill.title}" (Kỳ ${monthKey}) & đồng bộ sang Hóa Đơn Cố Định Hub 4`
       });
     }
 
@@ -4026,6 +4177,84 @@ app.delete('/api/dining/requests/:id', authenticateToken, async (req, res) => {
 });
 
 // ==================== 8.5. SỔ CHI TIÊU CÁ NHÂN & TIẾT KIỆM (HUB 4 CRUD) ====================
+async function setFixedBillMonthStatus(item, monthKey, { status, paidAccount, deductFromAccount = true, paidDate, amount } = {}) {
+  const targetMonth = (monthKey && /^\d{4}-\d{2}$/.test(monthKey)) ? monthKey : getVietnamMonthKey();
+  if (!Array.isArray(item.monthlyHistory)) {
+    item.monthlyHistory = [];
+  }
+
+  let entry = item.monthlyHistory.find(h => h.monthKey === targetMonth);
+  if (!entry && item.status === 'paid' && item.monthlyHistory.length === 0) {
+    const legacyMk = (item.paidDate && item.paidDate.length >= 7) ? item.paidDate.slice(0, 7) : getVietnamMonthKey();
+    item.monthlyHistory.push({
+      monthKey: legacyMk,
+      status: 'paid',
+      amount: Number(item.amount) || 0,
+      paidDate: item.paidDate || `${legacyMk}-01`,
+      paidAccount: item.paidAccount || 'Vietcombank',
+      deductFromAccount: item.deductFromAccount !== false,
+      accountSynced: Boolean(item.accountSynced)
+    });
+    entry = item.monthlyHistory.find(h => h.monthKey === targetMonth);
+  }
+
+  const wasDeducted = Boolean(
+    entry &&
+    entry.status === 'paid' &&
+    (entry.accountSynced || entry.deductFromAccount !== false) &&
+    entry.paidAccount &&
+    Number(entry.amount || item.amount) > 0
+  );
+
+  if (wasDeducted) {
+    await adjustAccountBalance(entry.paidAccount, Number(entry.amount || item.amount));
+  }
+
+  const nextStatus = status || (entry ? entry.status : 'pending');
+  const nextAcc = (paidAccount || entry?.paidAccount || item.paidAccount || 'Vietcombank').trim();
+  const nextAmt = Number(amount !== undefined ? amount : (entry?.amount || item.amount)) || 0;
+  const nextDeduct = deductFromAccount !== undefined ? Boolean(deductFromAccount) : (entry ? entry.deductFromAccount !== false : true);
+  const nextDate = nextStatus === 'paid'
+    ? (paidDate || entry?.paidDate || new Date().toISOString().slice(0, 10))
+    : '';
+
+  let nextSynced = false;
+  if (nextStatus === 'paid' && nextDeduct && nextAcc && nextAmt > 0) {
+    await adjustAccountBalance(nextAcc, -nextAmt);
+    nextSynced = true;
+  }
+
+  if (entry) {
+    entry.status = nextStatus;
+    entry.amount = nextAmt;
+    entry.paidAccount = nextAcc;
+    entry.deductFromAccount = nextDeduct;
+    entry.paidDate = nextDate;
+    entry.accountSynced = nextSynced;
+  } else {
+    item.monthlyHistory.push({
+      monthKey: targetMonth,
+      status: nextStatus,
+      amount: nextAmt,
+      paidAccount: nextAcc,
+      deductFromAccount: nextDeduct,
+      paidDate: nextDate,
+      accountSynced: nextSynced
+    });
+  }
+
+  item.paidAccount = nextAcc;
+  // Đồng bộ trường cấp cao nhất (status, paidDate, accountSynced) với tháng hiện tại hoặc kỳ vừa thao tác
+  const curMonth = getVietnamMonthKey();
+  const curEntry = item.monthlyHistory.find(h => h.monthKey === curMonth) || item.monthlyHistory.find(h => h.monthKey === targetMonth);
+  if (curEntry) {
+    item.status = curEntry.status;
+    item.paidDate = curEntry.paidDate || '';
+    item.deductFromAccount = curEntry.deductFromAccount !== false;
+    item.accountSynced = Boolean(curEntry.accountSynced);
+  }
+}
+
 async function syncPersonalExpenseAccountBalance(item, prevState = null) {
   const wasDeducted = Boolean(
     prevState &&
@@ -4063,18 +4292,20 @@ async function syncPersonalExpenseAccountBalance(item, prevState = null) {
 
 app.post('/api/personal/expense', authenticateToken, requirePermission('managePersonalHub'), async (req, res) => {
   try {
-    const { title, category, type, amount, cycle, dueDay, status, paidAccount, deductFromAccount, notes, paidDate } = req.body;
+    const { title, category, type, amount, cycle, dueDay, status, paidAccount, deductFromAccount, notes, paidDate, monthKey } = req.body;
     if (!title || !title.trim()) return res.status(400).json({ success: false, message: 'Thiếu tên khoản chi / hóa đơn' });
     const numAmount = Number(amount);
     if (!numAmount || numAmount <= 0) return res.status(400).json({ success: false, message: 'Số tiền phải lớn hơn 0đ' });
 
     const resolvedStatus = status || 'pending';
     const shouldDeduct = deductFromAccount !== undefined ? Boolean(deductFromAccount) : true;
+    const resolvedType = type || 'fixed_bill';
+    const targetMonth = monthKey || (paidDate && paidDate.length >= 7 ? paidDate.slice(0, 7) : getVietnamMonthKey());
 
     const item = new PersonalExpense({
       title: title.trim(),
       category: category || 'streaming_tech',
-      type: type || 'fixed_bill',
+      type: resolvedType,
       amount: numAmount,
       cycle: cycle || 'monthly',
       dueDay: Number(dueDay) || 5,
@@ -4082,10 +4313,23 @@ app.post('/api/personal/expense', authenticateToken, requirePermission('managePe
       paidAccount: paidAccount || 'Vietcombank',
       deductFromAccount: shouldDeduct,
       paidDate: resolvedStatus === 'paid' ? (paidDate || new Date().toISOString().slice(0, 10)) : '',
-      notes: notes || ''
+      notes: notes || '',
+      monthlyHistory: []
     });
 
-    await syncPersonalExpenseAccountBalance(item, null);
+    if (resolvedType === 'fixed_bill') {
+      if (resolvedStatus === 'paid') {
+        await setFixedBillMonthStatus(item, targetMonth, {
+          status: 'paid',
+          paidAccount: item.paidAccount,
+          deductFromAccount: shouldDeduct,
+          paidDate: item.paidDate,
+          amount: numAmount
+        });
+      }
+    } else {
+      await syncPersonalExpenseAccountBalance(item, null);
+    }
     await item.save();
 
     res.json({ success: true, item });
@@ -4107,7 +4351,7 @@ app.put('/api/personal/expense/:id', authenticateToken, requirePermission('manag
       accountSynced: item.accountSynced
     };
 
-    const { title, category, type, amount, cycle, dueDay, status, paidAccount, deductFromAccount, notes, paidDate } = req.body;
+    const { title, category, type, amount, cycle, dueDay, status, paidAccount, deductFromAccount, notes, paidDate, monthKey } = req.body;
     if (title !== undefined) item.title = title.trim();
     if (category !== undefined) item.category = category;
     if (type !== undefined) item.type = type;
@@ -4118,17 +4362,30 @@ app.put('/api/personal/expense/:id', authenticateToken, requirePermission('manag
     if (notes !== undefined) item.notes = notes;
     if (deductFromAccount !== undefined) item.deductFromAccount = Boolean(deductFromAccount);
 
-    if (status !== undefined) {
-      item.status = status;
-      if (status === 'paid') {
-        if (!item.paidDate) item.paidDate = paidDate || new Date().toISOString().slice(0, 10);
-        if (deductFromAccount === undefined) item.deductFromAccount = true;
-      } else if (status === 'pending') {
-        item.paidDate = '';
+    if (item.type === 'fixed_bill') {
+      const targetMonth = monthKey || getVietnamMonthKey();
+      const currentMonthPaid = isFixedBillPaidInMonth(item, targetMonth);
+      const nextStatus = status !== undefined ? status : (currentMonthPaid ? 'paid' : 'pending');
+      await setFixedBillMonthStatus(item, targetMonth, {
+        status: nextStatus,
+        paidAccount: paidAccount || item.paidAccount,
+        deductFromAccount: deductFromAccount !== undefined ? Boolean(deductFromAccount) : true,
+        paidDate,
+        amount: item.amount
+      });
+    } else {
+      if (status !== undefined) {
+        item.status = status;
+        if (status === 'paid') {
+          if (!item.paidDate) item.paidDate = paidDate || new Date().toISOString().slice(0, 10);
+          if (deductFromAccount === undefined) item.deductFromAccount = true;
+        } else if (status === 'pending') {
+          item.paidDate = '';
+        }
       }
+      await syncPersonalExpenseAccountBalance(item, prevState);
     }
 
-    await syncPersonalExpenseAccountBalance(item, prevState);
     await item.save();
     res.json({ success: true, item });
   } catch (err) {
@@ -4140,6 +4397,24 @@ app.put('/api/personal/expense/:id/toggle', authenticateToken, requirePermission
   try {
     const item = await PersonalExpense.findById(req.params.id);
     if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản chi' });
+
+    if (item.type === 'fixed_bill') {
+      const targetMonth = (req.body && req.body.monthKey) ? req.body.monthKey : getVietnamMonthKey();
+      const currentlyPaid = isFixedBillPaidInMonth(item, targetMonth);
+      const newStatus = currentlyPaid ? 'pending' : 'paid';
+      const chosenAcc = (req.body && req.body.paidAccount) ? req.body.paidAccount : (item.paidAccount || 'Vietcombank');
+      const shouldDeduct = req.body?.deductFromAccount !== undefined ? Boolean(req.body.deductFromAccount) : true;
+
+      await setFixedBillMonthStatus(item, targetMonth, {
+        status: newStatus,
+        paidAccount: chosenAcc,
+        deductFromAccount: shouldDeduct,
+        paidDate: new Date().toISOString().slice(0, 10),
+        amount: item.amount
+      });
+      await item.save();
+      return res.json({ success: true, item, monthKey: targetMonth, status: newStatus });
+    }
 
     const prevState = {
       status: item.status,
@@ -4164,7 +4439,7 @@ app.put('/api/personal/expense/:id/toggle', authenticateToken, requirePermission
 
     await syncPersonalExpenseAccountBalance(item, prevState);
     await item.save();
-    res.json({ success: true, item });
+    res.json({ success: true, item, status: newStatus });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -4175,7 +4450,13 @@ app.delete('/api/personal/expense/:id', authenticateToken, requirePermission('ma
     const item = await PersonalExpense.findById(req.params.id);
     if (!item) return res.status(404).json({ success: false, message: 'Không tìm thấy khoản chi' });
 
-    if (item.status === 'paid' && (item.accountSynced || item.deductFromAccount) && item.paidAccount) {
+    if (Array.isArray(item.monthlyHistory) && item.monthlyHistory.length > 0) {
+      for (const h of item.monthlyHistory) {
+        if (h.status === 'paid' && (h.accountSynced || h.deductFromAccount !== false) && h.paidAccount) {
+          await adjustAccountBalance(h.paidAccount, Number(h.amount || item.amount) || 0);
+        }
+      }
+    } else if (item.status === 'paid' && (item.accountSynced || item.deductFromAccount) && item.paidAccount) {
       await adjustAccountBalance(item.paidAccount, Number(item.amount) || 0);
     }
     await item.deleteOne();
