@@ -2408,7 +2408,7 @@ app.get('/api/upcoming', authenticateToken, async (req, res) => {
 
 app.post('/api/upcoming', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
   try {
-    const { title, amount, type, date, hubRole, notes } = req.body;
+    const { title, amount, type, date, hubRole, accountName, notes } = req.body;
     if (!title || !title.trim()) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập tên khoản mục dự kiến' });
     }
@@ -2429,6 +2429,7 @@ app.post('/api/upcoming', authenticateToken, requirePermission('manageTransactio
       type: chosenType,
       date: String(date).trim(),
       hubRole: chosenHub,
+      accountName: accountName ? String(accountName).trim() : '',
       notes: notes ? String(notes).trim() : '',
       createdBy: req.user?.username || 'admin'
     });
@@ -2448,7 +2449,7 @@ app.put('/api/upcoming/:id', authenticateToken, requirePermission('manageTransac
       });
     }
 
-    const { title, amount, type, date, hubRole, notes } = req.body;
+    const { title, amount, type, date, hubRole, accountName, notes } = req.body;
     if (!title || !title.trim()) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập tên khoản mục dự kiến' });
     }
@@ -2464,16 +2465,21 @@ app.put('/api/upcoming/:id', authenticateToken, requirePermission('manageTransac
     const chosenHub = validHubs.includes(hubRole) ? hubRole : 'hub1_income';
     const chosenType = (type === 'income') ? 'income' : 'expense';
 
+    const updateData = {
+      title: title.trim(),
+      amount: numAmount,
+      type: chosenType,
+      date: String(date).trim(),
+      hubRole: chosenHub,
+      notes: notes !== undefined ? String(notes).trim() : ''
+    };
+    if (accountName !== undefined) {
+      updateData.accountName = String(accountName).trim();
+    }
+
     const item = await UpcomingTransaction.findByIdAndUpdate(
       req.params.id,
-      {
-        title: title.trim(),
-        amount: numAmount,
-        type: chosenType,
-        date: String(date).trim(),
-        hubRole: chosenHub,
-        notes: notes !== undefined ? String(notes).trim() : ''
-      },
+      updateData,
       { new: true, runValidators: true }
     );
 
@@ -2482,6 +2488,87 @@ app.put('/api/upcoming/:id', authenticateToken, requirePermission('manageTransac
     }
 
     res.json({ success: true, item });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Hoàn tất khoản Dự Thu / Dự Chi & Hạch toán cộng/trừ trực tiếp vào Ngân hàng + Sổ Giao Dịch Tổng
+app.post('/api/upcoming/:id/complete', authenticateToken, requirePermission('manageTransactions'), async (req, res) => {
+  try {
+    if (String(req.params.id).startsWith('supplier_debt_')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Khoản nợ NCC này được liên kết tự động từ Hũ Tiền Hàng Nợ NCC. Vui lòng sử dụng nút "Trả nợ NCC" để thanh toán!'
+      });
+    }
+
+    const item = await UpcomingTransaction.findById(req.params.id);
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy khoản dự kiến' });
+    }
+
+    const {
+      accountName,
+      syncToAccount = true,
+      amount,
+      date,
+      hubRole,
+      impactsWeeklyLimit = false,
+      note
+    } = req.body || {};
+
+    const finalAmount = Math.max(0, Number(amount !== undefined ? amount : item.amount) || 0);
+    const finalType = item.type === 'income' ? 'income' : 'expense';
+    const finalDate = (date || new Date().toISOString().slice(0, 10)).trim();
+    const validHubs = ['hub1_income', 'hub2_dining', 'hub3_family', 'hub4_personal'];
+    const finalHubRole = validHubs.includes(hubRole) ? hubRole : (item.hubRole || 'hub1_income');
+    const cleanAcc = (accountName || item.accountName || '').trim();
+    const shouldSync = syncToAccount !== false && Boolean(cleanAcc) && finalAmount > 0;
+
+    let createdTx = null;
+    if (shouldSync) {
+      const delta = finalType === 'income' ? finalAmount : -finalAmount;
+      await adjustAccountBalance(cleanAcc, delta);
+
+      let usingSupplierFloat = false;
+      if (finalType === 'expense' && finalHubRole === 'hub1_income') {
+        usingSupplierFloat = await isUsingSupplierFloat(finalAmount, finalHubRole);
+      }
+
+      const safeImpactsWeekly = (finalHubRole === 'hub4_personal' && finalType === 'expense')
+        ? Boolean(impactsWeeklyLimit)
+        : false;
+
+      const baseNote = (note !== undefined ? String(note).trim() : (item.notes || '')).trim();
+      const fullNotes = baseNote
+        ? `${baseNote} • [Hoàn tất ${finalType === 'income' ? 'Dự Thu' : 'Dự Chi'}]`
+        : `[Hoàn tất ${finalType === 'income' ? 'Dự Thu' : 'Dự Chi'}]`;
+
+      createdTx = await Transaction.create({
+        date: finalDate,
+        title: item.title.trim(),
+        amount: finalAmount,
+        type: finalType,
+        accountName: cleanAcc,
+        toAccountName: '',
+        category: finalType === 'income' ? 'Thu nhập' : 'Chi tiêu kế hoạch',
+        hubRole: finalHubRole,
+        impactsWeeklyLimit: safeImpactsWeekly,
+        usingSupplierFloat,
+        notes: fullNotes
+      });
+    }
+
+    await UpcomingTransaction.findByIdAndDelete(item._id);
+
+    res.json({
+      success: true,
+      transaction: createdTx,
+      message: shouldSync
+        ? `Đã hoàn tất & ${finalType === 'income' ? 'cộng' : 'trừ'} ${finalAmount.toLocaleString('vi-VN')}đ tại ${cleanAcc}`
+        : 'Đã hoàn tất và gỡ khoản dự kiến khỏi danh sách'
+    });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }

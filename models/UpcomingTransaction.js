@@ -27,6 +27,11 @@ const upcomingTransactionSchema = new mongoose.Schema({
     required: true,
     default: 'hub1_income'
   },
+  accountName: {
+    type: String,
+    default: '',
+    trim: true
+  },
   notes: { 
     type: String, 
     default: '' 

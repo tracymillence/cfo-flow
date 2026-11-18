@@ -229,6 +229,7 @@ function cashFlowApp() {
       title: '',
       date: new Date().toISOString().slice(0, 10),
       hubRole: 'hub1_income',   // Dropdown chọn 1 trong 4 Hub hiện tại
+      accountName: '',          // Tài khoản ngân hàng dự kiến hạch toán
       notes: ''
     },
 
@@ -408,11 +409,26 @@ function cashFlowApp() {
       memberStatement: false,
       supplierHistory: false,
       supplierPayment: false,
+      upcomingComplete: false,
       orderSettlement: false,
       debtSettlement: false
     },
 
     selectedSupplierForHistory: null,
+
+    upcomingCompleteModal: {
+      id: '',
+      title: '',
+      type: 'expense',
+      amount: 0,
+      hubRole: 'hub1_income',
+      accountName: 'Vietcombank',
+      syncToAccount: true,
+      impactsWeeklyLimit: false,
+      date: new Date().toISOString().slice(0, 10),
+      note: '',
+      loading: false
+    },
 
     supplierPaymentModal: {
       mode: 'pay', // 'pay' | 'sync_payment' | 'batch_all'
@@ -3445,6 +3461,7 @@ function cashFlowApp() {
         title: item.title || '',
         date: item.date || new Date().toISOString().slice(0, 10),
         hubRole: item.hubRole || 'hub1_income',
+        accountName: item.accountName || '',
         notes: item.notes || ''
       };
 
@@ -3462,6 +3479,7 @@ function cashFlowApp() {
         title: '',
         date: new Date().toISOString().slice(0, 10),
         hubRole: 'hub1_income',
+        accountName: '',
         notes: ''
       };
     },
@@ -3495,6 +3513,7 @@ function cashFlowApp() {
             type: this.upcomingForm.type,
             date: this.upcomingForm.date,
             hubRole: this.upcomingForm.hubRole,
+            accountName: this.upcomingForm.accountName || '',
             notes: this.upcomingForm.notes ? this.upcomingForm.notes.trim() : ''
           })
         });
@@ -3508,6 +3527,7 @@ function cashFlowApp() {
           this.editingUpcomingId = null;
           this.upcomingForm.title = '';
           this.upcomingForm.amount = '';
+          this.upcomingForm.accountName = '';
           this.upcomingForm.notes = '';
           await this.fetchUpcomingTransactions();
           await this.fetchProjectionHealth();
@@ -3520,15 +3540,90 @@ function cashFlowApp() {
       }
     },
 
-    async deleteUpcomingTransaction(id, isMarkAsDone = true) {
+    openCompleteUpcomingModal(item) {
+      if (!item) return;
+      if (item.isSupplierDebt || String(item._id).startsWith('supplier_debt_')) {
+        this.paySupplierDebtFromTimeline(item);
+        return;
+      }
+      const defaultAcc = item.accountName || (this.dashboard?.accounts?.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
+      this.upcomingCompleteModal = {
+        id: item._id,
+        title: item.title || '',
+        type: item.type || 'expense',
+        amount: Number(item.amount) || 0,
+        hubRole: item.hubRole || 'hub1_income',
+        accountName: defaultAcc,
+        syncToAccount: true,
+        impactsWeeklyLimit: false,
+        date: new Date().toISOString().slice(0, 10),
+        note: item.notes || '',
+        loading: false
+      };
+      this.modals.upcomingComplete = true;
+    },
+
+    async confirmCompleteUpcoming() {
+      if (this.upcomingCompleteModal.loading) return;
+      const modal = this.upcomingCompleteModal;
+      const finalAmt = this.parseVND(modal.amount);
+      if (finalAmt <= 0) {
+        alert('Vui lòng nhập số tiền hợp lệ lớn hơn 0đ!');
+        return;
+      }
+      if (modal.syncToAccount && !modal.accountName) {
+        alert('Vui lòng chọn ngân hàng để hạch toán tiền!');
+        return;
+      }
+
+      modal.loading = true;
+      try {
+        const res = await this.authFetch(`/api/upcoming/${modal.id}/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accountName: modal.accountName,
+            syncToAccount: modal.syncToAccount,
+            amount: finalAmt,
+            date: modal.date,
+            hubRole: modal.hubRole,
+            impactsWeeklyLimit: modal.impactsWeeklyLimit,
+            note: modal.note
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.modals.upcomingComplete = false;
+          if (String(this.editingUpcomingId) === String(modal.id)) {
+            this.cancelEditUpcoming();
+          }
+          this.notify('✓ ' + (data.message || 'Đã hoàn tất & hạch toán vào ngân hàng!'));
+          await this.fetchUpcomingTransactions();
+          await this.fetchProjectionHealth();
+          await this.fetchDashboard();
+        } else {
+          alert('Lỗi: ' + (data.message || data.error));
+        }
+      } catch (err) {
+        alert('Lỗi hệ thống: ' + err.message);
+      } finally {
+        modal.loading = false;
+      }
+    },
+
+    async deleteUpcomingTransaction(id, isMarkAsDone = false) {
       if (String(id).startsWith('supplier_debt_')) {
         alert('Khoản nợ NCC này được đồng bộ tự động từ danh sách Nhà Cung Cấp theo ngày đến hạn (dueDate).\n\nĐể tất toán hoặc điều chỉnh, vui lòng sử dụng nút "Trả nợ" hoặc "Sửa" trong mục Hũ Tiền Hàng Nợ Từng NCC.');
         return;
       }
-      const confirmText = isMarkAsDone
-        ? 'Xác nhận khoản này "Đã hoàn tất"?\n\nKhoản mục sẽ được xóa khỏi danh sách dự kiến (Bạn có thể tự ghi nhận vào sổ giao dịch thực tế nếu cần).'
-        : 'Bạn có chắc chắn muốn xóa khoản dự kiến này khỏi danh sách?';
-      if (!confirm(confirmText)) return;
+      if (isMarkAsDone) {
+        const item = (this.upcomingList || []).find(x => String(x._id) === String(id));
+        if (item) {
+          this.openCompleteUpcomingModal(item);
+          return;
+        }
+      }
+      if (!confirm('Bạn có chắc chắn muốn xóa khoản dự kiến này khỏi danh sách?')) return;
 
       try {
         const res = await this.authFetch(`/api/upcoming/${id}`, {
@@ -3539,7 +3634,7 @@ function cashFlowApp() {
           if (String(this.editingUpcomingId) === String(id)) {
             this.cancelEditUpcoming();
           }
-          this.notify(isMarkAsDone ? '✓ Đã hoàn tất khoản dự kiến và gỡ khỏi danh sách!' : '🗑️ Đã xóa khoản dự kiến!');
+          this.notify('🗑️ Đã xóa khoản dự kiến!');
           await this.fetchUpcomingTransactions();
           await this.fetchProjectionHealth();
           await this.fetchDashboard();

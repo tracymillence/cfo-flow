@@ -1360,6 +1360,20 @@
                   </select>
                 </div>
 
+                <!-- Ngân hàng dự kiến hạch toán (Tùy chọn) -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">
+                    Ngân hàng dự kiến hạch toán (tùy chọn):
+                  </label>
+                  <select x-model="upcomingForm.accountName"
+                          class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition">
+                    <option value="">-- Chọn khi bấm Hoàn tất --</option>
+                    <template x-for="acc in (dashboard?.accounts?.list || [])" :key="acc._id || acc.name">
+                      <option :value="acc.name" x-text="acc.name + ' (Hiện có: ' + formatVND(acc.balance) + ')'"></option>
+                    </template>
+                  </select>
+                </div>
+
                 <!-- Ghi chú thêm (Text) -->
                 <div>
                   <label class="block text-xs font-semibold text-slate-700 mb-1">Ghi chú (tùy chọn):</label>
@@ -1452,6 +1466,12 @@
                             <i class="fa-regular fa-calendar text-[10px]" :class="item.isSupplierDebt ? 'text-amber-600' : ''"></i>
                             <span x-text="formatDate(item.date)"></span>
                           </span>
+
+                          <span x-show="item.accountName"
+                                class="px-2 py-0.5 rounded text-[10px] font-semibold bg-white border border-slate-200 text-slate-700 inline-flex items-center gap-1">
+                            <i class="fa-solid fa-building-columns text-[9px] text-slate-500"></i>
+                            <span x-text="item.accountName"></span>
+                          </span>
                         </div>
 
                         <!-- Title -->
@@ -1496,8 +1516,8 @@
                         <!-- Khoản dự kiến thông thường -->
                         <template x-if="!item.isSupplierDebt">
                           <div class="flex items-center gap-1.5">
-                            <button type="button" @click="deleteUpcomingTransaction(item._id, true)"
-                                    title="Đã hoàn tất (Gỡ khỏi danh sách dự kiến)"
+                            <button type="button" @click="openCompleteUpcomingModal(item)"
+                                    title="Hoàn tất & chọn ngân hàng hạch toán tiền"
                                     class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1 shadow-sm cursor-pointer">
                               <i class="fa-solid fa-check text-[10px]"></i>
                               <span class="hidden sm:inline">Hoàn tất</span>
@@ -5658,6 +5678,107 @@
     </div>
   </div>
 
+  <!-- MODAL: HOÀN TẤT KHOẢN DỰ THU / DỰ CHI & CHỌN NGÂN HÀNG HẠCH TOÁN TIỀN -->
+  <div x-show="modals.upcomingComplete" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div class="bg-white rounded-2xl border border-slate-200/90 shadow-modal max-w-md w-full p-5 sm:p-6 space-y-4"
+         @click.away="if (!upcomingCompleteModal.loading) modals.upcomingComplete = false">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <span class="w-9 h-9 rounded-xl flex items-center justify-center text-sm shadow-2xs"
+                :class="upcomingCompleteModal.type === 'income' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'">
+            <i class="fa-solid fa-building-columns"></i>
+          </span>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900"
+                x-text="upcomingCompleteModal.type === 'income' ? 'Hoàn Tất Dự Thu & Cộng Ngân Hàng' : 'Hoàn Tất Dự Chi & Trừ Ngân Hàng'"></h3>
+            <p class="text-[11px] text-slate-500 mt-0.5 truncate max-w-[260px]"
+               x-text="upcomingCompleteModal.title"></p>
+          </div>
+        </div>
+        <button type="button" @click="modals.upcomingComplete = false" class="text-slate-400 hover:text-slate-600">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="confirmCompleteUpcoming()" class="space-y-3.5">
+        <!-- Số tiền thực tế thực hiện -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1"
+                 x-text="upcomingCompleteModal.type === 'income' ? 'Số tiền thực thu (VNĐ):' : 'Số tiền thực chi (VNĐ):'"></label>
+          <input type="text" x-model="upcomingCompleteModal.amount" required
+                 class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono font-bold focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                 :class="upcomingCompleteModal.type === 'income' ? 'text-emerald-700' : 'text-rose-600'">
+        </div>
+
+        <!-- Tùy chọn hạch toán vào ngân hàng & ghi Sổ Giao Dịch Tổng -->
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
+          <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+            <input type="checkbox" x-model="upcomingCompleteModal.syncToAccount"
+                   class="rounded text-emerald-600 focus:ring-emerald-600 w-4 h-4">
+            <span x-text="upcomingCompleteModal.type === 'income' ? 'Cộng trực tiếp vào số dư ngân hàng & ghi Sổ Giao Dịch' : 'Trừ trực tiếp khỏi số dư ngân hàng & ghi Sổ Giao Dịch'"></span>
+          </label>
+
+          <div x-show="upcomingCompleteModal.syncToAccount" class="space-y-2 pt-1">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1"
+                     x-text="upcomingCompleteModal.type === 'income' ? 'Chọn ngân hàng / ví nhận tiền (+):' : 'Chọn ngân hàng / ví chi trả (-):'"></label>
+              <select x-model="upcomingCompleteModal.accountName"
+                      class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:ring-2 focus:ring-slate-900 focus:outline-none">
+                <template x-for="acc in (dashboard?.accounts?.list || [])" :key="acc._id || acc.name">
+                  <option :value="acc.name" x-text="acc.name + ' (Hiện có: ' + formatVND(acc.balance) + ')'"></option>
+                </template>
+              </select>
+            </div>
+
+            <!-- Tùy chọn trừ hạn mức tuần nếu thuộc Hub 4 & Dự Chi -->
+            <div x-show="upcomingCompleteModal.type === 'expense' && upcomingCompleteModal.hubRole === 'hub4_personal'" class="pt-1">
+              <label class="flex items-center gap-2 cursor-pointer text-[11px] font-semibold text-purple-800">
+                <input type="checkbox" x-model="upcomingCompleteModal.impactsWeeklyLimit"
+                       class="rounded text-purple-600 focus:ring-purple-600 w-3.5 h-3.5">
+                <span>Tính vào Hạn Mức Tiêu Tuần (Hub 4)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ngày thực hiện & Ghi chú -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Ngày hạch toán:</label>
+            <input type="date" x-model="upcomingCompleteModal.date" required
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Ghi chú (tùy chọn):</label>
+            <input type="text" x-model="upcomingCompleteModal.note" placeholder="Chi tiết giao dịch..."
+                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+          <button type="button" @click="modals.upcomingComplete = false"
+                  :disabled="upcomingCompleteModal.loading"
+                  class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer">
+            Hủy
+          </button>
+          <button type="submit"
+                  :disabled="upcomingCompleteModal.loading"
+                  class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs">
+            <i class="fa-solid" :class="upcomingCompleteModal.loading ? 'fa-spinner fa-spin' : 'fa-check'"></i>
+            <span x-text="upcomingCompleteModal.loading ? 'Đang xử lý...' : 'Xác Nhận Hoàn Tất'"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- MODAL: XÁC NHẬN THU KHÁCH / TRẢ VỐN NCC & CHỌN NGUỒN TIỀN NGÂN HÀNG (1 HOẶC NHIỀU ĐƠN) -->
   <div x-show="modals.orderSettlement" x-cloak
        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
@@ -5856,6 +5977,6 @@
   </div>
 
   <!-- Load App Script -->
-  <script src="/app.js?v=4.2"></script>
+  <script src="/app.js?v=4.3"></script>
 </body>
 </html>
