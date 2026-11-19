@@ -2031,7 +2031,10 @@ function cashFlowApp() {
     },
 
     defaultBankAccountName() {
-      return (this.dashboard?.accounts?.list && this.dashboard.accounts.list[0]?.name) || 'Vietcombank';
+      const list = this.dashboard?.accounts?.list || [];
+      const vcb = list.find(a => /vietcombank/i.test(a.name || ''));
+      if (vcb) return vcb.name;
+      return (list[0] && list[0].name) || 'Vietcombank';
     },
 
     // Multi-select helpers cho Sổ Đơn Hàng
@@ -3338,16 +3341,20 @@ function cashFlowApp() {
       const defaultAcc = this.defaultBankAccountName();
       if (item) {
         this.editingPersonalId = item._id || item.id;
+        const resolvedType = item.type || defaultType;
+        const monthEntry = resolvedType === 'fixed_bill'
+          ? this.getBillMonthEntry(item, this.selectedFixedBillMonth)
+          : null;
         this.personalExpenseForm = {
           title: item.title,
           category: item.category || 'streaming_tech',
-          type: item.type || defaultType,
+          type: resolvedType,
           amount: item.amount,
           cycle: item.cycle || 'monthly',
           dueDay: item.dueDay || 5,
-          status: item.status || 'pending',
-          paidAccount: item.paidAccount || defaultAcc,
-          deductFromAccount: item.deductFromAccount !== false,
+          status: monthEntry ? (monthEntry.status || 'pending') : (item.status || 'pending'),
+          paidAccount: (monthEntry && monthEntry.paidAccount) ? monthEntry.paidAccount : (item.paidAccount || defaultAcc),
+          deductFromAccount: monthEntry ? (monthEntry.deductFromAccount !== false) : (item.deductFromAccount !== false),
           notes: item.notes || ''
         };
       } else {

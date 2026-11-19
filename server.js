@@ -4184,7 +4184,8 @@ async function setFixedBillMonthStatus(item, monthKey, { status, paidAccount, de
   }
 
   let entry = item.monthlyHistory.find(h => h.monthKey === targetMonth);
-  if (!entry && item.status === 'paid' && item.monthlyHistory.length === 0) {
+  // Chỉ tự động phục hồi monthlyHistory từ bản ghi cũ đã lưu trong DB (!item.isNew) khi monthlyHistory trống
+  if (!entry && !item.isNew && item.status === 'paid' && item.monthlyHistory.length === 0) {
     const legacyMk = (item.paidDate && item.paidDate.length >= 7) ? item.paidDate.slice(0, 7) : getVietnamMonthKey();
     item.monthlyHistory.push({
       monthKey: legacyMk,
@@ -4198,10 +4199,11 @@ async function setFixedBillMonthStatus(item, monthKey, { status, paidAccount, de
     entry = item.monthlyHistory.find(h => h.monthKey === targetMonth);
   }
 
+  // CHỈ hoàn tác số dư cũ nếu kỳ tháng này trước đó ĐÃ THỰC SỰ trừ tiền ngân hàng (entry.accountSynced === true)
   const wasDeducted = Boolean(
     entry &&
     entry.status === 'paid' &&
-    (entry.accountSynced || entry.deductFromAccount !== false) &&
+    entry.accountSynced === true &&
     entry.paidAccount &&
     Number(entry.amount || item.amount) > 0
   );
@@ -4309,10 +4311,11 @@ app.post('/api/personal/expense', authenticateToken, requirePermission('managePe
       amount: numAmount,
       cycle: cycle || 'monthly',
       dueDay: Number(dueDay) || 5,
-      status: resolvedStatus,
+      status: resolvedType === 'fixed_bill' ? 'pending' : resolvedStatus,
       paidAccount: paidAccount || 'Vietcombank',
       deductFromAccount: shouldDeduct,
-      paidDate: resolvedStatus === 'paid' ? (paidDate || new Date().toISOString().slice(0, 10)) : '',
+      paidDate: (resolvedType !== 'fixed_bill' && resolvedStatus === 'paid') ? (paidDate || new Date().toISOString().slice(0, 10)) : '',
+      accountSynced: false,
       notes: notes || '',
       monthlyHistory: []
     });
@@ -4323,7 +4326,7 @@ app.post('/api/personal/expense', authenticateToken, requirePermission('managePe
           status: 'paid',
           paidAccount: item.paidAccount,
           deductFromAccount: shouldDeduct,
-          paidDate: item.paidDate,
+          paidDate: paidDate || new Date().toISOString().slice(0, 10),
           amount: numAmount
         });
       }
