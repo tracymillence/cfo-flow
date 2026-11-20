@@ -483,21 +483,26 @@ function cashFlowApp() {
 
     async init() {
       if (this.authToken) {
+        const tokenToVerify = this.authToken;
         try {
           const res = await fetch('/api/auth/me', {
-            headers: { 'Authorization': `Bearer ${this.authToken}` }
+            headers: { 'Authorization': `Bearer ${tokenToVerify}` }
           });
           const data = await res.json();
+          // Nếu trong lúc chờ /api/auth/me người dùng đã bấm đăng nhập mới thì không ghi đè
+          if (this.authToken !== tokenToVerify) return;
           if (data.success && data.user) {
             this.currentUser = data.user;
             this.isLoggedIn = true;
             this.ensureValidActiveTab();
             await this.fetchDashboard();
           } else {
-            this.logout(false);
+            this.logout(false, false);
           }
         } catch (e) {
-          this.logout(false);
+          if (this.authToken === tokenToVerify && !this.isLoggedIn) {
+            this.logout(false, false);
+          }
         }
       } else {
         this.isLoggedIn = false;
@@ -588,6 +593,7 @@ function cashFlowApp() {
     },
 
     async submitLogin() {
+      if (this.loginForm.loading) return;
       if (!this.loginForm.username.trim() || !this.loginForm.password.trim()) {
         this.loginForm.error = 'Vui lòng điền đầy đủ tên đăng nhập và mật khẩu!';
         return;
@@ -613,7 +619,9 @@ function cashFlowApp() {
           this.loginForm.password = '';
           this.loginForm.error = '';
           this.notify(`Xin chào, ${data.user.fullName}!`);
-          await this.fetchDashboard();
+          try {
+            await this.fetchDashboard();
+          } catch (_) {}
         } else {
           this.loginForm.error = data.error || 'Tên đăng nhập hoặc mật khẩu không chính xác';
         }
@@ -629,7 +637,7 @@ function cashFlowApp() {
       localStorage.setItem('cfo_login_theme', this.loginForm.theme);
     },
 
-    async logout(callApi = true) {
+    async logout(callApi = true, showNotify = true) {
       if (callApi && this.authToken) {
         try {
           await fetch('/api/auth/logout', {
@@ -642,7 +650,9 @@ function cashFlowApp() {
       this.currentUser = null;
       this.isLoggedIn = false;
       localStorage.removeItem('cfo_token');
-      this.notify('Đã đăng xuất tài khoản.');
+      if (showNotify) {
+        this.notify('Đã đăng xuất tài khoản.');
+      }
     },
 
     // ==================== RBAC & USER MANAGEMENT METHODS ====================

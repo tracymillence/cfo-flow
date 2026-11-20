@@ -875,11 +875,18 @@ async function authenticateToken(req, res, next) {
     if (!token) {
       return res.status(401).json({ success: false, error: 'Thiếu mã xác thực (Token)' });
     }
-    const user = await User.findOne({ sessionToken: token, isActive: true });
+    const user = await User.findOne({
+      $or: [
+        { sessionToken: token },
+        { sessionTokens: token }
+      ],
+      isActive: true
+    });
     if (!user || (user.tokenExpiresAt && user.tokenExpiresAt < new Date())) {
       return res.status(401).json({ success: false, error: 'Phiên đăng nhập đã hết hạn hoặc tài khoản bị tạm khóa' });
     }
     req.user = user;
+    req.authToken = token;
     next();
   } catch (err) {
     return res.status(500).json({ success: false, error: 'Lỗi xác thực: ' + err.message });
@@ -1038,8 +1045,18 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
 
 app.post('/api/auth/logout', authenticateToken, async (req, res) => {
   try {
-    req.user.sessionToken = null;
-    req.user.tokenExpiresAt = null;
+    const token = req.authToken;
+    if (Array.isArray(req.user.sessionTokens)) {
+      req.user.sessionTokens = req.user.sessionTokens.filter(t => t && t !== token);
+    }
+    if (req.user.sessionToken === token) {
+      req.user.sessionToken = req.user.sessionTokens?.length
+        ? req.user.sessionTokens[req.user.sessionTokens.length - 1]
+        : null;
+    }
+    if (!req.user.sessionToken && (!req.user.sessionTokens || req.user.sessionTokens.length === 0)) {
+      req.user.tokenExpiresAt = null;
+    }
     await req.user.save();
     res.json({ success: true, message: 'Đăng xuất thành công' });
   } catch (err) {

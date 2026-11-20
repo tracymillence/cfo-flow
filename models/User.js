@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   isDefaultPassword: { type: Boolean, default: true },
   sessionToken: { type: String, default: null },
+  sessionTokens: { type: [String], default: [] },
   tokenExpiresAt: { type: Date, default: null },
   // Granular permissions object - Cấu hình trực tiếp trên UI admin không cần sửa code!
   permissions: {
@@ -40,9 +41,16 @@ userSchema.methods.validPassword = function(password) {
 };
 
 userSchema.methods.generateToken = function() {
-  this.sessionToken = crypto.randomBytes(32).toString('hex');
+  const newToken = crypto.randomBytes(32).toString('hex');
+  const existing = Array.isArray(this.sessionTokens) ? this.sessionTokens.filter(Boolean) : [];
+  if (this.sessionToken && !existing.includes(this.sessionToken)) {
+    existing.push(this.sessionToken);
+  }
+  this.sessionToken = newToken;
+  // Lưu tối đa 15 phiên đăng nhập gần nhất để tránh xung đột khi đăng nhập nhiều tab/thiết bị hoặc double-submit
+  this.sessionTokens = [...existing.slice(-14), newToken];
   this.tokenExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Lưu phiên 30 ngày
-  return this.sessionToken;
+  return newToken;
 };
 
 module.exports = mongoose.model('User', userSchema);
