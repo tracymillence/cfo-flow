@@ -4000,7 +4000,14 @@ function cashFlowApp() {
         }
       }
 
-      return list.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      return list.sort((a, b) => {
+        const dateCmp = (a.date || '').localeCompare(b.date || '');
+        if (dateCmp !== 0) return dateCmp;
+        const rankA = a.type === 'income' ? 0 : 1;
+        const rankB = b.type === 'income' ? 0 : 1;
+        if (rankA !== rankB) return rankA - rankB;
+        return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+      });
     }
   };
 }

@@ -2235,13 +2235,36 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
   );
 
   // 7. Mô phỏng timeline để tìm ngày xuất hiện thiếu hụt thanh khoản sớm nhất (Running balance)
-  const sortedItems = [...rangeUpcoming].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  const baseBalance = totalPhysicalCash - dueSupplierDebt + diningReceivable - diningPayable;
-  let runningBalance = baseBalance;
+  // Quy tắc CFO thực tế:
+  // - Trong cùng 1 ngày (date), ưu tiên cộng toàn bộ các khoản Dự Thu (income: Lương về, thu nợ...) TRƯỚC khi trừ Dự Chi (expense).
+  // - Các khoản Nợ NCC đến hạn được trừ đúng vào ngày dueDate của NCC đó thay vì trừ sớm trước ngày nhận lương.
+  const compareProjectionItems = (a, b) => {
+    const dateCmp = String(a.date || '').localeCompare(String(b.date || ''));
+    if (dateCmp !== 0) return dateCmp;
+    const rankA = a.type === 'income' ? 0 : 1;
+    const rankB = b.type === 'income' ? 0 : 1;
+    if (rankA !== rankB) return rankA - rankB;
+    return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+  };
+
+  const datedSupplierOutflows = dueSupplierDebts.map(sup => ({
+    date: getSupplierDueDateStr(sup),
+    amount: Number(sup.remainingAmount) || 0,
+    type: 'expense',
+    hubRole: 'hub1_income',
+    isSupplierDebt: true,
+    createdAt: sup.createdAt || new Date()
+  }));
+
+  const sortedItems = [...rangeUpcoming].sort(compareProjectionItems);
+  const overallSimItems = [...rangeUpcoming, ...datedSupplierOutflows].sort(compareProjectionItems);
+
+  const startingNetLiquid = totalPhysicalCash + diningReceivable - diningPayable;
+  let runningBalance = startingNetLiquid;
   let earliestDeficitDate = null;
   let earliestDeficitAmount = 0;
 
-  for (const it of sortedItems) {
+  for (const it of overallSimItems) {
     if (it.type === 'income') {
       runningBalance += (Number(it.amount) || 0);
     } else {
@@ -2254,7 +2277,7 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
   }
 
   if (totalHealth < 0 && !earliestDeficitDate) {
-    earliestDeficitDate = sortedItems.length > 0 ? sortedItems[sortedItems.length - 1].date : vnDateStr;
+    earliestDeficitDate = overallSimItems.length > 0 ? overallSimItems[overallSimItems.length - 1].date : vnDateStr;
     earliestDeficitAmount = totalHealth;
   }
 
@@ -2271,7 +2294,6 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
   };
 
   hubRoles.forEach(role => {
-    // Với Hub 1: Bắt đầu từ số dư đã trừ nợ NCC đến hạn trong kỳ để phản ánh tiền thực khả dụng
     const rawCash = hubs[role].balance || 0;
     const supDebt = (role === 'hub1_income') ? dueSupplierDebt : 0;
     const curBal = (role === 'hub1_income') ? (rawCash - supDebt) : rawCash;
@@ -2280,11 +2302,17 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
     const exp = hItems.filter(it => it.type === 'expense').reduce((s, it) => s + (Number(it.amount) || 0), 0);
     const projBal = curBal + inc - exp;
 
-    let rBal = curBal;
+    // Mô phỏng dòng chảy theo ngày của từng Hub: bắt đầu từ tiền mặt thực tế của Hub,
+    // cộng Dự Thu trước rồi mới trừ Dự Chi & Hạn nợ NCC trong cùng ngày
+    const hSimItems = role === 'hub1_income'
+      ? [...hItems, ...datedSupplierOutflows].sort(compareProjectionItems)
+      : [...hItems].sort(compareProjectionItems);
+
+    let rBal = rawCash;
     let hEarliestDate = null;
     let hEarliestAmt = 0;
 
-    for (const it of hItems) {
+    for (const it of hSimItems) {
       if (it.type === 'income') rBal += (Number(it.amount) || 0);
       else rBal -= (Number(it.amount) || 0);
 
@@ -2295,7 +2323,7 @@ async function calculateProjectionHealth(range = 'all', customStart = null, cust
     }
 
     if (projBal < 0 && !hEarliestDate) {
-      hEarliestDate = hItems.length > 0 ? hItems[hItems.length - 1].date : vnDateStr;
+      hEarliestDate = hSimItems.length > 0 ? hSimItems[hSimItems.length - 1].date : vnDateStr;
       hEarliestAmt = projBal;
     }
 
@@ -2522,10 +2550,13 @@ app.get('/api/upcoming', authenticateToken, async (req, res) => {
     // Ánh xạ các Hóa Đơn Cố Định hàng tháng (Hub 4) chưa thanh toán sang danh sách Dự Chi
     const fixedBillOutflowItems = buildUpcomingFixedBillItems(fixedBills, getVietnamMonthKey(now));
 
-    // Kết hợp và sắp xếp theo ngày tăng dần
+    // Kết hợp và sắp xếp theo ngày tăng dần; trong cùng 1 ngày ưu tiên hiển thị Dự Thu (income) lên trước Dự Chi (expense)
     const combined = [...upcoming, ...supplierOutflowItems, ...fixedBillOutflowItems].sort((a, b) => {
       const cmp = (a.date || '').localeCompare(b.date || '');
       if (cmp !== 0) return cmp;
+      const rankA = a.type === 'income' ? 0 : 1;
+      const rankB = b.type === 'income' ? 0 : 1;
+      if (rankA !== rankB) return rankA - rankB;
       return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
     });
 
